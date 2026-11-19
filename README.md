@@ -179,10 +179,21 @@ Accuracy and performance:
 
 ## Relationship with Abaqus
 
-asclepios is not affiliated with, endorsed by or connected to Dassault Systèmes. Abaqus is a trademark of
-Dassault Systèmes or its subsidiaries. asclepios is an independent implementation written from the finite
-element literature and contains no Abaqus code. It reads a subset of the Abaqus input format so that existing models can be run.
+Asclepios is not affiliated with, endorsed by or connected to Dassault Systèmes. Abaqus is a trademark of
+Dassault Systèmes or its subsidiaries. Asclepios is an independent implementation and contains no Abaqus code.
+It reads a subset of the Abaqus input format so that existing models can be run.
+
+## Support and professional services
+
+Questions and bug reports: GitHub issues. Product-specific simulations and custom validation studies can be
+arranged: see [SUPPORT.md](SUPPORT.md).
+
+## Citing
+
+If you use Asclepios in published work, please cite it: [CITATION.cff](CITATION.cff) (GitHub button "Cite this
+repository").
 
 ## License
 
-Copyright 2026 the Asclepios authors. Licensed under the Apache License, Version 2.0: see [LICENSE](LICENSE).
+Copyright 2026 NonameAccountMax. Licensed under the Apache License, Version 2.0: see [LICENSE](LICENSE) and
+[NOTICE](NOTICE).

@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use Asclepios in published work, please cite it as below."
+title: "Asclepios: an open-source finite element solver"
+type: software
+authors:
+  - alias: NonameAccountMax
+repository-code: "https://github.com/NonameAccountMax/Asclepios"
+url: "https://github.com/NonameAccountMax/Asclepios"
+license: Apache-2.0
+abstract: >-
+  Lightweight C++17 finite element solver for nonlinear structural dynamics of
+  soft tissues and slender devices: explicit dynamics, static implicit analysis,
+  shells, beams, connectors, hyperelastic and elasto-plastic materials, and
+  general contact. It reads a subset of the Abaqus keyword input format.
+keywords:
+  - finite element method
+  - explicit dynamics
+  - nonlinear mechanics
+  - biomechanics
+  - medical devices
+  - shells
+  - contact
