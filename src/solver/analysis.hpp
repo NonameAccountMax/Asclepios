@@ -88,6 +88,7 @@ struct Analysis {
     int failed = 0;
   };
   ElemSum eval_elements(double dt, double bv1, double bv2, bool dynamic, bool commit, std::vector<double>& f);
+  bool initial_pass = false;  // eval_elements: increment-0 viscous forces of the initial velocities
   void external_forces(double st, double tt, std::vector<double>& f);  // at configuration X+u+du
   void temperatures(double st, double tt);
 };

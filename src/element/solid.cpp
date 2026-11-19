@@ -405,7 +405,9 @@ class SolidGroup : public ElementGroup {
       if (in.dynamic && in.dt > 0 && (in.bv1 > 0 || in.bv2 > 0)) {
         double rate = trd / in.dt;
         double c = std::sqrt(M / rho);
-        double pbv = in.bv1 * rho * c * Le * rate + rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate));
+        const double Lb = in.initial ? std::max(Le, Ldt) : Le;  // increment 0: stable-increment length, linear term
+        double pbv = in.bv1 * rho * c * Lb * rate +
+                     (in.initial ? 0.0 : rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate)));
         for (int i = 0; i < 3; ++i) s[i] += pbv;
         out.e_visc += -(-pbv) * trd * V1;  // pbv * dvol (always >= 0)
       }
@@ -616,7 +618,9 @@ class SolidGroup : public ElementGroup {
       if (in.dynamic && in.dt > 0 && (in.bv1 > 0 || in.bv2 > 0)) {
         double rate = trd / in.dt;
         double c = std::sqrt(M / rho);
-        double pbv = in.bv1 * rho * c * Le * rate + rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate));
+        const double Lb = in.initial ? std::max(Le, Ldt) : Le;  // increment 0: stable-increment length, linear term
+        double pbv = in.bv1 * rho * c * Lb * rate +
+                     (in.initial ? 0.0 : rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate)));
         for (int I = 0; I < 8; ++I) add3(out.f + 6 * I, bbar[I] * (pbv * V1));
         out.e_visc += pbv * trd * V1;
       }
@@ -681,7 +685,9 @@ class SolidGroup : public ElementGroup {
       if (in.dynamic && in.dt > 0 && (in.bv1 > 0 || in.bv2 > 0)) {
         double rate = trd / in.dt;
         double c = std::sqrt(M / rho);
-        double pbv = in.bv1 * rho * c * Le * rate + rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate));
+        const double Lb = in.initial ? std::max(Le, Ldt) : Le;  // increment 0: stable-increment length, linear term
+        double pbv = in.bv1 * rho * c * Lb * rate +
+                     (in.initial ? 0.0 : rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate)));
         for (int I = 0; I < 8; ++I) add3(out.f + 6 * I, bbar_1[I] * (pbv * V1));
         out.e_visc += pbv * trd * V1;
       }

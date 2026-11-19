@@ -216,7 +216,7 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
         in.X = Xe; in.xo = xo; in.du = due;
         if (has_temp) { in.temp0 = t0; in.temp1 = t1; }
         in.fv1 = fve;
-        in.dt = dt; in.bv1 = bv1; in.bv2 = bv2; in.dynamic = dynamic; in.nlgeom = nlgeom;
+        in.dt = dt; in.bv1 = bv1; in.bv2 = bv2; in.dynamic = dynamic; in.nlgeom = nlgeom; in.initial = initial_pass;
         ElemOut out;
         out.f = EF + (size_t)e * nen * 6;
         G.compute(e, in, out, commit);

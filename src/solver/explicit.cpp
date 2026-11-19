@@ -215,6 +215,21 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     if (first) {
       if (A.contact->active()) A.contact->compute(1e-30, A.fcon, A.en, 0);
       fcon_old = A.fcon;
+      // viscous forces of the initial velocities: an element pass on the increment v h over a vanishing time h,
+      // less the forces of the initial state. Abaqus/Explicit at increment 0 (Taylor impact: reaction and first
+      // increment exact): linear bulk viscosity on the stable-increment length in the reactions, and the damping
+      // of the quadratic term at the initial compression rate in the first stable increment
+      std::vector<double> fvis(6 * nn, 0.0);
+      if ((st.bv1 > 0 || st.bv2 > 0) && std::any_of(A.v.begin(), A.v.end(), [](double x) { return x != 0.0; })) {
+        const double h = 1e-6 * fresh.dt_min;
+        for (int i = 0; i < 6 * nn; ++i) A.du[i] = h * A.v[i];
+        A.initial_pass = true;
+        auto vis = A.eval_elements(h, st.bv1, st.bv2, true, false, fvis);
+        A.initial_pass = false;
+        std::fill(A.du.begin(), A.du.end(), 0.0);
+        for (int i = 0; i < 6 * nn; ++i) fvis[i] -= A.fint[i];
+        if (vis.dt_min < fresh.dt_min) { fresh.dt_min = vis.dt_min; fresh.dt_elem = vis.dt_elem; }
+      }
       for (int n = 0; n < nn; ++n)
         for (int k = 0; k < 6; ++k) {
           double mm = k < 3 ? A.mt[n] : A.mr[n];
@@ -222,7 +237,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
           A.a[i] = (mm > 0 && !A.fixed[i]) ? (A.fext[i] + A.fcon[i] - A.fint[i]) / mm : 0.0;
           // reactions of the initial state (as Abaqus reports them at increment 0: e.g. the share of a suddenly
           // applied load carried by the prescribed nodes)
-          A.rf[i] = A.fixed[i] ? -(A.fext[i] + A.fcon[i] - A.fint[i]) : 0.0;
+          A.rf[i] = A.fixed[i] ? -(A.fext[i] + A.fcon[i] - A.fint[i] - fvis[i]) : 0.0;
         }
       W.frame(si, st.name, 0.0, A.total_time);
     } else {

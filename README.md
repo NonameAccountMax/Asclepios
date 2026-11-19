@@ -73,7 +73,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   above the element bound; `ELEMENT BY ELEMENT` turns it off.
   C3D8R element length: the larger of the uniform-gradient bound and a length built on the largest face
   (`*SECTION CONTROLS, IMPROVED DT METHOD`, YES by default); the initial estimate includes the linear bulk
-  viscosity damping. Field frames are written at the end of the first increment past each output time, increments
+  viscosity damping, and with initial velocities the quadratic damping at the initial compression rate; the
+  reactions written at increment 0 include the linear bulk viscosity of the initial velocities (on the
+  stable-increment length). Field frames are written at the end of the first increment past each output time, increments
   being shortened to reach them exactly only with `TIME MARKS=YES`.
 - **C3D8R hourglass control**: Flanagan-Belytschko vectors. Explicit procedures: relaxed stiffness (`RELAX STIFFNESS`,
   the default), a standard linear solid on each mode: instantaneous stiffness 8/15·G·V·Σ|∇N|²,

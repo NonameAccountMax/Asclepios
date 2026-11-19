@@ -25,6 +25,7 @@ struct ElemIn {
   double bv1 = 0, bv2 = 0;        // bulk viscosity (explicit only)
   bool dynamic = true;            // explicit: rate-dependent artificial terms on
   bool nlgeom = true;
+  bool initial = false;           // increment-0 pass on the initial velocities (linear bulk viscosity only)
 };
 
 struct ElemOut {
