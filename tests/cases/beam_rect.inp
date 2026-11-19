@@ -1,0 +1,71 @@
+*Node
+1, 0.0, 0., 0.
+2, 0.5, 0., 0.
+3, 1.0, 0., 0.
+4, 1.5, 0., 0.
+5, 2.0, 0., 0.
+6, 2.5, 0., 0.
+7, 3.0, 0., 0.
+8, 3.5, 0., 0.
+9, 4.0, 0., 0.
+10, 4.5, 0., 0.
+11, 5.0, 0., 0.
+12, 5.5, 0., 0.
+13, 6.0, 0., 0.
+14, 6.5, 0., 0.
+15, 7.0, 0., 0.
+16, 7.5, 0., 0.
+17, 8.0, 0., 0.
+18, 8.5, 0., 0.
+19, 9.0, 0., 0.
+20, 9.5, 0., 0.
+21, 10.0, 0., 0.
+*Element, type=B31, elset=B
+1, 1, 2
+2, 2, 3
+3, 3, 4
+4, 4, 5
+5, 5, 6
+6, 6, 7
+7, 7, 8
+8, 8, 9
+9, 9, 10
+10, 10, 11
+11, 11, 12
+12, 12, 13
+13, 13, 14
+14, 14, 15
+15, 15, 16
+16, 16, 17
+17, 17, 18
+18, 18, 19
+19, 19, 20
+20, 20, 21
+*Nset, nset=ROOT
+1
+*Nset, nset=TIP
+21
+*Nset, nset=ALL, generate
+1, 21, 1
+*Beam Section, elset=B, material=M, section=RECT
+0.2, 0.1
+0., 1., 0.
+*Material, name=M
+*Elastic
+200000., 0.3
+*Density
+7.8e-9
+*Damping, alpha=1000.0
+*Boundary
+ROOT, ENCASTRE
+*Amplitude, name=SM, definition=SMOOTH STEP
+0., 0., 0.006666666666666667, 1.
+*Step, nlgeom=NO
+*Dynamic, Explicit
+, 0.02
+*Cload, amplitude=SM
+TIP, 3, 0.001
+*Output, field, number interval=5
+*Node Output
+U
+*End Step

@@ -1,0 +1,112 @@
+*Heading
+Two parts instanced with a translation and a rotation (tension)
+*Part, name=PA
+*Node
+1, 0., 0., 0.
+2, 10, 0., 0.
+3, 20, 0., 0.
+4, 30, 0., 0.
+5, 40, 0., 0.
+6, 0., 4, 0.
+7, 10, 4, 0.
+8, 20, 4, 0.
+9, 30, 4, 0.
+10, 40, 4, 0.
+11, 0., 0., 4
+12, 10, 0., 4
+13, 20, 0., 4
+14, 30, 0., 4
+15, 40, 0., 4
+16, 0., 4, 4
+17, 10, 4, 4
+18, 20, 4, 4
+19, 30, 4, 4
+20, 40, 4, 4
+*Element, type=C3D8R, elset=EALL
+1, 1, 2, 7, 6, 11, 12, 17, 16
+2, 2, 3, 8, 7, 12, 13, 18, 17
+3, 3, 4, 9, 8, 13, 14, 19, 18
+4, 4, 5, 10, 9, 14, 15, 20, 19
+*Solid Section, elset=EALL, material=STEEL
+,
+*End Part
+*Part, name=PB
+*Node
+1001, 0., 0., 0.
+1002, 10, 0., 0.
+1003, 20, 0., 0.
+1004, 30, 0., 0.
+1005, 40, 0., 0.
+1006, 0., 4, 0.
+1007, 10, 4, 0.
+1008, 20, 4, 0.
+1009, 30, 4, 0.
+1010, 40, 4, 0.
+1011, 0., 0., 4
+1012, 10, 0., 4
+1013, 20, 0., 4
+1014, 30, 0., 4
+1015, 40, 0., 4
+1016, 0., 4, 4
+1017, 10, 4, 4
+1018, 20, 4, 4
+1019, 30, 4, 4
+1020, 40, 4, 4
+*Element, type=C3D8R, elset=EALL
+1001, 1001, 1002, 1007, 1006, 1011, 1012, 1017, 1016
+1002, 1002, 1003, 1008, 1007, 1012, 1013, 1018, 1017
+1003, 1003, 1004, 1009, 1008, 1013, 1014, 1019, 1018
+1004, 1004, 1005, 1010, 1009, 1014, 1015, 1020, 1019
+*Solid Section, elset=EALL, material=STEEL
+,
+*End Part
+*Assembly, name=Assembly
+*Instance, name=IA, part=PA
+0., 10, 0.
+*End Instance
+*Instance, name=IB, part=PB
+20, 0., 0.
+0., 0., 0., 0., 0., 1, 90
+*End Instance
+*Nset, nset=IAX0, instance=IA
+1, 11, 6, 16
+*Nset, nset=IAY0, instance=IA
+1, 11, 2, 12, 3, 13, 4, 14, 5, 15
+*Nset, nset=IAZ0, instance=IA
+1, 6, 2, 7, 3, 8, 4, 9, 5, 10
+*Nset, nset=IATIP, instance=IA
+5, 15, 10, 20
+*Nset, nset=IBX0, instance=IB
+1001, 1011, 1006, 1016
+*Nset, nset=IBY0, instance=IB
+1001, 1011, 1002, 1012, 1003, 1013, 1004, 1014, 1005, 1015
+*Nset, nset=IBZ0, instance=IB
+1001, 1006, 1002, 1007, 1003, 1008, 1004, 1009, 1005, 1010
+*Nset, nset=IBTIP, instance=IB
+1005, 1015, 1010, 1020
+*End Assembly
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=NO
+*Static
+1., 1.
+*Boundary
+IAX0, 1, 1
+IAY0, 2, 2
+IAZ0, 3, 3
+IBX0, 2, 2
+IBY0, 1, 1
+IBZ0, 3, 3
+*Boundary
+IATIP, 1, 1, 0.04
+IBTIP, 2, 2, 0.04
+*Output, field, number interval=1, time marks=YES
+*Node Output
+U, RF
+*Output, history, variable=PRESELECT
+*End Step

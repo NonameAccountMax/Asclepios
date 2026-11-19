@@ -1,0 +1,76 @@
+*Heading
+Two B31 beams joined by a CONN3D2 HINGE connector [quasi-static explicit twin]
+*Node
+1, 0., 0., 0.
+2, 4, 0., 0.
+3, 8, 0., 0.
+4, 12, 0., 0.
+5, 16, 0., 0.
+6, 20, 0., 0.
+7, 20, 0., 0.
+8, 24, 0., 0.
+9, 28, 0., 0.
+10, 32, 0., 0.
+11, 36, 0., 0.
+12, 40, 0., 0.
+13, 20, 0., 0.
+*Element, type=B31, elset=EALL
+1, 1, 2
+2, 2, 3
+3, 3, 4
+4, 4, 5
+5, 5, 6
+6, 13, 8
+7, 8, 9
+8, 9, 10
+9, 10, 11
+10, 11, 12
+*Element, type=CONN3D2, elset=JOINT
+11, 6, 13
+*Nset, nset=MON
+6, 9, 13
+*Nset, nset=FIX
+1, 12
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+*Elset, elset=JOINT
+11
+*Elset, elset=MONE
+1, 6, 10
+*Beam Section, elset=EALL, material=STEEL, section=RECT
+2., 1.
+0., 0., -1.
+*Orientation, name=HO
+1., 0., 0., 0., 1., 0.
+3, 0.
+*Connector Section, elset=JOINT
+HINGE
+HO
+*Amplitude, name=QS1, definition=SMOOTH STEP
+0., 0., 0.05, 1.
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=YES
+*Dynamic, Explicit
+, 0.05
+*Boundary, amplitude=QS1
+1, ENCASTRE
+12, 3, 4
+*Cload, amplitude=QS1
+9, 2, 0.5
+6, 3, -1.
+*Output, field, number interval=1
+*Node Output
+U, RF, UR, RM, V
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT, time interval=0.00025
+*Output, history, time interval=0.00025
+*Incrementation Output
+DT, DMASS
+*End Step

@@ -1,0 +1,59 @@
+*Heading
+S4R plate bending patch test (constant curvature, distorted elements)
+*Node
+1, 0., 0., 0.
+2, 24, 0., 0.
+3, 24, 12, 0.
+4, 0., 12, 0.
+5, 4, 2, 0.
+6, 18, 3, 0.
+7, 16, 8, 0.
+8, 8, 8, 0.
+*Element, type=S4R, elset=EALL
+1, 1, 2, 6, 5
+2, 2, 3, 7, 6
+3, 3, 4, 8, 7
+4, 4, 1, 5, 8
+5, 5, 6, 7, 8
+*Nset, nset=NALL
+1, 2, 3, 4, 5, 6, 7, 8
+*Nset, nset=MON
+5, 6, 7, 8
+*Elset, elset=EALL
+1, 2, 3, 4, 5
+*Elset, elset=MONE
+1, 3, 5
+*Shell Section, elset=EALL, material=STEEL
+0.5, 5
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Patch, nlgeom=NO
+*Static
+1., 1.
+*Boundary
+NALL, 1, 2
+*Boundary
+1, 3, 3, 0.
+1, 4, 4, 0.
+1, 5, 5, 0.
+2, 3, 3, 0.288
+2, 4, 4, 0.012
+2, 5, 5, -0.024
+3, 3, 3, 0.504
+3, 4, 4, 0.024
+3, 5, 5, -0.03
+4, 3, 3, 0.072
+4, 4, 4, 0.012
+4, 5, 5, -0.006
+*Output, field, number interval=1, time marks=YES
+*Node Output
+U, RF, UR, RM
+*Element Output, elset=MONE
+S, SF
+*Output, history, variable=PRESELECT
+*End Step

@@ -1,0 +1,88 @@
+*Heading
+M3D4R membrane square under biaxial in-plane stretch
+*Node
+1, 0., 0., 0.
+2, 5, 0., 0.
+3, 10, 0., 0.
+4, 15, 0., 0.
+5, 20, 0., 0.
+6, 0., 5, 0.
+7, 5, 5, 0.
+8, 10, 5, 0.
+9, 15, 5, 0.
+10, 20, 5, 0.
+11, 0., 10, 0.
+12, 5, 10, 0.
+13, 10, 10, 0.
+14, 15, 10, 0.
+15, 20, 10, 0.
+16, 0., 15, 0.
+17, 5, 15, 0.
+18, 10, 15, 0.
+19, 15, 15, 0.
+20, 20, 15, 0.
+21, 0., 20, 0.
+22, 5, 20, 0.
+23, 10, 20, 0.
+24, 15, 20, 0.
+25, 20, 20, 0.
+*Element, type=M3D4R, elset=EALL
+1, 1, 2, 7, 6
+2, 2, 3, 8, 7
+3, 3, 4, 9, 8
+4, 4, 5, 10, 9
+5, 6, 7, 12, 11
+6, 7, 8, 13, 12
+7, 8, 9, 14, 13
+8, 9, 10, 15, 14
+9, 11, 12, 17, 16
+10, 12, 13, 18, 17
+11, 13, 14, 19, 18
+12, 14, 15, 20, 19
+13, 16, 17, 22, 21
+14, 17, 18, 23, 22
+15, 18, 19, 24, 23
+16, 19, 20, 25, 24
+*Nset, nset=NALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+17, 18, 19, 20, 21, 22, 23, 24, 25
+*Nset, nset=Y0
+1, 2, 3, 4, 5
+*Nset, nset=X1
+5, 10, 15, 20, 25
+*Nset, nset=Y1
+21, 22, 23, 24, 25
+*Nset, nset=MON
+13, 25
+*Nset, nset=FIX
+1, 6, 11, 16, 21
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+*Elset, elset=MONE
+1, 9, 16
+*Membrane Section, elset=EALL, material=STEEL
+0.2
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Stretch, nlgeom=NO
+*Static
+1., 1.
+*Boundary
+NALL, 3, 3
+FIX, 1, 1
+Y0, 2, 2
+*Boundary
+X1, 1, 1, 0.02
+Y1, 2, 2, 0.01
+*Output, field, number interval=1, time marks=YES
+*Node Output
+U, RF
+*Element Output, elset=MONE
+S
+*Output, history, variable=PRESELECT
+*End Step

@@ -1,0 +1,86 @@
+*Heading
+Holzapfel-Gasser-Ogden block with two fibre families at +/- 30 degrees, uniaxial stretch [quasi-static explicit twin]
+*Node
+1, 0., 0., 0.
+2, 2, 0., 0.
+3, 4, 0., 0.
+4, 0., 2, 0.
+5, 2, 2, 0.
+6, 4, 2, 0.
+7, 0., 4, 0.
+8, 2, 4, 0.
+9, 4, 4, 0.
+10, 0., 0., 2
+11, 2, 0., 2
+12, 4, 0., 2
+13, 0., 2, 2
+14, 2, 2, 2
+15, 4, 2, 2
+16, 0., 4, 2
+17, 2, 4, 2
+18, 4, 4, 2
+19, 0., 0., 4
+20, 2, 0., 4
+21, 4, 0., 4
+22, 0., 2, 4
+23, 2, 2, 4
+24, 4, 2, 4
+25, 0., 4, 4
+26, 2, 4, 4
+27, 4, 4, 4
+*Element, type=C3D8R, elset=EALL
+1, 1, 2, 5, 4, 10, 11, 14, 13
+2, 2, 3, 6, 5, 11, 12, 15, 14
+3, 4, 5, 8, 7, 13, 14, 17, 16
+4, 5, 6, 9, 8, 14, 15, 18, 17
+5, 10, 11, 14, 13, 19, 20, 23, 22
+6, 11, 12, 15, 14, 20, 21, 24, 23
+7, 13, 14, 17, 16, 22, 23, 26, 25
+8, 14, 15, 18, 17, 23, 24, 27, 26
+*Nset, nset=FY
+1, 2, 3, 10, 11, 12, 19, 20, 21
+*Nset, nset=FZ
+1, 2, 3, 4, 5, 6, 7, 8, 9
+*Nset, nset=TIP
+3, 6, 9, 12, 15, 18, 21, 24, 27
+*Nset, nset=MON
+3, 6, 9
+*Nset, nset=FIX
+1, 4, 7, 10, 13, 16, 19, 22, 25
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8
+*Elset, elset=MONE
+1, 5, 8
+*Orientation, name=ORI, local directions=2
+1., 0., 0., 0., 1., 0.
+3, 0.
+0.866025404, 0.5, 0.
+0.866025404, -0.5, 0.
+*Solid Section, elset=EALL, material=HGO, orientation=ORI
+,
+*Amplitude, name=QS1, definition=SMOOTH STEP
+0., 0., 0.01, 1.
+*Material, name=HGO
+*Density
+1.1e-09
+*Anisotropic Hyperelastic, holzapfel, local directions=2
+0.05, 0.02, 2., 10., 0.1
+*Step, name=Load, nlgeom=YES
+*Dynamic, Explicit
+, 0.01
+*Boundary, amplitude=QS1
+FIX, 1, 1
+FY, 2, 2
+FZ, 3, 3
+*Boundary, amplitude=QS1
+TIP, 1, 1, 1.2
+*Output, field, number interval=10
+*Node Output
+U, RF, V
+*Element Output, elset=MONE
+S
+*Output, history, variable=PRESELECT, time interval=5e-05
+*Output, history, time interval=5e-05
+*Incrementation Output
+DT, DMASS
+*End Step

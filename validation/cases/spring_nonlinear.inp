@@ -1,0 +1,42 @@
+*Heading
+Point mass on a nonlinear SPRINGA spring (explicit)
+*Node
+1, 0., 0., 0.
+2, 10, 0., 0.
+*Element, type=SPRINGA, elset=ESP
+1, 1, 2
+*Element, type=MASS, elset=EM
+2, 2
+3, 1
+*Nset, nset=MON
+2
+*Nset, nset=FIX
+1
+*Elset, elset=ESP
+1
+*Elset, elset=EM
+2, 3
+*Spring, elset=ESP, nonlinear
+
+-200., -1.
+0., 0.
+100., 1.
+400., 2.
+*Mass, elset=EM
+1e-04
+*Initial Conditions, type=VELOCITY
+2, 1, 150.
+*Step, name=Oscillate, nlgeom=YES
+*Dynamic, Explicit, direct user control
+1e-05, 0.03
+*Boundary
+1, 1, 3
+2, 2, 3
+*Output, field, number interval=20
+*Node Output
+U, RF, V
+*Output, history, variable=PRESELECT, time interval=0.00015
+*Output, history, time interval=0.00015
+*Incrementation Output
+DT, DMASS
+*End Step

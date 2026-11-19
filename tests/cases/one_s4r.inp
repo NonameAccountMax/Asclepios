@@ -1,0 +1,18 @@
+*Node
+1, 0., 0., 0.
+2, 1., 0., 0.
+3, 1., 1., 0.
+4, 0., 1., 0.
+*Element, type=S4R, elset=P
+1, 1, 2, 3, 4
+*Shell Section, elset=P, material=M
+0.1, 5
+*Material, name=M
+*Elastic
+1000., 0.3
+*Density
+1e-9
+*Step
+*Dynamic, Explicit
+, 1e-3
+*End Step

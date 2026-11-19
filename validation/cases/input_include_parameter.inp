@@ -1,0 +1,30 @@
+*Heading
+Bar in tension: mesh in an included file, values from *PARAMETER
+*Parameter
+YOUNG = 210000.
+NU = 0.3
+TIPU = 0.04
+*Include, input=input_include_parameter_mesh.inc
+*Solid Section, elset=EALL, material=PARAM_STEEL
+,
+*Material, name=PARAM_STEEL
+*Density
+7.85e-09
+*Elastic
+<YOUNG>, <NU>
+*Step, name=Load, nlgeom=NO
+*Static
+1., 1.
+*Boundary
+FIX, 1, 1
+FY, 2, 2
+FZ, 3, 3
+*Boundary
+TIP, 1, 1, <TIPU>
+*Output, field, number interval=1, time marks=YES
+*Node Output
+U, RF
+*Element Output, elset=MONE
+S
+*Output, history, variable=PRESELECT
+*End Step

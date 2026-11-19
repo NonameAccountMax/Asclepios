@@ -1,0 +1,46 @@
+*Heading
+Point mass on a SPRINGA spring and a DASHPOTA damper (explicit)
+*Node
+1, 0., 0., 0.
+2, 10, 0., 0.
+*Element, type=SPRINGA, elset=ESP
+1, 1, 2
+*Element, type=DASHPOTA, elset=EDP
+2, 1, 2
+*Element, type=MASS, elset=EM
+3, 2
+4, 1
+*Nset, nset=MON
+2
+*Nset, nset=FIX
+1
+*Elset, elset=ESP
+1
+*Elset, elset=EDP
+2
+*Elset, elset=EM
+3, 4
+*Spring, elset=ESP
+
+100.
+*Dashpot, elset=EDP
+
+0.002
+*Mass, elset=EM
+1e-04
+*Initial Conditions, type=VELOCITY
+2, 1, 100.
+*Step, name=Oscillate, nlgeom=YES
+*Dynamic, Explicit, direct user control
+1e-05, 0.02
+*Boundary
+1, 1, 3
+2, 2, 3
+*Output, field, number interval=20
+*Node Output
+U, RF, V
+*Output, history, variable=PRESELECT, time interval=0.0001
+*Output, history, time interval=0.0001
+*Incrementation Output
+DT, DMASS
+*End Step

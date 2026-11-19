@@ -1,0 +1,93 @@
+*Heading
+C3D8R cantilever, one element through the depth, enhanced hourglass control (distorted)
+*Node
+1, 0., 0., 0.
+2, 3, 0., 0.
+3, 9, 0., 0.
+4, 11, 0., 0.
+5, 17, 0., 0.
+6, 19, 0., 0.
+7, 25, 0., 0.
+8, 27, 0., 0.
+9, 33, 0., 0.
+10, 35, 0., 0.
+11, 40, 0., 0.
+12, 0., 4, 0.
+13, 3, 4, 0.
+14, 9, 4, 0.
+15, 11, 4, 0.
+16, 17, 4, 0.
+17, 19, 4, 0.
+18, 25, 4, 0.
+19, 27, 4, 0.
+20, 33, 4, 0.
+21, 35, 4, 0.
+22, 40, 4, 0.
+23, 0., 0., 4
+24, 5, 0., 4
+25, 7, 0., 4
+26, 13, 0., 4
+27, 15, 0., 4
+28, 21, 0., 4
+29, 23, 0., 4
+30, 29, 0., 4
+31, 31, 0., 4
+32, 37, 0., 4
+33, 40, 0., 4
+34, 0., 4, 4
+35, 5, 4, 4
+36, 7, 4, 4
+37, 13, 4, 4
+38, 15, 4, 4
+39, 21, 4, 4
+40, 23, 4, 4
+41, 29, 4, 4
+42, 31, 4, 4
+43, 37, 4, 4
+44, 40, 4, 4
+*Element, type=C3D8R, elset=EALL
+1, 1, 2, 13, 12, 23, 24, 35, 34
+2, 2, 3, 14, 13, 24, 25, 36, 35
+3, 3, 4, 15, 14, 25, 26, 37, 36
+4, 4, 5, 16, 15, 26, 27, 38, 37
+5, 5, 6, 17, 16, 27, 28, 39, 38
+6, 6, 7, 18, 17, 28, 29, 40, 39
+7, 7, 8, 19, 18, 29, 30, 41, 40
+8, 8, 9, 20, 19, 30, 31, 42, 41
+9, 9, 10, 21, 20, 31, 32, 43, 42
+10, 10, 11, 22, 21, 32, 33, 44, 43
+*Nset, nset=MON
+11, 22, 33, 44
+*Nset, nset=FIX
+1, 12, 23, 34
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+*Elset, elset=MONE
+1, 6, 10
+*Solid Section, elset=EALL, material=STEEL, controls=CENH
+,
+*Section Controls, name=CENH, hourglass=ENHANCED
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=NO
+*Static
+1., 1.
+*Boundary
+FIX, ENCASTRE
+*Cload
+11, 3, -2.5
+22, 3, -2.5
+33, 3, -2.5
+44, 3, -2.5
+*Output, field, number interval=1, time marks=YES
+*Node Output
+U, RF
+*Element Output, elset=MONE
+S
+*Output, history, variable=PRESELECT
+*End Step

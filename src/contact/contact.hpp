@@ -1,0 +1,35 @@
+// General contact (explicit): penalty node-to-facet with shell/beam thickness offsets and Coulomb friction.
+#pragma once
+#include <vector>
+
+#include "core/binio.hpp"
+#include "model/model.hpp"
+
+namespace abq {
+
+struct Analysis;
+struct Energies;
+
+class GeneralContact {
+ public:
+  explicit GeneralContact(Analysis& A);
+  ~GeneralContact();
+  // (re)define from a step's *CONTACT INCLUSIONS; returns false if nothing to do
+  bool define(const Step& st);
+  bool active() const { return active_; }
+  // penalty forces for the end-of-increment configuration (X + u + du); dt = current increment
+  void compute(double dt, std::vector<double>& f, Energies& en, int increment);
+  int ncontacts() const { return ncontacts_; }
+  // restart (after define() of the same step)
+  void save(BinOut& o) const;
+  void load(BinIn& in);
+
+ private:
+  struct Impl;
+  Impl* p_ = nullptr;
+  Analysis& A_;
+  bool active_ = false;
+  int ncontacts_ = 0;
+};
+
+}  // namespace abq

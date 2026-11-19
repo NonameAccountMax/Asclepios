@@ -1,0 +1,95 @@
+// Shared analysis state for the explicit and implicit drivers.
+#pragma once
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "element/element.hpp"
+#include "model/model.hpp"
+
+namespace abq {
+
+struct Prescribed {
+  int node, dof;
+  double v0, v1;  // value at step start / given value
+  int amp;        // amplitude index, -1 default, -2 constant (propagated)
+  bool velocity = false;
+};
+struct FaceLoad {
+  FaceRef face;
+  double v0, v1;
+  int amp;
+};
+
+struct LoadState {
+  std::vector<Prescribed> bcs, cloads, temps, fields;
+  std::vector<FaceLoad> press;
+  bool ramp = false;  // default amplitude of the current step
+  double period = 1;
+  double value(double v0, double v1, int amp, double st, double tt, const Model& m) const;
+  double value(const Prescribed& p, double st, double tt, const Model& m) const { return value(p.v0, p.v1, p.amp, st, tt, m); }
+};
+
+class GeneralContact;
+class OutputWriter;
+
+struct Energies {
+  double kinetic = 0, internal = 0, external = 0, viscous = 0, plastic = 0, artificial = 0, damping = 0,
+         contact = 0, friction = 0, mass_scaling_work = 0;
+  double total(double ke) const { return ke + internal + viscous + damping + contact - external; }
+};
+
+struct Analysis {
+  Model& m;
+  std::string job;
+  std::vector<std::unique_ptr<ElementGroup>> groups;
+  int nn = 0;
+  std::vector<double> X;                          // 3nn reference coordinates
+  std::vector<double> u, v, a, du;                // 6nn
+  std::vector<double> fint, fext, fcon, rf;       // 6nn
+  std::vector<double> mt, mr, cdamp;              // nn masses, rotary inertia, alpha*m
+  std::vector<double> temp, temp_prev, fv1;       // nn
+  std::vector<char> node_rot;                     // node carries rotational stiffness/inertia
+  std::vector<char> fixed;                        // 6nn prescribed dof (current step)
+  // kinematic ties (CONN3D2 JOIN): the translations of node b are those of node a
+  std::vector<std::pair<int, int>> ties;
+  void tie_accelerations();                       // explicit: common acceleration of tied nodes
+  std::vector<std::vector<double>> efor;          // per group element force buffers
+  std::vector<std::vector<double>> spring_k;      // per group: spring stiffness of connector-like elements
+  std::vector<double> node_om2, node_ks;          // nodal frequency bound work arrays
+  bool has_temp = false;
+  LoadState loads;
+  Energies en;
+  double total_time = 0;
+  int total_increments = 0;
+  std::unique_ptr<GeneralContact> contact;
+  std::unique_ptr<OutputWriter> writer;
+  int nthreads = 1;
+  // restart: periodic save (total time interval, 0 = off) and resume from a restart file
+  double save_interval = 0, next_save = 0;
+  std::string restart_in;  // file to resume from ("" = none)
+  int resume_step = -1;    // step index stored in restart_in
+  void save_state(BinOut& o) const;
+  void load_state(BinIn& in);
+  bool nlgeom = true;
+
+  explicit Analysis(Model& model);
+  ~Analysis();
+  void setup();
+  void lump_masses();
+  void begin_step(const Step& st, int step_index, bool ramp_default);
+  void update_fixed(const Step& st);
+  // element loop: computes fint from u (start) + du; returns min stable dt and accumulates energies
+  struct ElemSum {
+    double dt_min = 1e30;
+    int dt_elem = -1;
+    double e_visc = 0, e_plastic = 0, e_art = 0;
+    int failed = 0;
+  };
+  ElemSum eval_elements(double dt, double bv1, double bv2, bool dynamic, bool commit, std::vector<double>& f);
+  void external_forces(double st, double tt, std::vector<double>& f);  // at configuration X+u+du
+  void temperatures(double st, double tt);
+};
+
+}  // namespace abq

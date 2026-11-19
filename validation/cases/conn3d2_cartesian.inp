@@ -1,0 +1,36 @@
+*Heading
+CONN3D2 CARTESIAN spring loaded in three directions
+*Node
+1, 0., 0., 0.
+2, 10, 0., 0.
+*Element, type=CONN3D2, elset=CONN
+1, 1, 2
+*Nset, nset=MON
+2
+*Nset, nset=FIX
+1
+*Elset, elset=CONN
+1
+*Connector Section, elset=CONN, behavior=SPRING
+CARTESIAN
+*Connector Behavior, name=SPRING
+*Connector Elasticity, component=1
+100.
+*Connector Elasticity, component=2
+200.
+*Connector Elasticity, component=3
+300.
+*Step, name=Load, nlgeom=NO
+*Static
+1., 1.
+*Boundary
+1, 1, 6
+*Cload
+2, 1, 10.
+2, 2, 20.
+2, 3, 30.
+*Output, field, number interval=1, time marks=YES
+*Node Output
+U, RF
+*Output, history, variable=PRESELECT
+*End Step

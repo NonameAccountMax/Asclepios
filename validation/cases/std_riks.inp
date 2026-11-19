@@ -1,0 +1,81 @@
+*Heading
+Shallow B31 arch, snap-through under an apex load (arc-length method)
+*Node
+1, -20, 0., 0.
+2, -18, 0., 0.38
+3, -16, 0., 0.72
+4, -14, 0., 1.02
+5, -12, 0., 1.28
+6, -10, 0., 1.5
+7, -8, 0., 1.68
+8, -6, 0., 1.82
+9, -4, 0., 1.92
+10, -2, 0., 1.98
+11, 0., 0., 2
+12, 2, 0., 1.98
+13, 4, 0., 1.92
+14, 6, 0., 1.82
+15, 8, 0., 1.68
+16, 10, 0., 1.5
+17, 12, 0., 1.28
+18, 14, 0., 1.02
+19, 16, 0., 0.72
+20, 18, 0., 0.38
+21, 20, 0., 0.
+*Element, type=B31, elset=EALL
+1, 1, 2
+2, 2, 3
+3, 3, 4
+4, 4, 5
+5, 5, 6
+6, 6, 7
+7, 7, 8
+8, 8, 9
+9, 9, 10
+10, 10, 11
+11, 11, 12
+12, 12, 13
+13, 13, 14
+14, 14, 15
+15, 15, 16
+16, 16, 17
+17, 17, 18
+18, 18, 19
+19, 19, 20
+20, 20, 21
+*Nset, nset=EALL_NODES
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+17, 18, 19, 20, 21
+*Nset, nset=MON
+6, 11
+*Nset, nset=FIX
+1, 21
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+17, 18, 19, 20
+*Elset, elset=MONE
+1, 11, 20
+*Beam Section, elset=EALL, material=STEEL, section=RECT
+1., 2.
+0., 1., 0.
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Riks, nlgeom=YES, inc=300
+*Static, riks
+0.02, 1., 1e-06, 0.05, 1.5
+*Boundary
+1, 1, 6
+21, 1, 6
+EALL_NODES, 2, 2
+*Cload
+11, 3, -400.
+*Output, field, frequency=5
+*Node Output
+U, RF, UR
+*Output, history, variable=PRESELECT
+*End Step

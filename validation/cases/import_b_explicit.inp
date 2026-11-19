@@ -1,0 +1,18 @@
+*Heading
+Strip bent statically (Abaqus/Standard), then released in Abaqus/Explicit (*IMPORT)
+** validation: oldjob=import_a_static
+*Import, step=1, increment=10, state=yes, update=no
+EALL
+*Step, name=Release, nlgeom=YES
+*Dynamic, Explicit
+, 0.002
+*Boundary
+FIX, ENCASTRE
+*Output, field, number interval=20
+*Node Output
+U, RF, UR, RM, V
+*Output, history, variable=PRESELECT, time interval=1e-05
+*Output, history, time interval=1e-05
+*Incrementation Output
+DT, DMASS
+*End Step

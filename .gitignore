@@ -1,0 +1,19 @@
+build/
+bin/
+tests/out/
+*.vtu
+*.pvd
+*.sta
+*.msg
+*.dat
+__pycache__/
+
+# local, never published
+/private/
+.DS_Store
+validation/out/
+validation/abaqus/work/
+# reference results of a commercial solver and comparisons with them: kept locally, not distributed
+validation/reference/
+validation/RESULTS.md
+validation/PARALLEL.md

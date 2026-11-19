@@ -1,0 +1,81 @@
+*Heading
+B31 cantilever: load, added support, then loads replaced (OP=NEW)
+*Node
+1, 0., 0., 0.
+2, 10, 0., 0.
+3, 20, 0., 0.
+4, 30, 0., 0.
+5, 40, 0., 0.
+6, 50, 0., 0.
+7, 60, 0., 0.
+8, 70, 0., 0.
+9, 80, 0., 0.
+10, 90, 0., 0.
+11, 100, 0., 0.
+*Element, type=B31, elset=EALL
+1, 1, 2
+2, 2, 3
+3, 3, 4
+4, 4, 5
+5, 5, 6
+6, 6, 7
+7, 7, 8
+8, 8, 9
+9, 9, 10
+10, 10, 11
+*Nset, nset=MON
+6, 9, 11
+*Nset, nset=FIX
+1, 6
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+*Elset, elset=MONE
+1, 6, 10
+*Beam Section, elset=EALL, material=STEEL, section=RECT
+2., 1.
+0., 0., -1.
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=NO, inc=10000
+*Static
+0.1, 1., 1e-08, 0.5
+*Boundary
+1, ENCASTRE
+*Cload
+11, 3, -1.
+*Output, field, number interval=2, time marks=YES
+*Node Output
+U, RF, UR, RM
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT
+*End Step
+*Step, name=Support, nlgeom=NO, inc=10000
+*Static
+0.1, 1., 1e-08, 0.5
+*Boundary
+6, 3, 3
+*Output, field, number interval=2, time marks=YES
+*Node Output
+U, RF, UR, RM
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT
+*End Step
+*Step, name=Replace, nlgeom=NO, inc=10000
+*Static
+0.1, 1., 1e-08, 0.5
+*Cload, op=NEW
+11, 2, 0.5
+*Output, field, number interval=2, time marks=YES
+*Node Output
+U, RF, UR, RM
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT
+*End Step

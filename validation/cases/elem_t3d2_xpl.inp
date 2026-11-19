@@ -1,0 +1,50 @@
+*Heading
+T3D2 truss tripod loaded at its apex [quasi-static explicit twin]
+*Node
+1, 10, 0., 0.
+2, -5.000042414, 8.66022955, 0.
+3, -5.000001774, -8.660253014, 0.
+4, 0., 0., 10
+*Element, type=T3D2, elset=TRUSS
+1, 1, 4
+2, 2, 4
+3, 3, 4
+*Nset, nset=BASE
+1, 2, 3
+*Nset, nset=MON
+4
+*Nset, nset=FIX
+1, 2, 3
+*Elset, elset=TRUSS
+1, 2, 3
+*Elset, elset=MONE
+1, 2, 3
+*Solid Section, elset=TRUSS, material=STEEL
+1.
+*Amplitude, name=QS1, definition=SMOOTH STEP
+0., 0., 0.002, 1.
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=YES
+*Dynamic, Explicit
+, 0.002
+*Boundary, amplitude=QS1
+BASE, 1, 3
+*Cload, amplitude=QS1
+4, 3, -1000.
+4, 1, 200.
+*Output, field, number interval=1
+*Node Output
+U, RF, V
+*Element Output, elset=MONE
+S
+*Output, history, variable=PRESELECT, time interval=1e-05
+*Output, history, time interval=1e-05
+*Incrementation Output
+DT, DMASS
+*End Step

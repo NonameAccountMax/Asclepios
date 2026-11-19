@@ -1,0 +1,86 @@
+*Heading
+Two B31 cantilevers joined by a rigid BEAM connector
+*Node
+1, 0., 0., 0.
+2, 2, 0., 0.
+3, 4, 0., 0.
+4, 6, 0., 0.
+5, 8, 0., 0.
+6, 10, 0., 0.
+7, 12, 0., 0.
+8, 14, 0., 0.
+9, 16, 0., 0.
+10, 18, 0., 0.
+11, 20, 0., 0.
+12, 21, 0., 0.
+13, 23, 0., 0.
+14, 25, 0., 0.
+15, 27, 0., 0.
+16, 29, 0., 0.
+17, 31, 0., 0.
+18, 33, 0., 0.
+19, 35, 0., 0.
+20, 37, 0., 0.
+21, 39, 0., 0.
+22, 41, 0., 0.
+*Element, type=B31, elset=EALL
+1, 1, 2
+2, 2, 3
+3, 3, 4
+4, 4, 5
+5, 5, 6
+6, 6, 7
+7, 7, 8
+8, 8, 9
+9, 9, 10
+10, 10, 11
+11, 12, 13
+12, 13, 14
+13, 14, 15
+14, 15, 16
+15, 16, 17
+16, 17, 18
+17, 18, 19
+18, 19, 20
+19, 20, 21
+20, 21, 22
+*Element, type=CONN3D2, elset=JOINT
+21, 11, 12
+*Nset, nset=MON
+11, 12, 22
+*Nset, nset=FIX
+1
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+17, 18, 19, 20
+*Elset, elset=JOINT
+21
+*Elset, elset=MONE
+1, 11, 20
+*Beam Section, elset=EALL, material=STEEL, section=RECT
+2., 1.
+0., 0., -1.
+*Connector Section, elset=JOINT
+BEAM
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=NO
+*Static
+1., 1.
+*Boundary
+1, ENCASTRE
+*Cload
+22, 3, -1.
+22, 2, 0.5
+*Output, field, number interval=1, time marks=YES
+*Node Output
+U, RF, UR, RM
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT
+*End Step

@@ -1,0 +1,41 @@
+*Heading
+CONN3D2 AXIAL spring: axial load, then large transverse motion (NLGEOM)
+*Node
+1, 0., 0., 0.
+2, 10, 0., 0.
+*Element, type=CONN3D2, elset=CONN
+1, 1, 2
+*Nset, nset=MON
+2
+*Nset, nset=FIX
+1
+*Elset, elset=CONN
+1
+*Connector Section, elset=CONN, behavior=SPRING
+AXIAL
+*Connector Behavior, name=SPRING
+*Connector Elasticity, component=1
+100.
+*Step, name=Axial, nlgeom=YES, inc=10000
+*Static
+0.02, 1., 1e-08, 0.02
+*Boundary
+1, 1, 3
+2, 2, 3
+*Cload
+2, 1, 50.
+*Output, field, number interval=10, time marks=YES
+*Node Output
+U, RF
+*Output, history, variable=PRESELECT
+*End Step
+*Step, name=Swing, nlgeom=YES, inc=10000
+*Static
+0.02, 1., 1e-08, 0.02
+*Boundary
+2, 2, 2, 5.
+*Output, field, number interval=10, time marks=YES
+*Node Output
+U, RF
+*Output, history, variable=PRESELECT
+*End Step

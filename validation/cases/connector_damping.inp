@@ -1,0 +1,68 @@
+*Heading
+Mass on an axial connector with damping (explicit)
+*Node
+1, 10, -1, -1
+2, 12, -1, -1
+3, 10, 1, -1
+4, 12, 1, -1
+5, 10, -1, 1
+6, 12, -1, 1
+7, 10, 1, 1
+8, 12, 1, 1
+9, 0., -1, -1
+10, 0., 1, -1
+11, 0., -1, 1
+12, 0., 1, 1
+*Element, type=C3D8R, elset=MASS
+1, 1, 2, 4, 3, 5, 6, 8, 7
+*Element, type=CONN3D2, elset=CONN
+2, 9, 1
+3, 10, 3
+4, 11, 5
+5, 12, 7
+*Nset, nset=CUBE
+1, 2, 3, 4, 5, 6, 7, 8
+*Nset, nset=GROUND
+9, 10, 11, 12
+*Nset, nset=MON
+1, 2
+*Nset, nset=FIX
+9, 10, 11, 12
+*Elset, elset=MASS
+1
+*Elset, elset=CONN
+2, 3, 4, 5
+*Elset, elset=MONE
+1
+*Solid Section, elset=MASS, material=HEAVY
+,
+*Connector Section, elset=CONN, behavior=SPRING
+AXIAL
+*Connector Behavior, name=SPRING
+*Connector Elasticity, component=1
+25.
+*Connector Damping, component=1
+0.05
+*Material, name=HEAVY
+*Density
+7.85e-06
+*Elastic
+210000., 0.3
+*Initial Conditions, type=VELOCITY
+CUBE, 1, 100.
+*Step, name=Oscillate, nlgeom=YES
+*Dynamic, Explicit
+, 0.01
+*Boundary
+GROUND, 1, 3
+CUBE, 2, 3
+*Output, field, number interval=20
+*Node Output
+U, RF, V
+*Element Output, elset=MONE
+S
+*Output, history, variable=PRESELECT, time interval=5e-05
+*Output, history, time interval=5e-05
+*Incrementation Output
+DT, DMASS
+*End Step
