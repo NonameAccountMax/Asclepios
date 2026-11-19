@@ -41,6 +41,7 @@ TOL = {  # relative to the peak reference value (U also for rotations, RF also f
     'nonlinear': {'U': 0.04, 'RF': 0.04, 'S': 0.08, 'E': 0.05},
     'dynamic': {'U': 0.06, 'RF': 0.10, 'S': 0.12, 'E': 0.06},
     'contact': {'U': 0.15, 'RF': 0.20, 'S': 0.25, 'E': 0.15},
+    'published': {'U': 0.02, 'RF': 0.02, 'S': 0.03, 'E': 0.03},    # published values: tolerance of each check
 }
 
 MODE = {'twin': False}
@@ -349,7 +350,8 @@ def explicit_step(name, duration, body, rot=False, nframes=20, extra=None, fixed
 
 # ---------------------------------------------------------------------------------------------- registry
 def register(d, procedure, element, mode, description, mon, fix, rot, tol, analysis='nonlinear', known=None,
-             reference='abaqus', supported=True, reason=None, twin=True, category='element', group=None):
+             reference='abaqus', supported=True, reason=None, twin=True, category='element', group=None,
+             literature=None):
     """Writes the deck and its manifest entry. In twin mode, writes the twin instead (Abaqus-referenced cases only)."""
     d.nset('MON', mon)
     if fix:
@@ -375,7 +377,7 @@ def register(d, procedure, element, mode, description, mon, fix, rot, tol, analy
              'analysis': analysis,
              'known': known or KNOWN.get(name), 'reference': reference, 'known_quantities': kq[0],
              'known_quantities_note': kq[1], 'supported': supported, 'unsupported_reason': reason,
-             'twin_of': d.name if MODE['twin'] else None,
+             'twin_of': d.name if MODE['twin'] else None, 'literature': literature,
              'deferred': (group == 'application') and ('application validation case, addressed once the simple '
                                                        'tests are validated')}
     CASES.append(entry)

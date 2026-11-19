@@ -14,6 +14,7 @@ from deck import (CASES, KNOWN, KNOWN_QUANTITIES, MODE, OUT, QS_DURATION, Deck, 
                   tets_from_hexes, tris_from_quads, write_manifest)
 import gen_features
 import gen_more
+import gen_literature
 
 KNOWN.update({
     'contact_block_on_plate': 'general contact does not include solid element faces and nodes yet',
@@ -505,6 +506,7 @@ def generate():
     contact_cases()
     gen_features.generate()
     gen_more.generate()
+    gen_literature.generate()
 
 
 def main():

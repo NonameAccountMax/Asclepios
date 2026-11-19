@@ -359,7 +359,7 @@ def benchmark_features():
                                ['%d, 2, %s' % (nd, fmt(1.0 * (0.5 if k in (0, n) else 1.0) / n))
                                 for k, nd in enumerate(right)], False, rot=True, nframes=1)
         register(d, 'static', etype, "Cook's membrane", 'Tapered membrane clamped on one edge, unit shear on the '
-                 'other (published converged value: 23.96 at the top right corner).', [ids[n, n], ids[n, 0]], fix, True,
+                 'other (published converged value: 23.96 at the middle of the loaded edge).', [ids[n, n], ids[n, 0]], fix, True,
                  'linear', 'linear', category='feature', group='benchmark', twin=False)
 
     def ellipse_mesh(d, nt, ns, z=0.0):
@@ -392,8 +392,8 @@ def benchmark_features():
             loads += ['%d, 1, %s' % (nd, fmt(-fx)), '%d, 2, %s' % (nd, fmt(-fy))]
         d.steps += static_step('Load', ['*Boundary', 'NALL, 3, 5', 'XS, XSYMM', 'YS, YSYMM', '*Cload'] + loads, False,
                                rot=True, nframes=1)
-        register(d, 'static', etype, 'NAFEMS LE1', 'Elliptic membrane under uniform outer tension (published value: '
-                 'sigma_yy = 92.7 MPa at the inner point D on the x axis).', [ids[0, 0], ids[0, ns], ids[nt, 0]],
+        register(d, 'static', etype, 'NAFEMS LE1', 'Elliptic membrane under a uniform normal load of 10 MPa on its '
+                 'outer edge (geometry of NAFEMS LE1, load reversed; see lit_nafems_le1_* for the published value).', [ids[0, 0], ids[0, ns], ids[nt, 0]],
                  [ids[nt, j] for j in range(ns + 1)] + [ids[0, j] for j in range(ns + 1)], True, 'linear', 'linear',
                  category='feature', group='benchmark', twin=False)
 

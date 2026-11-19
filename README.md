@@ -52,7 +52,8 @@ save time (`<job>_t<time>.rst`).
 Output files:
 
 - `<job>.pvd` and `<job>_vtk/*.vtu` for ParaView: U, V, RF, UR, NT11 at nodes; S_Mises, S11…S23, PEEQ,
-  LE_max, STH, SF per element;
+  LE_max, STH, SF per element (shell stresses in the local shell axes: the section orientation if any, otherwise the
+  projection of the global x axis on the surface, rotating with the element);
 - `<job>_history.csv`: energies ALLKE, ALLIE, ALLWK, ALLVD, ALLPD, ALLAE, ALLDMD, ALLFD, ETOTAL;
 - `<job>.sta` (progress) and `<job>.dat` (messages).
 
@@ -117,23 +118,48 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-148 small decks, run after every change of the solver:
+165 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
   rigid rotation;
+- classic benchmarks of the finite element literature, compared with their published values (below);
 - solver features: contact between every pair of element types, constraints, connectors, other Abaqus element types,
   loads and boundary conditions, multi-step analyses, materials, options specific to each procedure;
 - every case in both procedures (implicit and explicit), and parallel runs (results independent of the number of
   threads, speed-up).
 
 Displacements, rotations, reaction forces and energy histories are compared over the whole load history: with the
-closed-form solution wherever the nodal solution is known by hand (26 cases, within 0.1 %; most are exact), and
-otherwise with reference results that each user produces on a machine where a licence of the reference solver is
-available. Reference results of commercial solvers, and comparisons with them, are not distributed with this
-repository.
+closed-form solution wherever the nodal solution is known by hand (46 cases, within 0.1 %; most are exact), with
+published values for the literature benchmarks (15 cases), and otherwise with reference results that each user
+produces on a machine where a licence of the reference solver is available. Reference results of commercial solvers,
+and comparisons with them, are not distributed with this repository.
 
 Cases, compared quantities, tolerances and how to produce the references: [validation/README.md](validation/README.md).
+
+### Benchmarks with published values
+
+Refined meshes, linear static unless stated; error relative to the published converged value.
+
+| Benchmark | Element, mesh | Quantity | Asclepios | Published | Error | Source |
+|---|---|---|---|---|---|---|
+| Scordelis-Lo roof | S4R, 16 × 16 | vertical displacement, middle of the free edge | 0.3043 | 0.3024 | 0.63 % | MacNeal and Harder (1985) |
+| Scordelis-Lo roof | S3R, 48 × 48 × 2 | same | 0.2997 | 0.3024 | 0.89 % | MacNeal and Harder (1985) |
+| Pinched cylinder with diaphragms | S4R, 32 × 32 | displacement under the load | 1.8205e-5 | 1.8248e-5 | 0.23 % | Belytschko et al. (1985) |
+| Pinched hemisphere, 18° hole | S4R, 16 × 16 | displacement under the loads | 0.09383 | 0.094 | 0.18 % | MacNeal and Harder (1985) |
+| Twisted beam, load along the clamped width | S4R, 24 × 4 | tip displacement | 1.7737e-3 | 1.754e-3 | 1.12 % | MacNeal and Harder (1985) |
+| Twisted beam, load normal to the clamped end | S4R, 24 × 4 | tip displacement | 5.4263e-3 | 5.424e-3 | 0.04 % | MacNeal and Harder (1985) |
+| Cook's membrane | S4R, 48 × 48 | vertical displacement, middle of the loaded edge | 24.30 | 23.96 | 1.42 % | Cook (1974) |
+| Cook's membrane | S3R, 48 × 48 × 2 | same | 24.09 | 23.96 | 0.52 % | Cook (1974) |
+| NAFEMS LE1 elliptic membrane | S4R, 48 × 24 | σyy at point D (extrapolated) | 92.19 MPa | 92.7 MPa | 0.55 % | NAFEMS (1990) |
+| NAFEMS LE1 elliptic membrane | S3R, 48 × 24 × 2 | same | 93.97 MPa | 92.7 MPa | 1.36 % | NAFEMS (1990) |
+| Clamped square plate, a / t = 100 | S4R, 16 × 16 | centre deflection | 0.013198 | 0.013159 | 0.29 % | Timoshenko and Woinowsky-Krieger (1959) |
+| Clamped square plate, a / t = 100 | S3R, 32 × 32 × 2 | same | 0.013056 | 0.013159 | 0.78 % | Timoshenko and Woinowsky-Krieger (1959) |
+| Thick cylinder under internal pressure (Lamé) | C3D8R, 8 × 16 | inner / outer radial displacement | 9.0874e-3 / 5.7829e-3 | 9.0794e-3 / 5.7778e-3 | 0.09 % | Timoshenko and Goodier (1970) |
+| Thick cylinder under internal pressure (Lamé) | C3D4, 16 × 32 × 6 | same | 9.0122e-3 / 5.7761e-3 | 9.0794e-3 / 5.7778e-3 | 0.74 % | Timoshenko and Goodier (1970) |
+| Elastica, P L² / EI = 5 (large rotation) | B31, 40 | tip displacement across / along the beam | 71.368 / 38.700 | 71.379 / 38.763 | 0.16 % | Mattiasson (1981) |
+
+Full references, tolerances and decks: `validation/gen_literature.py` (cases `lit_*`).
 
 ## Verification against closed-form solutions (`make test`)
 

@@ -1,7 +1,7 @@
 # Validation
 
-The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 221
-small decks (171 cases and 50 twins), each running in seconds:
+The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 262
+small decks (209 cases and 53 twins), each running in seconds:
 
 - **elements and deformation modes**: every element type supported by asclepios (C3D8R, C3D8, C3D4, S4R, S3R, B31,
   CONN3D2) under tension, bending, torsion, shear, large rotations, pressure, hyperelasticity, plasticity with load
@@ -36,6 +36,12 @@ implemented (status NOT SUPPORTED, reason given in `RESULTS.md`).
 
 ## References
 
+- **Published values** (15 cases, `lit_*`, `gen_literature.py`): classic benchmarks of the finite element literature
+  (Scordelis-Lo roof, pinched cylinder, pinched hemisphere, twisted beam, Cook's membrane, NAFEMS LE1, clamped plate,
+  Lame cylinder, elastica) on refined meshes, compared at the last frame with the converged value of the cited
+  publication: nodal displacements, or a stress extrapolated to the published point from the element values next to
+  it (quadratic through the first three elements). Tolerance per check (1 to 3 %): remaining discretisation error and
+  spread of the published values. The values obtained are listed in the main README.
 - **Closed form** (56 cases): wherever the nodal solution of the discrete model is known by hand, it is the reference
   (ground truth): homogeneous states (tension, simple shear, hyperelastic membranes and blocks, plasticity with
   isotropic or kinematic hardening and load reversal, thermal stress, orthotropic elasticity, initial stress,

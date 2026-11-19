@@ -275,6 +275,8 @@ def evaluate(case, ran):
     except (OSError, KeyError, ValueError) as e:
         res['message'] = str(e)
         return res
+    if case.get('reference') == 'literature':
+        return literature_check(case, mine, res)
     if case.get('reference') == 'analytic':
         ref = analytic.reference(case)
     else:
@@ -300,6 +302,54 @@ def evaluate(case, ran):
     skip = set(case.get('known_quantities') or [])
     checks = [(res[q], tol[q]) for q in ('U', 'UR', 'RF', 'RM', 'S', 'E') if q not in skip]
     res['status'] = 'PASS' if all(v is None or v <= t for v, t in checks) else 'FAIL'
+    return res
+
+
+def last_frame_arrays(case):
+    pvd = open(os.path.join(OUT, case['name'] + '.pvd')).read()
+    files = re.findall(r'file="([^"]+)"', pvd)
+    return vtu_arrays(os.path.join(OUT, files[-1]))
+
+
+def extrapolate(dist, vals, deg):
+    """Value at distance 0 of the least-squares polynomial of degree deg through (dist, vals) (interpolating when
+    deg = len(dist) - 1)."""
+    n = deg + 1
+    a = [[sum(d ** (i + j) for d in dist) for j in range(n)] + [sum(v * d ** i for d, v in zip(dist, vals))]
+         for i in range(n)]
+    for k in range(n):  # Gauss-Jordan elimination with partial pivoting
+        p = max(range(k, n), key=lambda r: abs(a[r][k]))
+        a[k], a[p] = a[p], a[k]
+        for r in range(n):
+            if r != k:
+                f = a[r][k] / a[k][k]
+                a[r] = [x - f * y for x, y in zip(a[r], a[k])]
+    return a[0][n] / a[0][0]
+
+
+def literature_check(case, mine, res):
+    """Published benchmarks: every check of the manifest entry at the last frame, error relative to the published
+    value; U collects the displacement checks, S the stress checks."""
+    lit = case['literature']
+    last = mine['frames'][-1]
+    arrays = None
+    res['checks'] = []
+    ok = True
+    for c in lit['checks']:
+        if c['kind'] == 'U':
+            v = c['sign'] * last['U'][str(c['node'])][c['dof'] - 1]
+        else:
+            if arrays is None:
+                arrays = last_frame_arrays(case)
+            idx = {lab: i for i, lab in enumerate(arrays['ElementLabel'])}
+            vals = [sum(arrays[c['comp']][idx[e]] for e in g) / len(g) for g in c['groups']]
+            v = extrapolate(c['dist'], vals, c.get('deg', len(vals) - 1))
+        err = abs(v - c['value']) / abs(c['value'])
+        res['checks'].append((c['label'], v, c['value'], err, c['tol']))
+        key = 'U' if c['kind'] == 'U' else 'S'
+        res[key] = max(res[key] or 0.0, err)
+        ok = ok and err <= c['tol']
+    res['status'] = 'PASS' if ok else 'FAIL'
     return res
 
 
@@ -333,12 +383,12 @@ def write_results(cases, results, elapsed):
              ' (%d cases, %.0f s).' % (len(results), elapsed), '',
              ]
     titles = {'element': 'Elements and deformation modes', 'patch': 'Patch tests, distorted meshes, robustness',
-              'benchmark': 'Standard benchmarks', 'input': 'Input file features', 'contact': 'Contact',
+              'benchmark': 'Standard benchmarks', 'literature': 'Published benchmarks (refined meshes)', 'input': 'Input file features', 'contact': 'Contact',
               'constraint': 'Constraints and connectors', 'load': 'Loads, boundary conditions, steps',
               'material': 'Materials', 'explicit': 'Options specific to the explicit procedure',
               'standard': 'Procedures specific to the implicit solver', 'procedure': 'Other procedures',
               'application': 'Application models', 'parallel': 'Parallel runs and performance'}
-    order = ['element', 'patch', 'benchmark', 'input', 'contact', 'constraint', 'load', 'material', 'explicit',
+    order = ['element', 'patch', 'literature', 'benchmark', 'input', 'contact', 'constraint', 'load', 'material', 'explicit',
              'standard', 'procedure', 'application', 'parallel']
     def section(c):
         return 'element' if c.get('category', 'element') == 'element' and 'contact' not in c['mode'] else (
@@ -356,10 +406,18 @@ def write_results(cases, results, elapsed):
                       '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
         t = c['tol']
         lines.append('| `%s` | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %g / %g / %g / %g %% | %s |' % (
-            c['name'], c['element'], c['mode'], c['procedure'], 'closed form' if c.get('reference') == 'analytic'
-            else 'Abaqus', pct(r['U']), pct(r['UR']), pct(r['RF']), pct(r.get('RM')), pct(r.get('S')), pct(r['E']),
+            c['name'], c['element'], c['mode'], c['procedure'], {'analytic': 'closed form', 'literature': 'published'}
+            .get(c.get('reference'), 'Abaqus'), pct(r['U']), pct(r['UR']), pct(r['RF']), pct(r.get('RM')), pct(r.get('S')), pct(r['E']),
             '%.2f' % r['inc'] if r.get('inc') else '', 100 * t['U'], 100 * t['RF'], 100 * t.get('S', 2 * t['U']),
             100 * t['E'], r['status']))
+    lits = [c for c in cases if c.get('reference') == 'literature' and by.get(c['name'], {}).get('checks')]
+    if lits:
+        lines += ['', '## Published benchmarks: values', '', '| Case | Quantity | asclepios | Published | Error | '
+                  'Tolerance | Source |', '|---|---|---|---|---|---|---|']
+        for c in lits:
+            for label, v, ref, err, tol in by[c['name']]['checks']:
+                lines.append('| `%s` | %s | %.5g | %.5g | %s | %g %% | %s |' % (c['name'], label, v, ref, pct(err),
+                                                                           100 * tol, c['literature']['source']))
     known = [c for c in cases if c.get('known') and c['name'] in by]
     partial = [c for c in cases if c.get('known_quantities') and c['name'] in by]
     if known or partial:

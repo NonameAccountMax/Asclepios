@@ -53,6 +53,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -109,6 +110,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -164,6 +166,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -206,6 +209,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -251,6 +255,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -304,6 +309,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -350,6 +356,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -405,6 +412,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -461,6 +469,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -517,6 +526,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -572,6 +582,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -614,6 +625,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -659,6 +671,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -705,6 +718,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -761,6 +775,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -817,6 +832,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -872,6 +888,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -914,6 +931,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -960,6 +978,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1003,6 +1022,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1050,6 +1070,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1094,6 +1115,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1136,6 +1158,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1207,6 +1230,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1246,6 +1270,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1285,6 +1310,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1332,6 +1358,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1402,6 +1429,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1439,6 +1467,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1482,6 +1511,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1529,6 +1559,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1573,6 +1604,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1644,6 +1676,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1683,6 +1716,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1755,6 +1789,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1793,6 +1828,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1831,6 +1867,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1869,6 +1906,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1907,6 +1945,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1945,6 +1984,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -1985,6 +2025,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2023,6 +2064,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2061,6 +2103,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2094,6 +2137,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2127,6 +2171,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2166,6 +2211,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2235,6 +2281,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2306,6 +2353,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2408,6 +2456,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2478,6 +2527,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2541,6 +2591,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: solid element faces in general contact",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2603,6 +2654,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: solid element faces in general contact",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2642,6 +2694,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: beam-to-beam edge contact",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2684,6 +2737,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2753,6 +2807,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *CONTACT PAIR",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2791,6 +2846,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: R3D4 rigid elements, *RIGID BODY",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2844,6 +2900,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *TIE",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2885,6 +2942,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *TIE",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2933,6 +2991,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *COUPLING",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -2981,6 +3040,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *COUPLING",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3020,6 +3080,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *MPC",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3059,6 +3120,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *EQUATION",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3101,6 +3163,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *RIGID BODY",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3141,6 +3204,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3181,6 +3245,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: HINGE connection type",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3244,6 +3309,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: C3D10M elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3291,6 +3357,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: C3D6 elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3334,6 +3401,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3377,6 +3445,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3416,6 +3485,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: T3D2 elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3485,6 +3555,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3527,6 +3598,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: M3D4R membrane elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3565,6 +3637,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: B32 elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3598,6 +3671,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: SPRINGA, DASHPOTA and MASS elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3661,6 +3735,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3700,6 +3775,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3743,6 +3819,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3782,6 +3859,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3907,6 +3985,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3945,6 +4024,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: GRAV distributed load",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -3983,6 +4063,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: follower concentrated loads",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4022,6 +4103,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *TRANSFORM",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4063,6 +4145,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4104,6 +4187,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: PERIODIC amplitudes",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4144,6 +4228,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4193,6 +4278,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4240,6 +4326,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: initial stresses",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4283,6 +4370,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: temperature-dependent elastic properties",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4316,6 +4404,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4363,6 +4452,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: Mooney-Rivlin hyperelasticity",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4410,6 +4500,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: kinematic hardening",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4457,6 +4548,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: viscoelasticity",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4503,6 +4595,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4549,6 +4642,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4595,6 +4689,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4641,6 +4736,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4687,6 +4783,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4733,6 +4830,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4802,6 +4900,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4841,6 +4940,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *STATIC, RIKS",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4879,6 +4979,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *FREQUENCY",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -4917,6 +5018,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *BUCKLE",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5194,6 +5296,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5313,6 +5416,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5360,6 +5464,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5393,6 +5498,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5462,6 +5568,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5531,6 +5638,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5600,6 +5708,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5669,6 +5778,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5707,6 +5817,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5745,6 +5856,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5783,6 +5895,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5821,6 +5934,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5859,6 +5973,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5897,6 +6012,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5939,6 +6055,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -5981,6 +6098,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6023,6 +6141,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6058,6 +6177,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6100,6 +6220,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6142,6 +6263,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6181,6 +6303,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6220,6 +6343,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6259,6 +6383,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6298,6 +6423,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6340,6 +6466,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6376,6 +6503,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6423,6 +6551,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: hybrid elements (C3D8H)",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6470,6 +6599,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: hybrid elements (C3D4H)",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6517,6 +6647,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6570,6 +6701,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6671,6 +6803,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6718,6 +6851,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6765,6 +6899,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6812,6 +6947,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6851,6 +6987,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6860,7 +6997,7 @@
   "procedure": "static",
   "element": "S4R",
   "mode": "Cook's membrane",
-  "description": "Tapered membrane clamped on one edge, unit shear on the other (published converged value: 23.96 at the top right corner).",
+  "description": "Tapered membrane clamped on one edge, unit shear on the other (published converged value: 23.96 at the middle of the loaded edge).",
   "mon": [
    73,
    81
@@ -6897,6 +7034,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6906,7 +7044,7 @@
   "procedure": "static",
   "element": "S3R",
   "mode": "Cook's membrane",
-  "description": "Tapered membrane clamped on one edge, unit shear on the other (published converged value: 23.96 at the top right corner).",
+  "description": "Tapered membrane clamped on one edge, unit shear on the other (published converged value: 23.96 at the middle of the loaded edge).",
   "mon": [
    73,
    81
@@ -6943,6 +7081,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -6952,7 +7091,7 @@
   "procedure": "static",
   "element": "S4R",
   "mode": "NAFEMS LE1",
-  "description": "Elliptic membrane under uniform outer tension (published value: sigma_yy = 92.7 MPa at the inner point D on the x axis).",
+  "description": "Elliptic membrane under a uniform normal load of 10 MPa on its outer edge (geometry of NAFEMS LE1, load reversed; see lit_nafems_le1_* for the published value).",
   "mon": [
    1,
    5,
@@ -6991,6 +7130,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7000,7 +7140,7 @@
   "procedure": "static",
   "element": "S3R",
   "mode": "NAFEMS LE1",
-  "description": "Elliptic membrane under uniform outer tension (published value: sigma_yy = 92.7 MPa at the inner point D on the x axis).",
+  "description": "Elliptic membrane under a uniform normal load of 10 MPa on its outer edge (geometry of NAFEMS LE1, load reversed; see lit_nafems_le1_* for the published value).",
   "mon": [
    1,
    5,
@@ -7039,6 +7179,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7121,6 +7262,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7203,6 +7345,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7256,6 +7399,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7299,6 +7443,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7342,6 +7487,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7411,6 +7557,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7451,6 +7598,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7493,6 +7641,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7534,6 +7683,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7575,6 +7725,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7623,6 +7774,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7687,6 +7839,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: C3D10 elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7725,6 +7878,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: BOX beam sections",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7763,6 +7917,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: I beam sections",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7810,6 +7965,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: Ogden hyperelasticity",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7857,6 +8013,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: Yeoh hyperelasticity",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7904,6 +8061,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: orthotropic elasticity",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7951,6 +8109,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: Holzapfel-Gasser-Ogden hyperelasticity",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -7993,6 +8152,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: superelastic nitinol (ABQ_SUPER_ELASTIC user material)",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8040,6 +8200,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: rate-dependent plasticity",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8087,6 +8248,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: damage and element deletion",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8120,6 +8282,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8159,6 +8322,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: connector damping",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8198,6 +8362,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: connector stops",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8237,6 +8402,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: BEAM connection type",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8276,6 +8442,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: BUSHING connection type",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8309,6 +8476,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: SPRINGA and MASS elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8378,6 +8546,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8447,6 +8616,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *CONTACT EXCLUSIONS",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8516,6 +8686,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: softened pressure-overclosure laws",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8554,6 +8725,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: analytical rigid surfaces",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8590,6 +8762,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: SFM3D4R surface elements",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8635,6 +8808,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: R3D4 rigid elements, *RIGID BODY",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8677,6 +8851,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: shell offsets",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8719,6 +8894,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: composite shell sections",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8760,6 +8936,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: DECAY amplitudes",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8801,6 +8978,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: EQUALLY SPACED amplitudes",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8865,6 +9043,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: acceleration boundary conditions",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8913,6 +9092,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -8961,6 +9141,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: linear perturbation steps",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9008,6 +9189,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *VISCO steps",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9046,6 +9228,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *MODAL DYNAMIC",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9084,6 +9267,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *STEADY STATE DYNAMICS",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9120,6 +9304,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: heat transfer",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9161,6 +9346,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: coupled temperature-displacement analysis",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9213,6 +9399,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: adaptive meshing (ALE)",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9254,6 +9441,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9291,6 +9479,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *IMPORT (transfer between procedures)",
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9333,6 +9522,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": "application validation case, addressed once the simple tests are validated"
  },
  {
@@ -9370,6 +9560,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": "application validation case, addressed once the simple tests are validated"
  },
  {
@@ -9486,6 +9677,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -9682,6 +9874,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
   "deferred": false
  },
  {
@@ -10038,6 +10231,1384 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
+  "literature": null,
+  "deferred": false
+ },
+ {
+  "name": "lit_scordelis_lo_s4r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "Scordelis-Lo roof",
+  "description": "Cylindrical roof on rigid diaphragms under self-weight (R = 25, L = 50, t = 0.25, E = 4.32e8, nu = 0, 90 per unit area): vertical displacement at the middle of the free edge.",
+  "mon": [
+   17
+  ],
+  "fix": [
+   273,
+   274,
+   275,
+   276,
+   277,
+   278,
+   279,
+   280,
+   281,
+   282,
+   283,
+   284,
+   285,
+   286,
+   287,
+   288,
+   289
+  ],
+  "mone": [
+   1,
+   129,
+   256
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "MacNeal and Harder (1985), Finite Elem. Anal. Des. 1:3-20: 0.3024",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 17,
+     "dof": 3,
+     "sign": -1.0,
+     "value": 0.3024,
+     "tol": 0.02,
+     "label": "w at the middle of the free edge"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_scordelis_lo_s3r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S3R",
+  "mode": "Scordelis-Lo roof",
+  "description": "Cylindrical roof on rigid diaphragms under self-weight (R = 25, L = 50, t = 0.25, E = 4.32e8, nu = 0, 90 per unit area): vertical displacement at the middle of the free edge.",
+  "mon": [
+   49
+  ],
+  "fix": [
+   2353,
+   2354,
+   2355,
+   2356,
+   2357,
+   2358,
+   2359,
+   2360,
+   2361,
+   2362,
+   2363,
+   2364,
+   2365,
+   2366,
+   2367,
+   2368,
+   2369,
+   2370,
+   2371,
+   2372,
+   2373,
+   2374,
+   2375,
+   2376,
+   2377,
+   2378,
+   2379,
+   2380,
+   2381,
+   2382,
+   2383,
+   2384,
+   2385,
+   2386,
+   2387,
+   2388,
+   2389,
+   2390,
+   2391,
+   2392,
+   2393,
+   2394,
+   2395,
+   2396,
+   2397,
+   2398,
+   2399,
+   2400,
+   2401
+  ],
+  "mone": [
+   1,
+   2305,
+   4608
+  ],
+  "mone_type": "S3R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "MacNeal and Harder (1985), Finite Elem. Anal. Des. 1:3-20: 0.3024",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 49,
+     "dof": 3,
+     "sign": -1.0,
+     "value": 0.3024,
+     "tol": 0.02,
+     "label": "w at the middle of the free edge"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_pinched_cylinder_s4r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "pinched cylinder",
+  "description": "Cylinder (R = 300, L = 600, t = 3, E = 3e6, nu = 0.3) pinched by two opposite unit loads at mid-length: radial displacement under the load.",
+  "mon": [
+   1
+  ],
+  "fix": [
+   1057,
+   1058,
+   1059,
+   1060,
+   1061,
+   1062,
+   1063,
+   1064,
+   1065,
+   1066,
+   1067,
+   1068,
+   1069,
+   1070,
+   1071,
+   1072,
+   1073,
+   1074,
+   1075,
+   1076,
+   1077,
+   1078,
+   1079,
+   1080,
+   1081,
+   1082,
+   1083,
+   1084,
+   1085,
+   1086,
+   1087,
+   1088,
+   1089
+  ],
+  "mone": [
+   1,
+   513,
+   1024
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "Belytschko et al. (1985), Comput. Methods Appl. Mech. Engrg. 51:221-258: 1.8248e-5",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 1,
+     "dof": 3,
+     "sign": -1.0,
+     "value": 1.8248e-05,
+     "tol": 0.02,
+     "label": "displacement under the load"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_pinched_hemisphere_s4r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "pinched hemisphere",
+  "description": "Hemispherical shell (R = 10, t = 0.04, E = 6.825e7, nu = 0.3) with an 18 degree hole, loaded by alternating radial forces of 2 at the equator: displacement under the load.",
+  "mon": [
+   273,
+   289
+  ],
+  "fix": [
+   273
+  ],
+  "mone": [
+   1,
+   129,
+   256
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "MacNeal and Harder (1985), Finite Elem. Anal. Des. 1:3-20: 0.094",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 273,
+     "dof": 1,
+     "sign": 1.0,
+     "value": 0.094,
+     "tol": 0.02,
+     "label": "outward displacement under the load"
+    },
+    {
+     "kind": "U",
+     "node": 289,
+     "dof": 2,
+     "sign": -1.0,
+     "value": 0.094,
+     "tol": 0.02,
+     "label": "inward displacement under the load"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_twisted_beam_y_s4r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "twisted beam",
+  "description": "Cantilever (L = 12, width 1.1, t = 0.32, E = 29e6, nu = 0.22) twisted by 90 degrees over its length, unit tip load in the width direction of the clamped end: tip displacement along the load.",
+  "mon": [
+   123
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "mone": [
+   1,
+   49,
+   96
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "MacNeal and Harder (1985), Finite Elem. Anal. Des. 1:3-20: 0.001754",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 123,
+     "dof": 2,
+     "sign": 1.0,
+     "value": 0.001754,
+     "tol": 0.02,
+     "label": "tip displacement"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_twisted_beam_z_s4r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "twisted beam",
+  "description": "Cantilever (L = 12, width 1.1, t = 0.32, E = 29e6, nu = 0.22) twisted by 90 degrees over its length, unit tip load normal to the clamped end: tip displacement along the load.",
+  "mon": [
+   123
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "mone": [
+   1,
+   49,
+   96
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "MacNeal and Harder (1985), Finite Elem. Anal. Des. 1:3-20: 0.005424",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 123,
+     "dof": 3,
+     "sign": 1.0,
+     "value": 0.005424,
+     "tol": 0.02,
+     "label": "tip displacement"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_cook_membrane_s4r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "Cook's membrane",
+  "description": "Tapered panel (E = 1, nu = 1/3, plane stress, thickness 1) clamped on one edge, unit shear on the other: vertical displacement of the middle of the loaded edge (48, 52).",
+  "mon": [
+   2377,
+   2401
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   45,
+   46,
+   47,
+   48,
+   49
+  ],
+  "mone": [
+   1,
+   1153,
+   2304
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "Cook (1974), J. Struct. Div. ASCE 100:1851-1863; converged value 23.96 at the middle of the loaded edge",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 2377,
+     "dof": 2,
+     "sign": 1.0,
+     "value": 23.96,
+     "tol": 0.02,
+     "label": "vertical displacement of the middle of the loaded edge"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_nafems_le1_s4r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "NAFEMS LE1",
+  "description": "Elliptic membrane (E = 210000, nu = 0.3, thickness 0.1) under 10 MPa outer normal tension: hoop stress sigma_yy at the inner point D on the x axis, extrapolated from the elements next to D.",
+  "mon": [
+   1
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   1201,
+   1202,
+   1203,
+   1204,
+   1205,
+   1206,
+   1207,
+   1208,
+   1209,
+   1210,
+   1211,
+   1212,
+   1213,
+   1214,
+   1215,
+   1216,
+   1217,
+   1218,
+   1219,
+   1220,
+   1221,
+   1222,
+   1223,
+   1224,
+   1225
+  ],
+  "mone": [
+   1,
+   577,
+   1152
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "NAFEMS (1990), The Standard NAFEMS Benchmarks, test LE1: 92.7 MPa",
+   "checks": [
+    {
+     "kind": "S",
+     "groups": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ]
+     ],
+     "dist": [
+      0.02549928262579737,
+      0.07756867292466119,
+      0.129638063223525
+     ],
+     "comp": "S22",
+     "value": 92.7,
+     "tol": 0.03,
+     "deg": 2,
+     "label": "sigma_yy at D"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_cook_membrane_s3r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S3R",
+  "mode": "Cook's membrane",
+  "description": "Tapered panel (E = 1, nu = 1/3, plane stress, thickness 1) clamped on one edge, unit shear on the other: vertical displacement of the middle of the loaded edge (48, 52).",
+  "mon": [
+   2377,
+   2401
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   35,
+   36,
+   37,
+   38,
+   39,
+   40,
+   41,
+   42,
+   43,
+   44,
+   45,
+   46,
+   47,
+   48,
+   49
+  ],
+  "mone": [
+   1,
+   2305,
+   4608
+  ],
+  "mone_type": "S3R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "Cook (1974), J. Struct. Div. ASCE 100:1851-1863; converged value 23.96 at the middle of the loaded edge",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 2377,
+     "dof": 2,
+     "sign": 1.0,
+     "value": 23.96,
+     "tol": 0.02,
+     "label": "vertical displacement of the middle of the loaded edge"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_nafems_le1_s3r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S3R",
+  "mode": "NAFEMS LE1",
+  "description": "Elliptic membrane (E = 210000, nu = 0.3, thickness 0.1) under 10 MPa outer normal tension: hoop stress sigma_yy at the inner point D on the x axis, extrapolated from the elements next to D.",
+  "mon": [
+   1
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   1201,
+   1202,
+   1203,
+   1204,
+   1205,
+   1206,
+   1207,
+   1208,
+   1209,
+   1210,
+   1211,
+   1212,
+   1213,
+   1214,
+   1215,
+   1216,
+   1217,
+   1218,
+   1219,
+   1220,
+   1221,
+   1222,
+   1223,
+   1224,
+   1225
+  ],
+  "mone": [
+   1,
+   1153,
+   2304
+  ],
+  "mone_type": "S3R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "NAFEMS (1990), The Standard NAFEMS Benchmarks, test LE1: 92.7 MPa",
+   "checks": [
+    {
+     "kind": "S",
+     "groups": [
+      [
+       1,
+       2
+      ],
+      [
+       3,
+       4
+      ],
+      [
+       5,
+       6
+      ]
+     ],
+     "dist": [
+      0.02549928262579737,
+      0.07756867292466119,
+      0.129638063223525
+     ],
+     "comp": "S22",
+     "value": 92.7,
+     "tol": 0.03,
+     "deg": 2,
+     "label": "sigma_yy at D"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_clamped_plate_s4r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "clamped plate",
+  "description": "Clamped square plate (a = 20, t = 0.2, E = 210000, nu = 0.3) under uniform pressure 0.01: deflection of the centre (thin plate theory, w = 0.00126532 q a^4 / D).",
+  "mon": [
+   145
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   34,
+   35,
+   51,
+   52,
+   68,
+   69,
+   85,
+   86,
+   102,
+   103,
+   119,
+   120,
+   136,
+   137,
+   153,
+   154,
+   170,
+   171,
+   187,
+   188,
+   204,
+   205,
+   221,
+   222,
+   238,
+   239,
+   255,
+   256,
+   272,
+   273,
+   274,
+   275,
+   276,
+   277,
+   278,
+   279,
+   280,
+   281,
+   282,
+   283,
+   284,
+   285,
+   286,
+   287,
+   288,
+   289
+  ],
+  "mone": [
+   1,
+   129,
+   256
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "Timoshenko and Woinowsky-Krieger (1959), Theory of Plates and Shells, sec. 44; series value from Taylor and Govindjee (2004), Commun. Numer. Meth. Engng 20:757-765: 0.00126532 q a^4 / D",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 145,
+     "dof": 3,
+     "sign": -1.0,
+     "value": 0.013159327999999996,
+     "tol": 0.02,
+     "label": "centre deflection"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_clamped_plate_s3r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "S3R",
+  "mode": "clamped plate",
+  "description": "Clamped square plate (a = 20, t = 0.2, E = 210000, nu = 0.3) under uniform pressure 0.01: deflection of the centre (thin plate theory, w = 0.00126532 q a^4 / D).",
+  "mon": [
+   545
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20,
+   21,
+   22,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   33,
+   34,
+   66,
+   67,
+   99,
+   100,
+   132,
+   133,
+   165,
+   166,
+   198,
+   199,
+   231,
+   232,
+   264,
+   265,
+   297,
+   298,
+   330,
+   331,
+   363,
+   364,
+   396,
+   397,
+   429,
+   430,
+   462,
+   463,
+   495,
+   496,
+   528,
+   529,
+   561,
+   562,
+   594,
+   595,
+   627,
+   628,
+   660,
+   661,
+   693,
+   694,
+   726,
+   727,
+   759,
+   760,
+   792,
+   793,
+   825,
+   826,
+   858,
+   859,
+   891,
+   892,
+   924,
+   925,
+   957,
+   958,
+   990,
+   991,
+   1023,
+   1024,
+   1056,
+   1057,
+   1058,
+   1059,
+   1060,
+   1061,
+   1062,
+   1063,
+   1064,
+   1065,
+   1066,
+   1067,
+   1068,
+   1069,
+   1070,
+   1071,
+   1072,
+   1073,
+   1074,
+   1075,
+   1076,
+   1077,
+   1078,
+   1079,
+   1080,
+   1081,
+   1082,
+   1083,
+   1084,
+   1085,
+   1086,
+   1087,
+   1088,
+   1089
+  ],
+  "mone": [
+   1,
+   1025,
+   2048
+  ],
+  "mone_type": "S3R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "Timoshenko and Woinowsky-Krieger (1959), Theory of Plates and Shells, sec. 44; series value from Taylor and Govindjee (2004), Commun. Numer. Meth. Engng 20:757-765: 0.00126532 q a^4 / D",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 545,
+     "dof": 3,
+     "sign": -1.0,
+     "value": 0.013159327999999996,
+     "tol": 0.02,
+     "label": "centre deflection"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_lame_cylinder_c3d8r",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "C3D8R",
+  "mode": "Lame cylinder",
+  "description": "Thick-walled cylinder (ri = 10, ro = 20, E = 210000, nu = 0.3) under 100 MPa internal pressure, plane strain: radial displacement of the inner and outer surfaces.",
+  "mon": [
+   1,
+   137
+  ],
+  "fix": [
+   1,
+   18,
+   35,
+   52,
+   69,
+   86,
+   103,
+   120,
+   137,
+   154,
+   171,
+   188,
+   205,
+   222,
+   239,
+   256,
+   273,
+   290
+  ],
+  "mone": [
+   1,
+   65,
+   128
+  ],
+  "mone_type": "C3D8R",
+  "rot": false,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "Lame solution, e.g. Timoshenko and Goodier (1970), Theory of Elasticity, sec. 28: u(r) = (1 + nu) p ri^2 / (E (ro^2 - ri^2)) ((1 - 2 nu) r + ro^2 / r)",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 1,
+     "dof": 1,
+     "sign": 1.0,
+     "value": 0.00907936507936508,
+     "tol": 0.01,
+     "label": "inner radial displacement"
+    },
+    {
+     "kind": "U",
+     "node": 137,
+     "dof": 1,
+     "sign": 1.0,
+     "value": 0.0057777777777777775,
+     "tol": 0.01,
+     "label": "outer radial displacement"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_lame_cylinder_c3d4",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "C3D4",
+  "mode": "Lame cylinder",
+  "description": "Thick-walled cylinder (ri = 10, ro = 20, E = 210000, nu = 0.3) under 100 MPa internal pressure, plane strain: radial displacement of the inner and outer surfaces.",
+  "mon": [
+   1,
+   529
+  ],
+  "fix": [
+   1,
+   34,
+   67,
+   100,
+   133,
+   166,
+   199,
+   232,
+   265,
+   298,
+   331,
+   364,
+   397,
+   430,
+   463,
+   496,
+   529,
+   562,
+   595,
+   628,
+   661,
+   694,
+   727,
+   760,
+   793,
+   826,
+   859,
+   892,
+   925,
+   958,
+   991,
+   1024,
+   1057,
+   1090
+  ],
+  "mone": [
+   1,
+   1537,
+   3072
+  ],
+  "mone_type": "C3D4",
+  "rot": false,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "Lame solution, e.g. Timoshenko and Goodier (1970), Theory of Elasticity, sec. 28: u(r) = (1 + nu) p ri^2 / (E (ro^2 - ri^2)) ((1 - 2 nu) r + ro^2 / r)",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 1,
+     "dof": 1,
+     "sign": 1.0,
+     "value": 0.00907936507936508,
+     "tol": 0.01,
+     "label": "inner radial displacement"
+    },
+    {
+     "kind": "U",
+     "node": 529,
+     "dof": 1,
+     "sign": 1.0,
+     "value": 0.0057777777777777775,
+     "tol": 0.01,
+     "label": "outer radial displacement"
+    }
+   ]
+  },
+  "deferred": false
+ },
+ {
+  "name": "lit_elastica_b31",
+  "category": "feature",
+  "group": "literature",
+  "procedure": "static",
+  "element": "B31",
+  "mode": "elastica",
+  "description": "Slender cantilever (L = 100, square section 1 x 1, E = 210000) under a dead end load P L^2 / EI = 5: tip displacements along and across the load (inextensible elastica).",
+  "mon": [
+   41
+  ],
+  "fix": [
+   1
+  ],
+  "mone": [
+   1,
+   21,
+   40
+  ],
+  "mone_type": "B31",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.03,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "literature",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": {
+   "source": "Elliptic-integral solution of the elastica, tables in Mattiasson (1981), Int. J. Numer. Meth. Engng 17:145-153: 0.71379 L and 0.38763 L",
+   "checks": [
+    {
+     "kind": "U",
+     "node": 41,
+     "dof": 2,
+     "sign": 1.0,
+     "value": 71.379,
+     "tol": 0.01,
+     "label": "tip displacement along the load"
+    },
+    {
+     "kind": "U",
+     "node": 41,
+     "dof": 1,
+     "sign": -1.0,
+     "value": 38.763,
+     "tol": 0.01,
+     "label": "tip shortening"
+    }
+   ]
+  },
   "deferred": false
  },
  {
@@ -10094,6 +11665,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "c3d8r_bending",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10149,6 +11721,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "c3d8r_torsion",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10202,6 +11775,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "c3d8r_pressure",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10248,6 +11822,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "c3d8r_wave",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10304,6 +11879,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "c3d8_bending",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10359,6 +11935,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "c3d8_torsion",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10405,6 +11982,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "c3d8_wave",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10461,6 +12039,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "c3d4_bending",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10516,6 +12095,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "c3d4_torsion",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10562,6 +12142,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "c3d4_wave",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10633,6 +12214,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "s4r_pressure",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10680,6 +12262,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "s4r_plastic_bending",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10750,6 +12333,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "s4r_pressure_pulse",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10797,6 +12381,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "s3r_bending",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10841,6 +12426,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "s3r_rollup",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10914,6 +12500,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "s3r_pressure",
+  "literature": null,
   "deferred": false
  },
  {
@@ -10984,6 +12571,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "s3r_pressure_pulse",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11022,6 +12610,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "b31_plastic",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11060,6 +12649,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "b31_vibration",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11129,6 +12719,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_block_on_plate",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11200,6 +12791,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_shell_on_plate",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11302,6 +12894,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_friction_sliding",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11372,6 +12965,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_beam_on_plate",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11435,6 +13029,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_solid_on_solid",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11497,6 +13092,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_beam_on_solid",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11536,6 +13132,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_beam_beam",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11578,6 +13175,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_self_shell",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11647,6 +13245,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_pair_surface",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11685,6 +13284,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_rigid_surface",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11738,6 +13338,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *TIE",
   "twin_of": "tie_solid",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11779,6 +13380,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *TIE",
   "twin_of": "tie_shell",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11827,6 +13429,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *COUPLING",
   "twin_of": "coupling_kinematic",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11875,6 +13478,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: *COUPLING",
   "twin_of": "coupling_distributing",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11915,6 +13519,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: HINGE connection type",
   "twin_of": "connector_hinge",
+  "literature": null,
   "deferred": false
  },
  {
@@ -11978,6 +13583,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: C3D10M elements",
   "twin_of": "elem_c3d10m",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12025,6 +13631,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: C3D6 elements",
   "twin_of": "elem_c3d6",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12064,6 +13671,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: T3D2 elements",
   "twin_of": "elem_t3d2",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12133,6 +13741,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "elem_s4",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12175,6 +13784,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: M3D4R membrane elements",
   "twin_of": "elem_m3d4r",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12208,6 +13818,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "elem_spring_dashpot_mass",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12246,6 +13857,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: follower concentrated loads",
   "twin_of": "load_follower",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12286,6 +13898,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "multistep_opnew",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12337,6 +13950,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "symmetry_bcs",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12384,6 +13998,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "mat_viscoelastic",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12453,6 +14068,7 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "xpl_damping_alpha",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12524,6 +14140,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "elem_s3",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12593,6 +14210,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "elem_s3rs",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12662,6 +14280,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "elem_s4rs",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12709,6 +14328,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "incompressible_c3d8r",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12762,6 +14382,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "s4r_pressure_n4",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12863,6 +14484,7 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "s4r_pressure_n16",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12910,6 +14532,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: Holzapfel-Gasser-Ogden hyperelasticity",
   "twin_of": "mat_hgo",
+  "literature": null,
   "deferred": false
  },
  {
@@ -12952,6 +14575,7 @@
   "supported": false,
   "unsupported_reason": "not supported by asclepios yet: superelastic nitinol (ABQ_SUPER_ELASTIC user material)",
   "twin_of": "mat_superelastic",
+  "literature": null,
   "deferred": false
  }
 ]

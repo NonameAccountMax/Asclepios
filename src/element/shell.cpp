@@ -426,6 +426,7 @@ class ShellGroup : public ElementGroup {
   std::vector<double> khg;   // quads: hourglass stiffness (unit modulus and thickness) xx, yy, xy
   std::vector<double> irot;  // rotary inertia per element node (unscaled)
   std::vector<double> mfr;   // share of the element mass carried by each node
+  std::vector<double> oax;   // per element: output axis 1 in the initial element frame (cos, sin)
 
   static void simpson(int n, double* z, double* w) {
     if (n == 1) { z[0] = 0; w[0] = 1; return; }
@@ -459,6 +460,7 @@ class ShellGroup : public ElementGroup {
     ref.assign(size() * 9, 0.0);
     irot.assign(size() * nen, 0.0);
     mfr.assign(size() * nen, 1.0 / nen);
+    oax.assign(size() * 2, 0.0);
     if (nen == 4) khg.assign(size() * 3, 0.0);
     if (nen == 4) {  // S4R: transverse shear stiffness kappa G t / (1 + 0.25e-4 A / t^2) (default stiffness)
       ts_factor.assign(size(), 1.0);
@@ -512,6 +514,15 @@ class ShellGroup : public ElementGroup {
         m1 = normalized(p);
       }
       double c = dot(g.e1, m1), sn = dot(g.e2, m1);  // m1 = c e1 + sn e2
+      // stress output axes: the orientation if any, otherwise the projection of the global x axis on the surface
+      // (of the global z axis when x is within 0.1 degree of the normal); they follow the element rotation
+      Vec3 o1 = m1;
+      if (s.orientation < 0) {
+        o1 = Vec3(1, 0, 0) - g.e3 * g.e3.x;
+        if (norm(o1) < std::sin(0.1 * M_PI / 180.0)) o1 = Vec3(0, 0, 1) - g.e3 * g.e3.z;
+        o1 = normalized(o1);
+      }
+      oax[e * 2] = dot(g.e1, o1); oax[e * 2 + 1] = dot(g.e2, o1);
       for (int I = 0; I < nen; ++I) {
         ref[e * 9 + I] = c * g.B1[I] + sn * g.B2[I];
         ref[e * 9 + 4 + I] = -sn * g.B1[I] + c * g.B2[I];
@@ -1126,8 +1137,12 @@ class ShellGroup : public ElementGroup {
       st[e] = S;
       float* o = &this->out[e * N_OUT];
       o[OUT_MISES] = (float)mis;
-      o[OUT_S11] = (float)(N[0] / tcur); o[OUT_S22] = (float)(N[1] / tcur); o[OUT_S12] = (float)(N[2] / tcur);
-      o[OUT_S33] = 0; o[OUT_S13] = (float)(Q[0] / tcur); o[OUT_S23] = (float)(Q[1] / tcur);
+      const double ca = oax[e * 2], sa = oax[e * 2 + 1], cc = ca * ca, ss = sa * sa, cs = ca * sa;
+      o[OUT_S11] = (float)((cc * N[0] + ss * N[1] + 2 * cs * N[2]) / tcur);
+      o[OUT_S22] = (float)((ss * N[0] + cc * N[1] - 2 * cs * N[2]) / tcur);
+      o[OUT_S12] = (float)((cs * (N[1] - N[0]) + (cc - ss) * N[2]) / tcur);
+      o[OUT_S33] = 0;
+      o[OUT_S13] = (float)((ca * Q[0] + sa * Q[1]) / tcur); o[OUT_S23] = (float)((ca * Q[1] - sa * Q[0]) / tcur);
       o[OUT_PEEQ] = (float)epm;
       o[OUT_LEMAX] = (float)lemax;
       o[OUT_STH] = (float)tcur;
