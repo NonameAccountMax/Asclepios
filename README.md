@@ -162,7 +162,9 @@ Refined meshes, linear static unless stated; error relative to the published con
 | Thick cylinder under internal pressure (Lamé) | C3D4, 16 × 32 × 6 | same | 9.0122e-3 / 5.7761e-3 | 9.0794e-3 / 5.7778e-3 | 0.74 % | Timoshenko and Goodier (1970) |
 | Elastica, P L² / EI = 5 (large rotation) | B31, 40 | tip displacement across / along the beam | 71.368 / 38.700 | 71.379 / 38.763 | 0.16 % | Mattiasson (1981) |
 
-Full references, tolerances and decks: `validation/gen_literature.py` (cases `lit_*`).
+Mesh-convergence curves and deformed shapes of every benchmark: [validation/LITERATURE.md](validation/LITERATURE.md) (`make literature`). Full references, tolerances and decks: `validation/gen_literature.py` (cases `lit_*`).
+
+![Scordelis-Lo roof](validation/literature/scordelis_lo.png)
 
 ## Verification against closed-form solutions (`make test`)
 

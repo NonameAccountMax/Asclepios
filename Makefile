@@ -39,8 +39,11 @@ validate: bin/asclepios
 parallel: bin/asclepios
 	python3 validation/parallel.py
 
+literature: bin/asclepios
+	python3 validation/literature.py
+
 clean:
 	rm -rf build bin
 
 -include $(DEP)
-.PHONY: all clean test validate parallel elemtest debug
+.PHONY: all clean test validate parallel literature elemtest debug
