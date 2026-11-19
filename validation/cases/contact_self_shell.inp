@@ -240,7 +240,7 @@ FIX, ENCASTRE
 *Contact Inclusions, ALL EXTERIOR
 *Contact Property Assignment
  , , IP
-*Output, field, number interval=20
+*Output, field, number interval=20, time marks=YES
 *Node Output
 U, RF, UR, RM, V
 *Element Output, elset=MONE

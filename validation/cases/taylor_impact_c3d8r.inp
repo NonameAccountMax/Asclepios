@@ -593,7 +593,7 @@ MOVING, 3, -227000.
 WALL, 3, 3
 XS, XSYMM
 YS, YSYMM
-*Output, field, number interval=20
+*Output, field, number interval=20, time marks=YES
 *Node Output
 U, RF, V
 *Element Output, elset=MONE

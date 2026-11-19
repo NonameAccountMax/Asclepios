@@ -292,11 +292,16 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     double rem = st.period - t;
     if (dt >= rem) dt = rem;
     else if (rem < 10 * dt) { double nrem = std::ceil(rem / dt); dt = rem / nrem; }
-    // with TIME MARKS=YES the field output times are reached exactly: this increment is shortened, the next ones
-    // are not; otherwise the frame is written at the end of the increment that reaches or passes the output time
+    // with TIME MARKS=YES the field output times are reached exactly: the increments before an output time are made
+    // equal (remainder spread over up to 10 increments; shortening only the last one, periodically, made an
+    // undamped beam model unstable); otherwise the frame is written at the end of the increment that reaches or
+    // passes the output time
     const double dt_full = dt;
-    if (st.output.time_marks && next_frame < st.period * (1 - 1e-12) && t + dt > next_frame && next_frame - t > 1e-6 * dt)
-      dt = next_frame - t;
+    if (st.output.time_marks && next_frame < st.period * (1 - 1e-12) && t + 10 * dt > next_frame &&
+        next_frame - t > 1e-6 * dt) {
+      const double r = next_frame - t;
+      dt = r / std::ceil(r / dt * (1 - 1e-9));
+    }
     const double tn = t + dt, ttn = A.total_time + dt;
 
     // velocities at n+1/2

@@ -35,6 +35,12 @@ S3R_XPL_RM = ('S3R reaction moments about the clamped edge not compared in expli
               'not follow from equilibrium); asclepios gives the implicit value')
 for _n in ('elem_s3_xpl', 's3r_pressure_xpl', 's3r_pressure_pulse'):
     KNOWN_QUANTITIES[_n] = (['RM'], S3R_XPL_RM)
+SCORDELIS_RM = ('Reaction moments along the diaphragms not compared on this coarse curved mesh (8 x 8, 5 degrees per '
+                'element): they differ from the reference by a discretisation term that vanishes with refinement '
+                '(23 / 3 / 0.5 / 0.1 % on 4 x 4 / 8 x 8 / 16 x 16 / 32 x 32 meshes, displacements identical; the '
+                'single-element stiffness matrices agree to 0.4 %)')
+for _n in ('scordelis_lo_s4r', 'scordelis_lo_s3r'):
+    KNOWN_QUANTITIES[_n] = (['RM'], SCORDELIS_RM)
 KNOWN_QUANTITIES['s4r_single_element_probes'] = (['RM'], 'Reaction moments not compared: transverse shear of the strongly distorted '
                                                  'quad (probe 4) and drilling stiffness of distorted quads.')
 # duration of the quasi-static explicit twins: a few periods of the lowest mode, loads following a smooth step
@@ -353,7 +359,8 @@ def beam_cases():
         s = i / (len(ids) - 1.0)
         d.initial.append('%d, 3, %s' % (n, fmt(100.0 * s * s)))
     # first period of the pipe about 1.8 ms: two periods, 20 frames per period
-    d.steps += explicit_step('Vibrate', 3.6e-3, ['*Boundary', '%d, ENCASTRE' % ids[0]], rot=True, nframes=40)
+    d.steps += explicit_step('Vibrate', 3.6e-3, ['*Boundary', '%d, ENCASTRE' % ids[0]], rot=True, nframes=40,
+                             time_marks=True)
     register(d, 'explicit', 'B31', 'vibration', 'Cantilever pipe released with a first-mode-like velocity field: two '
              'periods of free vibration (explicit dynamics).', [ids[-1], ids[5]], [ids[0]], True, 'dynamic')
 
@@ -365,7 +372,8 @@ def beam_cases():
     for i, n in enumerate(ids):
         s = i / (len(ids) - 1.0)
         d.initial.append('%d, 3, %s' % (n, fmt(100.0 * s * s)))
-    d.steps += explicit_step('Vibrate', 3.6e-3, ['*Boundary', '%d, ENCASTRE' % ids[0]], rot=True, nframes=40)
+    d.steps += explicit_step('Vibrate', 3.6e-3, ['*Boundary', '%d, ENCASTRE' % ids[0]], rot=True, nframes=40,
+                             time_marks=True)
     register(d, 'explicit', 'B31', '*BEAM SECTION, ROTARY INERTIA=ISOTROPIC', 'b31_vibration with the isotropic '
              'rotary inertia (scaled so that it does not limit the stable increment).', [ids[-1], ids[5]], [ids[0]],
              True, 'dynamic', twin=False)
@@ -433,7 +441,7 @@ def contact_cases():
     d.nset('BLOCKN', block)
     d.initial += ['*Initial Conditions, type=VELOCITY', 'BLOCKN, 3, -2000.']
     d.steps += explicit_step('Impact', 1e-3, ['*Boundary', 'FIX, ENCASTRE'] + contact_block(d, 'ALU'), rot=True,
-                             nframes=200)  # plate period about 0.09 ms: 20 frames gave 2 per period
+                             nframes=200, time_marks=True)  # plate period about 0.09 ms: 20 frames gave 2 per period
     register(d, 'explicit', 'C3D8R + S4R', 'contact (impact)', 'Aluminium block dropped at 2 m/s on a clamped steel '
              'plate: impact, rebound and plate vibration (general contact, frictionless).',
              [ids[4, 4], ids[2, 4]] + d.select(lambda x, y, z: near(x, 10.0) and near(y, 10.0)), edge, True, 'contact')
@@ -449,7 +457,7 @@ def contact_cases():
     d.nset('SHEETN', list(sids.values()))
     d.initial += ['*Initial Conditions, type=VELOCITY', 'SHEETN, 3, -2000.']
     d.steps += explicit_step('Impact', 1e-3, ['*Boundary', 'FIX, ENCASTRE'] + contact_block(d, 'ALU'), rot=True,
-                             nframes=200)  # plate period about 0.09 ms: 20 frames gave 2 per period
+                             nframes=200, time_marks=True)  # plate period about 0.09 ms: 20 frames gave 2 per period
     register(d, 'explicit', 'S4R', 'contact (shell on shell)', 'Aluminium sheet dropped flat at 2 m/s on a clamped steel '
              'plate: shell-to-shell impact and rebound (general contact with thickness offsets, frictionless).',
              [ids[4, 4], ids[2, 4], sids[1, 1], sids[0, 0]], edge, True, 'contact')
@@ -488,7 +496,7 @@ def contact_cases():
     d.nset('RODN', bids)
     d.initial += ['*Initial Conditions, type=VELOCITY', 'RODN, 3, -2000.']
     d.steps += explicit_step('Impact', 1e-3, ['*Boundary', 'FIX, ENCASTRE'] + contact_block(d, 'STEEL'), rot=True,
-                             nframes=200)  # plate period about 0.09 ms: 20 frames gave 2 per period
+                             nframes=200, time_marks=True)  # plate period about 0.09 ms: 20 frames gave 2 per period
     register(d, 'explicit', 'B31 + S4R', 'contact (beam on shell)', 'Steel rod dropped at 2 m/s across a clamped '
              'plate: beam-to-shell impact (general contact, frictionless).', [ids[4, 4], bids[5], bids[0]], edge, True,
              'contact')

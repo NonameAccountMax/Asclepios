@@ -434,7 +434,7 @@ def benchmark_features():
     moving = d.select(lambda x, y, z: z > 1e-9)
     d.nset('MOVING', moving)
     d.initial += ['*Initial Conditions, type=VELOCITY', 'MOVING, 3, -227000.']
-    d.steps += explicit_step('Impact', 8e-05, ['*Boundary', 'WALL, 3, 3', 'XS, XSYMM', 'YS, YSYMM'])
+    d.steps += explicit_step('Impact', 8e-05, ['*Boundary', 'WALL, 3, 3', 'XS, XSYMM', 'YS, YSYMM'], time_marks=True)
     register(d, 'explicit', 'C3D8R', 'Taylor impact', 'Copper bar hitting a rigid frictionless wall at 227 m/s: '
              'mushrooming, large plastic strains (explicit dynamics).',
              d.select(lambda x, y, z: near(z, 0) and near(y, 0) and near(x, 3.2)) +
@@ -529,7 +529,8 @@ def input_features():
     d.initial += ['*Initial Conditions, type=VELOCITY', 'SHEETN, 3, -2000.']
     d.steps += explicit_step('Impact', 1e-3, ['*Boundary', 'FIX, ENCASTRE', '*Contact',
                                               '*Contact Inclusions', 'SSHEET, SPLATE',
-                                              '*Contact Property Assignment', ' , , IP'], rot=True, nframes=200)
+                                              '*Contact Property Assignment', ' , , IP'], rot=True, nframes=200,
+                             time_marks=True)
     register(d, 'explicit', 'S4R', 'contact on selected surfaces', 'Sheet dropped on a plate; general contact limited '
              'to the pair of surfaces instead of all exterior faces.', [ids[4, 4], sids[1, 1]], edge, True, 'contact',
              category='feature', group='input', twin=False)
@@ -768,7 +769,7 @@ def more_features():
         d.nset('SHEETN', list(sids.values()))
         d.initial += ['*Initial Conditions, type=VELOCITY', 'SHEETN, 3, -2000.']
         body = ['*Boundary', 'FIX, ENCASTRE'] + general_contact(d, extra_model=model_extra) + (step_extra or [])
-        d.steps += explicit_step('Impact', 1e-3, body, rot=True, nframes=200)
+        d.steps += explicit_step('Impact', 1e-3, body, rot=True, nframes=200, time_marks=True)
         return d, ids, sids, edge
     d, ids, sids, edge = sheet_on_plate('contact_initial_overclosure', 'S4R sheet initially overclosing a plate by '
                                         '0.1 mm (default treatment of initial overclosures)', gap=0.4)

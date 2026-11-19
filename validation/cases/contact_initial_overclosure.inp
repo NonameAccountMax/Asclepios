@@ -221,7 +221,7 @@ FIX, ENCASTRE
 *Contact Inclusions, ALL EXTERIOR
 *Contact Property Assignment
  , , IP
-*Output, field, number interval=200
+*Output, field, number interval=200, time marks=YES
 *Node Output
 U, RF, UR, RM, V
 *Element Output, elset=MONE

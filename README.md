@@ -75,8 +75,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   (`*SECTION CONTROLS, IMPROVED DT METHOD`, YES by default); the initial estimate includes the linear bulk
   viscosity damping, and with initial velocities the quadratic damping at the initial compression rate; the
   reactions written at increment 0 include the linear bulk viscosity of the initial velocities (on the
-  stable-increment length). Field frames are written at the end of the first increment past each output time, increments
-  being shortened to reach them exactly only with `TIME MARKS=YES`.
+  stable-increment length). Field frames are written at the end of the first increment past each output time; with
+  `TIME MARKS=YES` the output times are reached exactly, the increments before each of them being made equal (the
+  remainder spread over up to 10 increments).
 - **C3D8R hourglass control**: Flanagan-Belytschko vectors. Explicit procedures: relaxed stiffness (`RELAX STIFFNESS`,
   the default), a standard linear solid on each mode: instantaneous stiffness 8/15·G·V·Σ|∇N|²,
   long-term 0.1 of it, relaxation time 1000 undamped stable increments of the element; during plastic flow the force

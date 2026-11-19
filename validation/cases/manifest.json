@@ -6846,8 +6846,10 @@
   "analysis": "linear",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [],
-  "known_quantities_note": null,
+  "known_quantities": [
+   "RM"
+  ],
+  "known_quantities_note": "Reaction moments along the diaphragms not compared on this coarse curved mesh (8 x 8, 5 degrees per element): they differ from the reference by a discretisation term that vanishes with refinement (23 / 3 / 0.5 / 0.1 % on 4 x 4 / 8 x 8 / 16 x 16 / 32 x 32 meshes, displacements identical; the single-element stiffness matrices agree to 0.4 %)",
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -6894,8 +6896,10 @@
   "analysis": "linear",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [],
-  "known_quantities_note": null,
+  "known_quantities": [
+   "RM"
+  ],
+  "known_quantities_note": "Reaction moments along the diaphragms not compared on this coarse curved mesh (8 x 8, 5 degrees per element): they differ from the reference by a discretisation term that vanishes with refinement (23 / 3 / 0.5 / 0.1 % on 4 x 4 / 8 x 8 / 16 x 16 / 32 x 32 meshes, displacements identical; the single-element stiffness matrices agree to 0.4 %)",
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,

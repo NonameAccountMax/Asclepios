@@ -100,7 +100,7 @@ def contact_features():
     d.model += ['*Amplitude, name=COIL, definition=SMOOTH STEP', '0., 0., 0.008, 1.']
     d.steps += explicit_step('Coil', 0.01, ['*Boundary', 'FIX, ENCASTRE', '*Cload, amplitude=COIL'] +
                              ['%d, 5, %s' % (n, fmt(-m * w)) for n, w in zip(tip, (0.25, 0.5, 0.25))] +
-                             general_contact(d), rot=True)
+                             general_contact(d), rot=True, time_marks=True)
     register(d, 'explicit', 'S4R', 'self-contact', 'Strip coiled by an end moment (1.2 turns if free): the tip comes '
              'into contact with the strip itself (self-contact in general contact).', tip + [ids[20, 1]], fix, True,
              'contact', category='feature', group='contact')
