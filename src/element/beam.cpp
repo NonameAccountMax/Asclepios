@@ -28,23 +28,23 @@ SectionProps section_props(const Section& s) {
   SectionProps p;
   if (s.shape == "CIRC" || s.shape == "PIPE") {
     double R = s.dims.at(0);
-    double Ri = s.shape == "PIPE" ? R - s.dims.at(1) : 0.0;
-    p.A = M_PI * (R * R - Ri * Ri);
-    p.I11 = p.I22 = M_PI / 4 * (std::pow(R, 4) - std::pow(Ri, 4));
+    const bool solid = s.shape == "CIRC";
+    // PIPE is thin-walled (outer radius R, wall t): A = 2 pi r t, I = pi r^3 t, J = 2 I on the mean radius r,
+    // section points on the mean radius (Abaqus/Standard cantilevers: bending and torsion stiffness, stresses)
+    const double t = solid ? 0.0 : s.dims.at(1), rm = R - 0.5 * t;
+    p.A = solid ? M_PI * R * R : 2 * M_PI * rm * t;
+    p.I11 = p.I22 = solid ? M_PI / 4 * std::pow(R, 4) : M_PI * rm * rm * rm * t;
     p.J = p.Ip = 2 * p.I11;
-    p.kappa = s.shape == "CIRC" ? 0.89 : 0.53;
+    p.kappa = solid ? 0.89 : 0.53;
     p.rmax = R;
     // Abaqus default section points (beam in space): 8 circumferential points starting on the section axes;
     // radially, CIRC: the centre (output only, no weight, not stored), R/2 and R, with the weights that make the
-    // area and the second moment exact (R^2/3 and R^2/6 per radian); PIPE: Simpson's rule at the inner, middle
-    // and outer radii (exact for both)
+    // area and the second moment exact (R^2/3 and R^2/6 per radian); PIPE: the mean radius
     const int nth = 8;
-    const bool solid = s.shape == "CIRC";
-    const double h = R - Ri;
-    const double rr[3] = {Ri, 0.5 * (R + Ri), R};
+    const double rr[3] = {0.0, solid ? 0.5 * R : rm, R};
     for (int i = 0; i < 3; ++i) {
       const double r = rr[i];
-      const double w = solid ? (i == 1 ? R * R / 3.0 : (i == 2 ? R * R / 6.0 : 0.0)) : h / 6.0 * (i == 1 ? 4.0 : 1.0) * r;
+      const double w = solid ? (i == 1 ? R * R / 3.0 : (i == 2 ? R * R / 6.0 : 0.0)) : (i == 1 ? rm * t : 0.0);
       if (w <= 0) continue;
       for (int k = 0; k < nth; ++k) {
         const double th = 2 * M_PI * k / nth;
@@ -133,11 +133,16 @@ class BeamGroup : public ElementGroup {
       double om_ax2 = 4 * E / (rho * L * L);
       double Ineed = 1.2 * (2 * std::max(E * std::max(P.I11, P.I22), G * P.J) / L + Ks * L / 2) / om_ax2;
       // nodal rotary inertia: by default the physical flexural inertia rho I L / 2 (Abaqus default EXACT rotary
-      // inertia of Timoshenko beams, here isotropic with the larger flexural moment); with ROTARY INERTIA=ISOTROPIC
-      // a scaled inertia chosen so that the rotations do not limit the stable increment
-      // (isotropic: the smallest scaling of the flexural inertia that keeps the rotational bound at the axial one)
+      // inertia of Timoshenko beams, here isotropic with the larger flexural moment). ROTARY INERTIA=ISOTROPIC:
+      // rho L / 2 Imax max((2 + 3u) / (2 + u), 6u / (1 + u)) about every axis, u = A L^2 / (24 Imin);
+      // independent of the elastic constants and of the density (single-element Abaqus/Explicit runs: 3 sections,
+      // L / r from 0.5 to 50, three moduli: 1e-5)
+      (void)Ineed;
       const double Iflex = rho * L / 2 * std::max(P.I11, P.I22);
-      irot[e] = s.rotary_isotropic ? std::max(Iflex, Ineed / 1.2) : Iflex;
+      const double Imin = std::min(P.I11, P.I22), Imax = std::max(P.I11, P.I22);
+      const double u = P.A * L * L / (24.0 * Imin);
+      const double Iiso = rho * L / 2 * Imax * std::max((2 + 3 * u) / (2 + u), 6 * u / (1 + u));
+      irot[e] = s.rotary_isotropic ? Iiso : Iflex;
     }
     pts.assign((size_t)poff[size()] * 4, 0.0);
   }
@@ -223,10 +228,16 @@ class BeamGroup : public ElementGroup {
       S.N = N; S.M1 = M1; S.M2 = M2;
     }
     const double c = std::sqrt(E / rho);
-    if (in.dynamic && in.dt > 0 && in.bv1 > 0) {  // linear bulk viscosity on the axial rate
-      double pbv = in.bv1 * rho * c * L1 * de0 / in.dt;
+    if (in.dynamic && in.dt > 0 && in.bv1 > 0) {
+      // linear bulk viscosity: b1 rho c L on the axial strain rate, half of it on the curvature rates (moments
+      // 0.5 b1 rho c L I k'), none on transverse shear and torsion (single-element Abaqus/Explicit runs, viscous
+      // dissipation of each mode: linear in b1, independent of the Poisson ratio)
+      const double bv = in.bv1 * rho * c * L1 / in.dt;
+      const double pbv = bv * de0, mb1 = 0.5 * bv * P.I11 * dk1, mb2 = 0.5 * bv * P.I22 * dk2;
       N += pbv * P.A;
-      out.e_visc += pbv * P.A * de0 * L1;
+      M1 += mb1;
+      M2 += mb2;
+      out.e_visc += (pbv * P.A * de0 + mb1 * dk1 + mb2 * dk2) * L1;
     }
     Vec3 F = t1 * N + n11 * S.V1 + n21 * S.V2;
     Vec3 Mm = n11 * M1 + n21 * M2 + t1 * T;

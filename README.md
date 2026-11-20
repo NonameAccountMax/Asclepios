@@ -108,11 +108,13 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   with L the shortest edge of a triangle or the area over the longest median of a quadrilateral (the distance
   between opposite edges of a parallelogram); rotations do not control the stable increment.
 - **B31 rotary inertia**: physical flexural inertia ρ·I·L/2 per node (exact rotary inertia of Timoshenko beams,
-  here isotropic with the larger moment); `ROTARY INERTIA=ISOTROPIC`: the smallest scaling of the
-  flexural inertia that keeps the rotational frequency bound at the axial one.
-- **B31 sections** (plasticity, thermal strains): default section points, 8 circumferential points
-  starting on the section axes; radially R/2 and R for CIRC (weights making area and second moment exact),
-  Simpson's rule through the PIPE wall; 5 x 5 Simpson for RECT.
+  here isotropic with the larger moment); `ROTARY INERTIA=ISOTROPIC`: ρ·L/2·I_max·max((2 + 3u)/(2 + u), 6u/(1 + u))
+  about every axis, u = A·L²/(24·I_min), independent of the elastic constants.
+- **B31 bulk viscosity** (explicit): b1·ρ·c·L on the axial strain rate and half of it on the curvature rates
+  (moments 0.5·b1·ρ·c·L·I·κ̇); none on transverse shear and torsion.
+- **B31 sections**: PIPE is thin-walled (A = 2πrt, I = πr³t, J = 2I on the mean radius r, section points on the
+  mean radius); default section points, 8 circumferential points starting on the section axes; radially R/2 and R
+  for CIRC (weights making area and second moment exact); 5 x 5 Simpson for RECT.
 - **Plane-stress hyperelasticity**: Newton iteration on the thickness stretch (S33 = 0), with an exact
   derivative for the Fung model.
 - **Contact**: penalty method, k = 0.3·min(m_slave, m_master)/Δt², normal viscous damping of 3 % of critical,
@@ -206,7 +208,8 @@ Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: reactions of beams in free vibration (high-frequency content); stresses of the most compressed elements
+- Dynamics: default rotary inertia of beams (isotropic here, anisotropic in Abaqus: reactions of beams in free
+  vibration differ by 10 %); stresses of the most compressed elements
   in large-strain plastic impacts; stability of thin Fung shells closing with contact (valve model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).
 - Energies: ALLIE from material-point quantities (strain energy plus plastic dissipation) instead of the work of nodal
