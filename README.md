@@ -54,7 +54,8 @@ Output files:
 - `<job>.pvd` and `<job>_vtk/*.vtu` for ParaView: U, V, RF, UR, NT11 at nodes; S_Mises, S11…S23, PEEQ,
   LE_max, STH, SF per element (shell stresses in the local shell axes: the section orientation if any, otherwise the
   projection of the global x axis on the surface, rotating with the element);
-- `<job>_history.csv`: energies ALLKE, ALLIE, ALLWK, ALLVD, ALLPD, ALLAE, ALLDMD, ALLFD, ETOTAL;
+- `<job>_history.csv`: energies ALLKE, ALLIE, ALLWK, ALLVD (bulk viscosity and contact damping), ALLPD, ALLAE,
+  ALLDMD, ALLFD, ETOTAL;
 - `<job>.sta` (progress) and `<job>.dat` (messages).
 
 Diagnostics on stderr: `ABQ_TRACE_NODE=Inst.123` (node state at each increment), `ABQ_TRACE_ELEM=<id>`
@@ -118,7 +119,8 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   for CIRC (weights making area and second moment exact); 5 x 5 Simpson for RECT.
 - **Plane-stress hyperelasticity**: Newton iteration on the thickness stretch (S33 = 0), with an exact
   derivative for the Fung model.
-- **Contact**: penalty method, k = 0.3·min(m_slave, m_master)/Δt², normal viscous damping of 3 % of critical,
+- **Contact**: penalty method, k = 0.3·min(m_slave, m_master)/Δt², normal viscous damping of 3 % of critical
+  (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL),
   shell half thickness limited to 0.3 times the smallest triangular facet height. The normal force is updated
   incrementally, so it does not jump when Δt changes, when a node moves to another facet, or when a contact
   is detected already penetrated. Initial overclosures are removed by a strain-free adjustment (half the

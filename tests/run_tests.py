@@ -102,8 +102,14 @@ def contact_impact():
     contact(os.path.join(OUT, 'impact.inp')); run('impact')
     h = history('impact'); ke0 = 0.5 * 7.8e-9 * 0.1 * 0.8 * 0.8 * 1000.0 ** 2
     ok = check('impact: energy balance |ETOTAL - KE0| / KE0', 1 + abs(h['ETOTAL'] - ke0) / ke0, 1.0, 5e-3)
-    r = (h['ALLKE'] + h['ALLIE'] + h['ALLVD']) / ke0
-    ok &= check('impact: mechanical energy kept (0.70-1.0)', min(max(r, 0.70), 1.0), r, 1e-12)
+    r = h['ALLKE'] / ke0
+    ok &= check('impact: kinetic energy kept (0.70-1.0)', min(max(r, 0.70), 1.0), r, 1e-12)
+    # the energy taken by the contact damper is reported in ALLVD (as the contact damping energy of Abaqus, 10-20 %
+    # of the kinetic energy per rebound in single-element Abaqus/Explicit drops); no energy is created
+    vd = h['ALLVD'] / ke0
+    ok &= check('impact: contact damping in ALLVD (0.05-0.25 KE0)', min(max(vd, 0.05), 0.25), vd, 1e-12)
+    m = (h['ALLKE'] + h['ALLIE'] + h['ALLVD']) / ke0
+    ok &= check('impact: KE + IE + VD <= KE0', min(m, 1.0), m, 1e-3)
     return ok
 
 @case

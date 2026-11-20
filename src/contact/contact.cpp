@@ -410,10 +410,10 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   // switches between facets and contacts found already deep do not create force jumps (no energy is
   // injected); a new contact only loads the approach of the current increment, so initial or lateral
   // overclosures act as offsets that are released as the nodes separate.
-  double efric = 0;
+  double efric = 0, edamp = 0;
   int ncont = 0;
   long ndeep = 0;
-#pragma omp parallel for num_threads(A.nthreads) reduction(+ : efric, ncont, ndeep) schedule(dynamic, 64)
+#pragma omp parallel for num_threads(A.nthreads) reduction(+ : efric, edamp, ncont, ndeep) schedule(dynamic, 64)
   for (int si = 0; si < ns; ++si) {
     int n = P.slaves[si];
     const Vec3 dus = load3(&A.du[6 * n]);
@@ -422,6 +422,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       double& fn = pass ? P.fn_s[si] : P.fn_t[si];
       double& pp = pass ? P.pen_s[si] : P.pen_t[si];
       Vec3& F = pass ? P.force_s[si] : P.force_t[si];
+      const double fd_old = h.master == INT_MIN ? 0.0 : dot(F, h.n) - fn;  // damping force of the previous increment
       F = Vec3();
       if (h.master == INT_MIN) { pp = -1; fn = 0; continue; }
       int nm = h.master >= 0 ? 3 : 2;
@@ -452,6 +453,8 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         static const double kf = std::getenv("ABQ_KFAC") ? std::atof(std::getenv("ABQ_KFAC")) : 0.3;
         const double c = 2 * 0.03 * k * dt / std::sqrt(kf);
         Ft = std::max(0.0, Fn - c * dot(dus - dum, h.n) / dt);
+        // dissipated by the damper, integrated as the work of the contact forces (trapezoidal rule)
+        edamp += -0.5 * (fd_old + Ft - Fn) * dot(dus - dum, h.n);
       }
       F = h.n * Ft;
       ++ncont;
@@ -490,6 +493,10 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     }
   }
   en.friction += efric;
+  // the damping part of the contact work is dissipation: reported with the viscous energy (as the contact
+  // damping energy in ALLVD), and removed from the contact work so that the energy balance is unchanged
+  en.viscous += edamp;
+  en.contact -= edamp;
   ncontacts_ = ncont;
   P.d_deep_n += ndeep;
   if (P.diag < 0) P.diag = std::getenv("ABQ_CONTACT_DIAG") ? 1 : 0;
