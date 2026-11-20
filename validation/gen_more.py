@@ -1169,6 +1169,38 @@ def coverage_features():
                  [ids[4, 4], ids[2, 2]], edge, True, 'linear', 'linear', category='feature', group='element',
                  twin=etype not in ('S4R5',))
 
+    # S3RS on thick elements (t > L / 5): full transverse shear stiffness
+    d = Deck('elem_s3rs_thick', 'S3RS thick clamped square plate under pressure')
+    quads, ids = quad_plate(d, 8, 8, 20.0, 20.0)
+    d.elements('S3RS', 'EALL', tris_from_quads(quads))
+    d.materials.add('STEEL')
+    d.model += ['*Shell Section, elset=EALL, material=STEEL', '1.5, 5', '*Surface, type=ELEMENT, name=STOP',
+                'EALL, SPOS']
+    edge = d.select(lambda x, y, z: near(x, 0) or near(y, 0) or near(x, 20.0) or near(y, 20.0))
+    QS_DURATION[d.name] = 0.002
+    d.steps += static_step('Load', ['*Boundary', 'FIX, ENCASTRE', '*Dsload', 'STOP, P, 5.'], False, rot=True,
+                           nframes=1)
+    register(d, 'static', 'S3RS', 'element S3RS, thick', 'Thick clamped square plate (a / t = 13, elements thicker '
+             'than a fifth of their shortest edge: full transverse shear stiffness) under pressure (linear).',
+             [ids[4, 4], ids[2, 2]], edge, True, 'linear', 'linear', category='feature', group='element')
+
+    # PIPE (thin-walled) and CIRC cantilevers, tip force and torque
+    d = Deck('b31_pipe_sections', 'B31 PIPE and CIRC cantilevers, tip force and torque')
+    tips, roots = [], []
+    for k, (sec, dims) in enumerate((('PIPE', '3., 0.5'), ('PIPE', '3., 1.5'), ('PIPE', '3., 2.9'), ('CIRC', '3.'))):
+        segs, ids = beam_line(d, 20, 100.0, x0=(0.0, 50.0 * k, 0.0))
+        d.elements('B31', 'B%d' % (k + 1), segs)
+        d.model += ['*Beam Section, elset=B%d, material=STEEL, section=%s' % (k + 1, sec), dims, '0., 0., -1.']
+        tips.append(ids[-1]); roots.append(ids[0])
+    d.materials.add('STEEL')
+    d.steps += static_step('Load', ['*Boundary', 'FIX, ENCASTRE', '*Cload'] +
+                           ['%d, 3, -10.' % n for n in tips] + ['%d, 4, 1000.' % n for n in tips], False, rot=True,
+                           nframes=1)
+    register(d, 'static', 'B31', 'PIPE and CIRC sections', 'Four cantilevers (PIPE with wall thickness 0.5, 1.5 and '
+             '2.9 for an outer radius 3, CIRC of radius 3) under a tip force and a tip torque: thin-walled PIPE '
+             'section (bending and torsion stiffness on the mean radius).', tips, roots, True, 'linear', 'linear',
+             category='feature', group='element', twin=False)
+
     d = Deck('elem_b31h', 'B31H (hybrid) cantilever, tip loads')
     segs, ids = beam_line(d, 50, 100.0)
     d.elements('B31H', 'EALL', segs)

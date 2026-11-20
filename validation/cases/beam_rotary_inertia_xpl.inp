@@ -1,0 +1,182 @@
+*Heading
+Free B31 elements, nodal forces and moments (explicit): lumped inertia
+*Node
+1, 0., 0., 0.
+2, 1, 0., 0.
+3, 0., 50, 0.
+4, 5, 50, 0.
+5, 0., 100, 0.
+6, 20, 100, 0.
+7, 0., 150, 0.
+8, 1, 150, 0.
+9, 0., 200, 0.
+10, 5, 200, 0.
+11, 0., 250, 0.
+12, 20, 250, 0.
+13, 0., 300, 0.
+14, 1, 300, 0.
+15, 0., 350, 0.
+16, 5, 350, 0.
+17, 0., 400, 0.
+18, 20, 400, 0.
+*Element, type=B31, elset=B1
+1, 1, 2
+*Element, type=B31, elset=B2
+2, 3, 4
+*Element, type=B31, elset=B3
+3, 5, 6
+*Element, type=B31, elset=B4
+4, 7, 8
+*Element, type=B31, elset=B5
+5, 9, 10
+*Element, type=B31, elset=B6
+6, 11, 12
+*Element, type=B31, elset=B7
+7, 13, 14
+*Element, type=B31, elset=B8
+8, 15, 16
+*Element, type=B31, elset=B9
+9, 17, 18
+*Nset, nset=MON
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+17, 18
+*Elset, elset=B1
+1
+*Elset, elset=B2
+2
+*Elset, elset=B3
+3
+*Elset, elset=B4
+4
+*Elset, elset=B5
+5
+*Elset, elset=B6
+6
+*Elset, elset=B7
+7
+*Elset, elset=B8
+8
+*Elset, elset=B9
+9
+*Elset, elset=MONE
+1
+*Beam Section, elset=B1, material=STEEL, section=CIRC, rotary inertia=ISOTROPIC
+1.
+0., 0., -1.
+*Beam Section, elset=B2, material=STEEL, section=CIRC, rotary inertia=ISOTROPIC
+1.
+0., 0., -1.
+*Beam Section, elset=B3, material=STEEL, section=CIRC, rotary inertia=ISOTROPIC
+1.
+0., 0., -1.
+*Beam Section, elset=B4, material=STEEL, section=RECT, rotary inertia=ISOTROPIC
+2., 1.
+0., 0., -1.
+*Beam Section, elset=B5, material=STEEL, section=RECT, rotary inertia=ISOTROPIC
+2., 1.
+0., 0., -1.
+*Beam Section, elset=B6, material=STEEL, section=RECT, rotary inertia=ISOTROPIC
+2., 1.
+0., 0., -1.
+*Beam Section, elset=B7, material=STEEL, section=PIPE, rotary inertia=ISOTROPIC
+3., 0.5
+0., 0., -1.
+*Beam Section, elset=B8, material=STEEL, section=PIPE, rotary inertia=ISOTROPIC
+3., 0.5
+0., 0., -1.
+*Beam Section, elset=B9, material=STEEL, section=PIPE, rotary inertia=ISOTROPIC
+3., 0.5
+0., 0., -1.
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=YES
+*Dynamic, Explicit, direct user control
+1e-09, 1e-09
+*Cload
+1, 2, 1e+07
+1, 4, 1e+08
+1, 5, -1e+08
+1, 6, 1e+08
+2, 2, 1e+07
+2, 4, 1e+08
+2, 5, -1e+08
+2, 6, 1e+08
+3, 2, 1e+07
+3, 4, 1e+08
+3, 5, -1e+08
+3, 6, 1e+08
+4, 2, 1e+07
+4, 4, 1e+08
+4, 5, -1e+08
+4, 6, 1e+08
+5, 2, 1e+07
+5, 4, 1e+08
+5, 5, -1e+08
+5, 6, 1e+08
+6, 2, 1e+07
+6, 4, 1e+08
+6, 5, -1e+08
+6, 6, 1e+08
+7, 2, 1e+07
+7, 4, 1e+08
+7, 5, -1e+08
+7, 6, 1e+08
+8, 2, 1e+07
+8, 4, 1e+08
+8, 5, -1e+08
+8, 6, 1e+08
+9, 2, 1e+07
+9, 4, 1e+08
+9, 5, -1e+08
+9, 6, 1e+08
+10, 2, 1e+07
+10, 4, 1e+08
+10, 5, -1e+08
+10, 6, 1e+08
+11, 2, 1e+07
+11, 4, 1e+08
+11, 5, -1e+08
+11, 6, 1e+08
+12, 2, 1e+07
+12, 4, 1e+08
+12, 5, -1e+08
+12, 6, 1e+08
+13, 2, 1e+07
+13, 4, 1e+08
+13, 5, -1e+08
+13, 6, 1e+08
+14, 2, 1e+07
+14, 4, 1e+08
+14, 5, -1e+08
+14, 6, 1e+08
+15, 2, 1e+07
+15, 4, 1e+08
+15, 5, -1e+08
+15, 6, 1e+08
+16, 2, 1e+07
+16, 4, 1e+08
+16, 5, -1e+08
+16, 6, 1e+08
+17, 2, 1e+07
+17, 4, 1e+08
+17, 5, -1e+08
+17, 6, 1e+08
+18, 2, 1e+07
+18, 4, 1e+08
+18, 5, -1e+08
+18, 6, 1e+08
+*Output, field, number interval=1
+*Node Output
+U, RF, UR, RM, V
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT, time interval=5e-12
+*Output, history, time interval=5e-12
+*Incrementation Output
+DT, DMASS
+*End Step

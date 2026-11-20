@@ -594,7 +594,9 @@ class ShellGroup : public ElementGroup {
         L2 = g.A * g.A / std::max(med2, 1e-300);
       }
       const double a4 = L2 * L2 / 256.0, b4 = t * t * t * t / 36.0;
-      const double r2 = g.A / 12.0 + std::pow(a4 * a4 + b4 * b4, 0.25);
+      // S3RS: nodal mass times max(A / 4, t^2 / 6) (single-element Abaqus/Explicit runs, 5 shapes, 3 thicknesses: 1e-5)
+      const double r2 = type == ElType::S3RS ? std::max(g.A / 4.0, t * t / 6.0)
+                                             : g.A / 12.0 + std::pow(a4 * a4 + b4 * b4, 0.25);
       if (nen == 4) {
         // nodal masses of a quadrilateral: integral of the shape function over the element (row sums of the
         // consistent mass matrix, as Abaqus lumps them: 0.278 / 0.222 of the mass on a trapezoid of sides 3 and

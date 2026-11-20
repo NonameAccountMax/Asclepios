@@ -106,7 +106,8 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   k G t · t / (2.4 L) times the thin-shell factor on thin ones.
 - **Shell rotary inertia** (explicit): the same about the three axes, nodal mass times A/12 + ((L²/16)⁴ + (t²/6)⁴)^¼,
   with L the shortest edge of a triangle or the area over the longest median of a quadrilateral (the distance
-  between opposite edges of a parallelogram); rotations do not control the stable increment.
+  between opposite edges of a parallelogram); S3RS: nodal mass times max(A/4, t²/6); rotations do not control the
+  stable increment.
 - **B31 rotary inertia**: physical flexural inertia ρ·I·L/2 per node (exact rotary inertia of Timoshenko beams,
   here isotropic with the larger moment); `ROTARY INERTIA=ISOTROPIC`: ρ·L/2·I_max·max((2 + 3u)/(2 + u), 6u/(1 + u))
   about every axis, u = A·L²/(24·I_min), independent of the elastic constants.
@@ -127,7 +128,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-167 small decks, run after every change of the solver:
+172 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and

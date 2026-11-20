@@ -497,6 +497,53 @@ def element_features():
              'rotary inertias alone.', mon, [], True, 'linear', 'linear', category='feature', group='element',
              twin=False)
 
+    # S3RS: same nodal masses as S3R, rotary inertia mass times max(A / 4, t^2 / 6)
+    d = Deck('s3rs_rotary_inertia_xpl', 'Free S3RS elements, nodal forces and moments (explicit): lumped inertia')
+    loads, mon, k = [], [], 0
+    for t in (0.01, 0.2, 2.0):
+        for etype, corners in shapes:
+            if etype != 'S3R':
+                continue
+            ids = [d.node(x + 10.0 * k, y, 0.0) for (x, y) in corners]
+            shell(d, 'S3RS', [ids], t, 'STEEL', elset='P%d' % (k + 1))
+            k += 1
+            area = 0.5 * abs((corners[1][0] - corners[0][0]) * (corners[2][1] - corners[0][1]) -
+                             (corners[2][0] - corners[0][0]) * (corners[1][1] - corners[0][1]))
+            mass = 7.85e-9 * t * area / 3
+            inertia = mass * max(area / 4.0, t * t / 6.0)
+            for nid in ids:
+                loads += ['%d, 1, %s' % (nid, fmt(2e16 * mass)), '%d, 3, %s' % (nid, fmt(-2e16 * mass))]
+                loads += ['%d, %d, %s' % (nid, dof, fmt(2e16 * inertia)) for dof in (4, 5, 6)]
+            mon += ids
+    d.steps += explicit_step('Load', 1e-9, ['*Cload'] + loads, rot=True, nframes=1, fixed_dt=1e-9)
+    register(d, 'explicit', 'S3RS', 'lumped mass and rotary inertia', 'Fifteen free single S3RS elements (five '
+             'triangles, thickness 0.01, 0.2 and 2) under constant nodal forces and moments, one increment of 1e-9 s: '
+             'the motion is set by the lumped nodal masses and rotary inertias alone.', mon, [], True, 'linear',
+             'linear', category='feature', group='element', twin=False)
+
+    # nodal rotary inertia of B31 with ROTARY INERTIA=ISOTROPIC (one value about the three axes): free single
+    # elements under constant nodal forces and moments, one increment of 1e-9
+    d = Deck('beam_rotary_inertia_xpl', 'Free B31 elements, nodal forces and moments (explicit): lumped inertia')
+    secs = (('CIRC', '1.'), ('RECT', '2., 1.'), ('PIPE', '3., 0.5'))
+    loads, mon, k = [], [], 0
+    for iso in (True,):
+        for sec, dims in secs:
+            for length in (1.0, 5.0, 20.0):
+                a, b = d.node(0.0, 50.0 * k, 0.0), d.node(length, 50.0 * k, 0.0)
+                d.elements('B31', 'B%d' % (k + 1), [[a, b]])
+                d.model += ['*Beam Section, elset=B%d, material=STEEL, section=%s%s' % (
+                    k + 1, sec, ', rotary inertia=ISOTROPIC' if iso else ''), dims, '0., 0., -1.']
+                k += 1
+                for nid in (a, b):
+                    loads += ['%d, 2, 1e+07' % nid, '%d, 4, 1e+08' % nid, '%d, 5, -1e+08' % nid, '%d, 6, 1e+08' % nid]
+                mon += [a, b]
+    d.materials.add('STEEL')
+    d.steps += explicit_step('Load', 1e-9, ['*Cload'] + loads, rot=True, nframes=1, fixed_dt=1e-9)
+    register(d, 'explicit', 'B31', 'lumped rotary inertia', 'Nine free single B31 elements (CIRC, RECT, PIPE; '
+             'length 1, 5 and 20; ROTARY INERTIA=ISOTROPIC) under constant nodal forces and moments, one increment of '
+             '1e-9 s: the rotations are set by the nodal rotary inertias alone.', mon, [], True, 'linear',
+             'linear', category='feature', group='element', twin=False)
+
 
 # ------------------------------------------------------------------------------------- loads and conditions
 def cantilever_beam(name, title, n=10, section='RECT', dims='2., 1.'):  # noqa: E302
