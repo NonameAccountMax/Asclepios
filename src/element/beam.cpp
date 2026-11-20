@@ -1,7 +1,8 @@
 // B31: two-node Timoshenko beam, corotational incremental formulation, one integration point
 // along the axis (uniform shear, no locking), cross-section integration points for CIRC / PIPE /
 // RECT (J2 plasticity in sigma11 + torsion shear, thermal expansion). Purely elastic sections use
-// resultants. Transverse shear stiffness with Abaqus' slenderness compensation factor (0.25).
+// resultants. Section frame rotated with the nodes (shear along the section directions), transverse shear stiffness
+// with Abaqus' slenderness compensation factor (0.25) of each bending plane.
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -19,7 +20,7 @@ constexpr int MAXSP = 32;
 
 struct SectionProps {
   double A = 0, I11 = 0, I22 = 0, J = 0, Ip = 0;  // I11: about n1 (fibres at y2), I22: about n2
-  double kappa = 5.0 / 6.0;
+  double kappa = 0.85;  // RECT (free RECT elements in Abaqus/Explicit: transverse motions exact with 0.85)
   double rmax = 0;
   bool torsion_points = true;
   std::vector<SecPt> pts;
@@ -73,7 +74,8 @@ SectionProps section_props(const Section& s) {
 }
 
 struct BeamState {
-  double n1[3];
+  double n1[3];                  // section frame (axis, n1, n2 = axis x n1), rotated by the nodal rotations: the
+  double ax[3];                  // section axis departs from the chord by the transverse shear strains
   double e0;                     // integrated axial strain
   double N, M1, M2, T, V1, V2;   // resultants
 };
@@ -91,9 +93,11 @@ class BeamGroup : public ElementGroup {
 
   double poisson(int e) const { return sec[e]->poisson > 0 ? sec[e]->poisson : mat[e]->nu; }
 
-  double shear_stiff(int e, double L, double G) const {
+  // transverse shear stiffness with the slenderness compensation of the bending plane it belongs to: I is the
+  // second moment of the coupled bending (I22 for shear along n1, I11 for shear along n2; free RECT elements in
+  // Abaqus/Explicit: transverse motions of each plane follow their own factor)
+  double shear_stiff(int e, double L, double G, double I) const {
     const SectionProps& P = props[pidx[e]];
-    double I = std::min(P.I11, P.I22);
     double fp = 1.0 / (1.0 + 0.25 * L * L * P.A / (12.0 * I));
     return fp * P.kappa * G * P.A;
   }
@@ -127,19 +131,16 @@ class BeamGroup : public ElementGroup {
       BeamState& S = st[e];
       std::memset(&S, 0, sizeof(S));
       store3(S.n1, n1);
+      store3(S.ax, t);
       bool points = mat[e]->plastic() || mat[e]->alpha != 0;
       poff[e + 1] = poff[e] + (points ? (int)P.pts.size() : 0);
-      const double E = mat[e]->E, G = E / (2 * (1 + poisson(e))), rho = mat[e]->density;
-      double Ks = shear_stiff(e, L, G);
-      double om_ax2 = 4 * E / (rho * L * L);
-      double Ineed = 1.2 * (2 * std::max(E * std::max(P.I11, P.I22), G * P.J) / L + Ks * L / 2) / om_ax2;
+      const double rho = mat[e]->density;
       // nodal rotary inertia. Default (Abaqus EXACT rotary inertia of Timoshenko beams): the lumped inertia of the
       // half element, anisotropic and carried by the beam frame, rho L / 2 (I11 + I22, I11, I22) about (axis, n1,
       // n2) (rotary_tensor; free single-element Abaqus/Explicit runs: torsional rotations exact to 2e-4 for CIRC
       // and PIPE). ROTARY INERTIA=ISOTROPIC: rho L / 2 Imax max((2 + 3u) / (2 + u), 6u / (1 + u)) about every
       // axis, u = A L^2 / (24 Imin); independent of the elastic constants and of the density (single-element
       // Abaqus/Explicit runs: 3 sections, L / r from 0.5 to 50, three moduli: 1e-5)
-      (void)Ineed;
       const double Imin = std::min(P.I11, P.I22), Imax = std::max(P.I11, P.I22);
       const double u = P.A * L * L / (24.0 * Imin);
       const double Iiso = rho * L / 2 * Imax * std::max((2 + 3 * u) / (2 + u), 6 * u / (1 + u));
@@ -163,10 +164,8 @@ class BeamGroup : public ElementGroup {
   bool rotary_tensor(int e, const double* x, double* J6) const override {
     if (sec[e]->rotary_isotropic) return false;
     const SectionProps& P = props[pidx[e]];
-    const Vec3 t = normalized(load3(x + 3) - load3(x));
-    Vec3 n1 = load3(st[e].n1);
-    n1 = normalized(n1 - t * dot(n1, t));
-    const Vec3 n2 = cross(t, n1);
+    (void)x;
+    const Vec3 t = load3(st[e].ax), n1 = load3(st[e].n1), n2 = cross(t, n1);
     const double c = mat[e]->density * L0[e] / 2, a = c * (P.I11 + P.I22), b1 = c * P.I11, b2 = c * P.I22;
     auto add = [&](const Vec3& d, double s) {
       J6[0] += s * d.x * d.x; J6[1] += s * d.y * d.y; J6[2] += s * d.z * d.z;
@@ -190,27 +189,30 @@ class BeamGroup : public ElementGroup {
     Vec3 xma = nl ? xo1 + du1 * 0.5 : xo1, xmb = nl ? xo2 + du2 * 0.5 : xo2;
     double Lo = norm(xo2 - xo1), Lm = norm(xmb - xma), L1 = norm(x1b - x1a);
     Vec3 tm = (xmb - xma) / Lm, t1 = (x1b - x1a) / L1;
-    Vec3 n1o = load3(S.n1);
+    Vec3 n1o = load3(S.n1), axo = load3(S.ax);
     Vec3 rbar = (dr1 + dr2) * 0.5;
-    auto frame = [&](const Vec3& t, const Vec3& rv, Vec3& n1, Vec3& n2) {
-      Vec3 v = nl ? rotation_from_vector(rv) * n1o : n1o;
-      v -= t * dot(v, t);
-      n1 = normalized(v);
-      n2 = cross(t, n1);
+    // section frame rotated by the mean nodal rotation (at mid-increment and at the end)
+    auto frame = [&](const Vec3& rv, Vec3& a, Vec3& n1, Vec3& n2) {
+      a = axo; n1 = n1o;
+      if (nl) { const Mat3 R = rotation_from_vector(rv); a = R * axo; n1 = R * n1o; }
+      a = normalized(a);
+      n1 = normalized(n1 - a * dot(n1, a));
+      n2 = cross(a, n1);
     };
-    Vec3 n1m, n2m, n11, n21;
-    frame(tm, rbar * 0.5, n1m, n2m);
-    frame(t1, rbar, n11, n21);
+    Vec3 axm, n1m, n2m, ax1, n11, n21;
+    frame(rbar * 0.5, axm, n1m, n2m);
+    frame(rbar, ax1, n11, n21);
     Vec3 dd = du2 - du1, dr = dr2 - dr1;
     double de0 = nl ? std::log(L1 / Lo) : dot(dd, tm) / Lm;
-    double dk1 = dot(dr, n1m) / Lm, dk2 = dot(dr, n2m) / Lm, dphi = dot(dr, tm) / Lm;
-    double dg1 = dot(dd, n1m) / Lm - dot(rbar, n2m), dg2 = dot(dd, n2m) / Lm + dot(rbar, n1m);
+    double dk1 = dot(dr, n1m) / Lm, dk2 = dot(dr, n2m) / Lm, dphi = dot(dr, axm) / Lm;
+    // transverse shear strains gamma_a = n_a . (x2 - x1) / L on the rotated section directions
+    double dg1 = dot(dd, n1m) / Lm + dot(rbar, cross(n1m, tm)), dg2 = dot(dd, n2m) / Lm + dot(rbar, cross(n2m, tm));
     double dtemp = 0;
     if (in.temp0 && in.temp1) dtemp = 0.5 * (in.temp1[0] + in.temp1[1] - in.temp0[0] - in.temp0[1]);
     S.e0 += de0;
-    const double Ks = shear_stiff(e, L1, G);
-    S.V1 += Ks * dg1;
-    S.V2 += Ks * dg2;
+    const double Ks1 = shear_stiff(e, L1, G, P.I22), Ks2 = shear_stiff(e, L1, G, P.I11);
+    S.V1 += Ks1 * dg1;
+    S.V2 += Ks2 * dg2;
     double N, M1, M2, T;
     double mis = 0, epm = 0, smax = 0;
     const int np = poff[e + 1] - poff[e];
@@ -246,6 +248,7 @@ class BeamGroup : public ElementGroup {
       S.N = N; S.M1 = M1; S.M2 = M2;
     }
     const double c = std::sqrt(E / rho);
+    const double N_out = N;  // section force output without the bulk viscosity (as Abaqus/Explicit SF)
     if (in.dynamic && in.dt > 0 && in.bv1 > 0) {
       // linear bulk viscosity: b1 rho c L on the axial strain rate, half of it on the curvature rates (moments
       // 0.5 b1 rho c L I k'), none on transverse shear and torsion (single-element Abaqus/Explicit runs, viscous
@@ -257,9 +260,12 @@ class BeamGroup : public ElementGroup {
       M2 += mb2;
       out.e_visc += (pbv * P.A * de0 + mb1 * dk1 + mb2 * dk2) * L1;
     }
-    Vec3 F = t1 * N + n11 * S.V1 + n21 * S.V2;
-    Vec3 Mm = n11 * M1 + n21 * M2 + t1 * T;
-    Vec3 Ms = (n21 * (-0.5 * S.V1) + n11 * (0.5 * S.V2)) * L1;
+    // axial force along the chord, shear forces along the section directions (their couple balanced by the
+    // nodal moments)
+    const Vec3 Fs = n11 * S.V1 + n21 * S.V2;
+    Vec3 F = t1 * N + Fs;
+    Vec3 Mm = n11 * M1 + n21 * M2 + ax1 * T;
+    Vec3 Ms = cross(Fs, t1) * (0.5 * L1);
     store3(out.f, -F);
     store3(out.f + 6, F);
     store3(out.f + 3, -Mm + Ms);
@@ -268,18 +274,21 @@ class BeamGroup : public ElementGroup {
     double xi = in.dynamic ? in.bv1 : 0.0;
     double dt_ax = L1 / c * (std::sqrt(1 + xi * xi) - xi);
     const double mt = rho * P.A * L0[e] / 2;
-    double om_r2;
-    if (sec[e]->rotary_isotropic) {
-      const double In = irot[e] * msf[e];
-      om_r2 = 2 * std::max(E * std::max(P.I11, P.I22), G * P.J) / (L1 * In) + Ks * L1 * (2.0 / (L1 * L1 * mt) + 1.0 / (2 * In));
-    } else {  // anisotropic inertia: bending about n1 and n2 (with the coupled shear) and torsion, each on its own
-      const double cI = rho * L0[e] / 2;
-      auto bend = [&](double I) { return 2 * E / (L1 * cI) + Ks * L1 * (2.0 / (L1 * L1 * mt) + 1.0 / (2 * cI * I)); };
-      om_r2 = std::max({bend(P.I11), bend(P.I22), 2 * G * P.J / (L1 * cI * (P.I11 + P.I22))});
-    }
+    // rotational modes, each bending plane with its coupled shear: bending about n1 (I11) with the shear along n2,
+    // about n2 (I22) with the shear along n1; torsion
+    const double cI = rho * L0[e] / 2;
+    const bool iso = sec[e]->rotary_isotropic;
+    const double In = irot[e] * msf[e];
+    auto bend = [&](double I, double Ks) {
+      const double Ir = iso ? In : cI * I;
+      return 2 * E * I / (L1 * Ir) + Ks * L1 * (2.0 / (L1 * L1 * mt) + 1.0 / (2 * Ir));
+    };
+    const double om_t = 2 * G * P.J / (L1 * (iso ? In : cI * (P.I11 + P.I22)));
+    const double om_r2 = std::max({bend(P.I11, Ks2), bend(P.I22, Ks1), om_t});
     out.dt_stable = std::min(dt_ax, 2.0 / std::sqrt(om_r2));
     if (commit) {
       store3(S.n1, n11);
+      store3(S.ax, ax1);
       st[e] = S;
       if (np) std::memcpy(&pts[(size_t)poff[e] * 4], loc, sizeof(double) * 4 * np);
       float* o = &this->out[e * N_OUT];
@@ -287,7 +296,7 @@ class BeamGroup : public ElementGroup {
       o[OUT_S11] = (float)smax;
       o[OUT_PEEQ] = (float)epm;
       o[OUT_LEMAX] = (float)S.e0;
-      o[OUT_SF] = (float)N;
+      o[OUT_SF] = (float)N_out;
       o[OUT_STH] = (float)(2 * P.rmax);
     }
   }

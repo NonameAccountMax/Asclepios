@@ -116,7 +116,11 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   the gyroscopic moment ω × (J·ω). `ROTARY INERTIA=ISOTROPIC`: ρ·L/2·I_max·max((2 + 3u)/(2 + u), 6u/(1 + u))
   about every axis, u = A·L²/(24·I_min), independent of the elastic constants.
 - **B31 bulk viscosity** (explicit): b1·ρ·c·L on the axial strain rate and half of it on the curvature rates
-  (moments 0.5·b1·ρ·c·L·I·κ̇); none on transverse shear and torsion.
+  (moments 0.5·b1·ρ·c·L·I·κ̇); none on transverse shear and torsion; not included in the section force output.
+- **B31 kinematics**: section frame rotated by the mean nodal rotation, axial strain from the chord, transverse
+  shear strains and forces along the rotated section directions; transverse shear stiffness k·G·A with the
+  slenderness compensation 1/(1 + 0.25·L²·A/(12·I)) of each bending plane (I22 for shear along n1, I11 along
+  n2); k = 0.85 for RECT, 0.89 for CIRC, 0.53 for PIPE.
 - **B31 sections**: PIPE is thin-walled (A = 2πrt, I = πr³t, J = 2I on the mean radius r, section points on the
   mean radius); default section points, 8 circumferential points starting on the section axes; radially R/2 and R
   for CIRC (weights making area and second moment exact); 5 x 5 Simpson for RECT.
