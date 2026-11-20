@@ -109,6 +109,8 @@ def main():
     steps = sorted(odb.steps.values(), key=lambda s: s.totalTime)
     frames = []
     history = dict((k, []) for k in HISTORY)
+    rf_hist = {}
+    mon_hist = {}
     for step in steps:
         for frame in step.frames:
             fo = frame.fieldOutputs
@@ -133,6 +135,30 @@ def main():
                 fr['E'] = element_values(fo, mone)
             frames.append(fr)
         for rname in step.historyRegions.keys():
+            if rname.startswith('Node ') and (fix or mon):  # FIX reactions and MON motion at every increment
+                try:
+                    label = int(rname.split('.')[-1])
+                except ValueError:
+                    continue
+                region = step.historyRegions[rname]
+                if label in mon:
+                    keys = [k for k in ('U1', 'U2', 'U3', 'UR1', 'UR2', 'UR3') if k in region.historyOutputs.keys()]
+                    if keys:
+                        cols = [region.historyOutputs[k].data for k in keys]
+                        shift = step.totalTime if cols[0] and (cols[0][0][0] < step.totalTime - 1e-12 or step.totalTime == 0.0) else 0.0
+                        rows = mon_hist.setdefault(str(label), [])
+                        for j in range(len(cols[0])):
+                            rows.append([float(cols[0][j][0]) + shift] + [float(c[j][1]) for c in cols])
+                if label not in fix:
+                    continue
+                for k, key in enumerate(('RF1', 'RF2', 'RF3')):
+                    if key not in region.historyOutputs.keys():
+                        continue
+                    data = region.historyOutputs[key].data
+                    shift = step.totalTime if data and (data[0][0] < step.totalTime - 1e-12 or step.totalTime == 0.0) else 0.0
+                    for t, v in data:
+                        rf_hist.setdefault(round(float(t) + shift, 15), [0.0, 0.0, 0.0])[k] += float(v)
+                continue
             if not rname.startswith('Assembly'):
                 continue
             region = step.historyRegions[rname]
@@ -148,8 +174,13 @@ def main():
     odb.close()
     inc, it = status_counts(os.path.splitext(odb_path)[0] + '.sta')
     with open(out_path, 'w') as f:
-        json.dump({'case': name, 'abaqus': info, 'increments': inc, 'iterations': it, 'frames': frames,
-                   'history': history}, f)
+        out = {'case': name, 'abaqus': info, 'increments': inc, 'iterations': it, 'frames': frames,
+               'history': history}
+        if rf_hist:
+            out['rf_hist'] = [[t] + rf_hist[t] for t in sorted(rf_hist)]
+        if mon_hist:
+            out['mon_hist'] = mon_hist
+        json.dump(out, f)
     print('%s: %d frames written to %s' % (name, len(frames), out_path))
 
 

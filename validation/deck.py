@@ -393,10 +393,30 @@ def register(d, procedure, element, mode, description, mon, fix, rot, tol, analy
             f.write('\n'.join(mesh) + '\n')
         text = '\n'.join(lines[:k0] + ['*Parameter', 'YOUNG = 210000.', 'NU = 0.3', 'TIPU = 0.04',
                                        '*Include, input=%s_mesh.inc' % name] + lines[k1:])
+    if procedure == 'explicit' and reference == 'abaqus' and fix:
+        text = rf_history(text, rot)
     with open(os.path.join(OUT, name + '.inp'), 'w') as f:
         f.write(text.replace('*Heading\n%s' % d.title, '*Heading\n%s%s' % (
             d.title, '' if not MODE['twin'] else (' [quasi-static explicit twin]' if name.endswith('_xpl')
                                                    else ' [implicit dynamic twin]'))))
+
+
+def rf_history(text, rot=False):
+    """Reaction forces of the FIX nodes and motion of the MON nodes at every increment of each explicit step
+    (history output): reactions and rotations of dynamic cases are compared after a moving average over a few tens of
+    increments (see compare.py)."""
+    out, explicit = [], False
+    for line in text.split('\n'):
+        low = line.lower()
+        if low.startswith('*step'):
+            explicit = False
+        elif low.startswith('*dynamic') and 'explicit' in low:
+            explicit = True
+        elif low.startswith('*end step') and explicit:
+            out += ['*Output, history, frequency=1', '*Node Output, nset=FIX', 'RF1, RF2, RF3',
+                    '*Node Output, nset=MON', 'U1, U2, U3' + (', UR1, UR2, UR3' if rot else '')]
+        out.append(line)
+    return '\n'.join(out)
 
 
 def write_manifest():

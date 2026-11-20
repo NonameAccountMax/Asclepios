@@ -146,6 +146,12 @@ struct OutputRequest {
   bool time_marks = false;
   std::vector<std::string> node_vars, elem_vars;
   int history_intervals = 200;
+  // *OUTPUT, HISTORY, FREQUENCY=n + *NODE OUTPUT, NSET=set with RF: total reaction of the set every n increments
+  std::string rf_hist_set;
+  int rf_hist_freq = 0;
+  // same with U / UR: displacements and rotations of the nodes of the set every n increments
+  std::string mon_hist_set;
+  int mon_hist_freq = 0;
 };
 
 struct Step {

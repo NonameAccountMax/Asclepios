@@ -674,6 +674,7 @@ class Builder {
     st.maxinc = sc.geti("INC", 100);
     bool have_proc = false;
     int last_output = 0;  // 1 field, 2 history
+    int hist_freq = 0;    // FREQUENCY of the current history request
     for (++i; i < cards.size(); ++i) {
       const Card& c = cards[i];
       const std::string& k = c.keyword;
@@ -775,11 +776,20 @@ class Builder {
             st.output.field_intervals = 20;
         } else {
           last_output = 2;
+          hist_freq = c.geti("FREQUENCY", 0);
           if (c.has("NUMBER INTERVAL")) st.output.history_intervals = c.geti("NUMBER INTERVAL", 200);
           else if (c.has("TIME INTERVAL") && st.period > 0)
             st.output.history_intervals = std::max(1, (int)std::lround(st.period / c.getd("TIME INTERVAL", st.period)));
         }
       } else if (k == "NODE OUTPUT" || k == "ELEMENT OUTPUT") {
+        if (last_output == 2 && k == "NODE OUTPUT" && c.has("NSET") && hist_freq > 0) {
+          bool rf = false;
+          for (auto& d : c.data) for (auto& t : d) { std::string u = upper(t); rf |= u == "RF" || u == "RF1" || u == "RF2" || u == "RF3"; }
+          if (rf) { st.output.rf_hist_set = upper(c.get("NSET")); st.output.rf_hist_freq = hist_freq; }
+          bool mot = false;
+          for (auto& d : c.data) for (auto& t : d) { std::string u = upper(t); mot |= u == "U" || u == "U1" || u == "UR" || u == "UR1"; }
+          if (mot && !rf) { st.output.mon_hist_set = upper(c.get("NSET")); st.output.mon_hist_freq = hist_freq; }
+        }
         if (last_output == 1)
           for (auto& d : c.data) for (auto& t : d) if (!t.empty()) (k == "NODE OUTPUT" ? st.output.node_vars : st.output.elem_vars).push_back(upper(t));
       } else if (k == "RESTART" || k == "DIAGNOSTICS" || k == "INCREMENTATION OUTPUT" || k == "ENERGY OUTPUT" ||

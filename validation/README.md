@@ -67,8 +67,14 @@ strain, axial force of beams; temperatures for heat transfer. Over time: the ene
 are relative to the peak reference value of each quantity over the whole history (numerical zeros are not compared):
 
 - U, UR, NT: max over frames and monitored nodes of |x − x_ref| / max |x_ref|; rotations below 1e-3 rad are numerical
-  zeros, and large rotations are compared in the representation of Abaqus (half angle in (−π, π]);
-- RF, RM: same on the total reaction force and moment;
+  zeros, and large rotations are compared in the representation of Abaqus (half angle in (−π, π]). Explicit cases
+  record U and UR of `MON` at every increment (history output, both sides) and are compared on these histories
+  after the moving average described below (rotations below 1 rad);
+- RF, RM: same on the total reaction force and moment. Explicit cases also record the total reaction of `FIX` at
+  every increment (history output, both sides); their reaction is compared on these histories after a moving average
+  over 30 reference increments, i.e. below about a tenth of the highest frequency of the mesh: in impacts and sudden
+  loads the reactions and rotations ring at the highest plate modes (200-600 kHz for a 2.5 mm steel mesh), and frames
+  sampled every few microseconds catch that ringing with an arbitrary phase (the spectra agree up to those modes);
 - S: same on each element quantity, the largest of them is reported (the membrane stress of a shell is compared when
   it reaches 5 % of the peak stress, and not once the section has yielded);
 - E: max over time of |E − E_ref| for ALLIE, ALLKE and ALLWK, divided by the largest of these energies, evaluated at

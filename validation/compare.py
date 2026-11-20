@@ -113,11 +113,22 @@ def asclepios_results(case):
             for k in hist:
                 if k in r:
                     hist[k].append([t, float(r[k])])
+    mon_hist = None
+    if os.path.exists(job + '_mon.csv'):
+        mon_hist = {}
+        with open(job + '_mon.csv') as f:
+            for r in csv.DictReader(f):
+                mon_hist.setdefault(r['node'], []).append(
+                    [float(r['total_time'])] + [float(r[k]) for k in ('U1', 'U2', 'U3', 'UR1', 'UR2', 'UR3')])
+    rf_hist = None
+    if os.path.exists(job + '_rf.csv'):
+        with open(job + '_rf.csv') as f:
+            rf_hist = [[float(r['total_time']), float(r['RF1']), float(r['RF2']), float(r['RF3'])] for r in csv.DictReader(f)]
     inc = None
     m = re.search(r'COMPLETED SUCCESSFULLY\s+\((\d+) increments', open(job + '.dat').read())
     if m:
         inc = int(m.group(1))
-    return {'frames': frames, 'history': hist, 'increments': inc}
+    return {'frames': frames, 'history': hist, 'increments': inc, 'rf_hist': rf_hist, 'mon_hist': mon_hist}
 
 
 def interp(series, t):
@@ -162,12 +173,40 @@ def canonical_rotation(v):
     return [x / phi * 2 * half for x in v]
 
 
+def history_error(mine, ref, key):
+    """Explicit cases with the motion of the monitored nodes at every increment on both sides: peak-normalised error
+    after a moving average over RF_WINDOW reference increments (same filter as the reactions). None when the
+    histories are missing or the rotations are large (compared at the frames, in the Abaqus representation)."""
+    rh, mh = ref.get('mon_hist'), mine.get('mon_hist')
+    if not rh or not mh or key not in ('U', 'UR'):
+        return None
+    c0 = 1 if key == 'U' else 4
+    out_err, peak = 0.0, 0.0
+    for lab, rows in rh.items():
+        if lab not in mh or len(rows) < 3 or len(rows[0]) < c0 + 3:
+            return None
+        rser = [[r[0]] + r[c0:c0 + 3] for r in rows]
+        mser = [[r[0]] + r[c0:c0 + 3] for r in mh[lab]]
+        if key == 'UR' and max(norm(r[1:]) for r in rser) > 1.0:
+            return None
+        dts = sorted(b[0] - a[0] for a, b in zip(rser[:-1], rser[1:]) if b[0] > a[0])
+        w = RF_WINDOW * dts[len(dts) // 2]
+        times = [r[0] for r in rser]
+        fr, fm = window_average(rser, times, w), window_average(mser, times, w)
+        peak = max(peak, max(norm(v) for v in fr))
+        out_err = max(out_err, max(norm([a - b for a, b in zip(x, y)]) for x, y in zip(fm, fr)))
+    return out_err / peak if peak > 0 else None
+
+
 def field_error(mine, ref, key):
     """Peak-normalised error of a nodal vector field over all reference frames and monitored nodes. Rotations that
     stay below 1e-3 rad in the reference (numerical zero, e.g. a flat impact) are not compared."""
     peak, err = field_peak(ref, key), 0.0
     if peak == 0.0 or (key == 'UR' and peak < 1e-3):
         return None
+    h = history_error(mine, ref, key)
+    if h is not None:
+        return h
     for fr in ref['frames']:
         for lab, v in fr.get(key, {}).items():
             series = [[m['t'], m[key][lab]] for m in mine['frames'] if lab in m.get(key, {})]
@@ -180,9 +219,48 @@ def field_error(mine, ref, key):
     return err / peak
 
 
+RF_WINDOW = 30  # moving average of explicit reaction histories, in reference increments
+
+
+def window_average(series, times, w):
+    """Moving average over [t - w/2, t + w/2] of a piecewise linear history [[t, v1, v2, v3], ...] (exact integral
+    of the linear interpolant; the history is held constant outside its time range)."""
+    ts = [r[0] for r in series]
+    cum = [[0.0, 0.0, 0.0]]
+    for a, b in zip(series[:-1], series[1:]):
+        h = b[0] - a[0]
+        cum.append([c + 0.5 * h * (a[k + 1] + b[k + 1]) for k, c in enumerate(cum[-1])])
+    def integral(t):
+        if t <= ts[0]:
+            return [(t - ts[0]) * v for v in series[0][1:]]
+        if t >= ts[-1]:
+            return [c + (t - ts[-1]) * v for c, v in zip(cum[-1], series[-1][1:])]
+        i = bisect.bisect_right(ts, t) - 1
+        a, b = series[i], series[i + 1]
+        h, x = b[0] - a[0], t - a[0]
+        return [cum[i][k] + x * a[k + 1] + 0.5 * x * x * (b[k + 1] - a[k + 1]) / h for k in range(3)]
+    out = []
+    for t in times:
+        lo, hi = integral(t - 0.5 * w), integral(t + 0.5 * w)
+        out.append([(h - l) / w for l, h in zip(lo, hi)])
+    return out
+
+
 def rf_error(mine, ref):
     """Total reaction force; not compared when it is a numerical zero (pure moment, self-equilibrated loads):
-    below 1e-3 of the characteristic force of the problem."""
+    below 1e-3 of the characteristic force of the problem. Explicit cases with reaction histories at every
+    increment (both sides): compared after a moving average over RF_WINDOW reference increments, which removes the
+    ringing near the highest frequencies of the mesh (sampled at the frames with an arbitrary phase)."""
+    rh, mh = ref.get('rf_hist'), mine.get('rf_hist')
+    if rh and mh and len(rh) > 2 and len(mh) > 2:
+        dts = sorted(b[0] - a[0] for a, b in zip(rh[:-1], rh[1:]) if b[0] > a[0])
+        w = RF_WINDOW * dts[len(dts) // 2]
+        times = [r[0] for r in rh]
+        fr_ref, fr_mine = window_average(rh, times, w), window_average(mh, times, w)
+        peak = max(norm(v) for v in fr_ref)
+        if peak == 0.0 or peak < 1e-3 * force_scale(ref):
+            return None
+        return max(norm([a - b for a, b in zip(x, y)]) for x, y in zip(fr_mine, fr_ref)) / peak
     if not all('RF' in fr for fr in ref['frames']):
         return None
     peak = max((norm(fr['RF']) for fr in ref['frames']), default=0.0)

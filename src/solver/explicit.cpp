@@ -134,6 +134,27 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     warn("step %s: *OUTPUT, FIELD, FREQUENCY ignored in an explicit step (NUMBER INTERVAL or TIME INTERVAL)", st.name.c_str());
   const int nfr = st.output.field_intervals > 0 || st.output.field_time_interval > 0 ? st.output.field_intervals : 20;
   const double fr_dt = nfr > 0 ? st.period / nfr : (st.output.field_time_interval > 0 ? st.output.field_time_interval : st.period);
+  // history of the total reaction of a node set (*OUTPUT, HISTORY, FREQUENCY=n with *NODE OUTPUT, NSET=, RF)
+  std::vector<int> rf_nodes;
+  if (st.output.rf_hist_freq > 0) {
+    auto it = A.m.nsets.find(st.output.rf_hist_set);
+    if (it == A.m.nsets.end()) warn("history output: unknown node set %s", st.output.rf_hist_set.c_str());
+    else rf_nodes = it->second;
+  }
+  std::vector<int> mon_nodes;
+  if (st.output.mon_hist_freq > 0) {
+    auto it = A.m.nsets.find(st.output.mon_hist_set);
+    if (it == A.m.nsets.end()) warn("history output: unknown node set %s", st.output.mon_hist_set.c_str());
+    else mon_nodes = it->second;
+  }
+  auto write_rf = [&]() {
+    if (!rf_nodes.empty()) {
+      double r[3] = {0, 0, 0};
+      for (int n : rf_nodes) for (int k = 0; k < 3; ++k) r[k] += A.rf[6 * n + k];
+      W.rf_history(A.total_time, r);
+    }
+    for (int n : mon_nodes) W.mon_history(A.total_time, A.m.node_label[n], &A.u[6 * n]);
+  };
   const int nhist = std::max(1, st.output.history_intervals);
   const double hist_dt = st.period / nhist;
   std::vector<double> fint_old, fext_old, fcon_old, fd(6 * nn, 0.0);
@@ -243,6 +264,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
           A.rf[i] = A.fixed[i] ? -(A.fext[i] + A.fcon[i] - A.fint[i] - fvis[i]) : 0.0;
         }
       W.frame(si, st.name, 0.0, A.total_time);
+      write_rf();
     } else {
       fcon_old = A.fcon;
     }
@@ -437,6 +459,8 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     dt = dt_next;
 
     bool last = t >= st.period * (1 - 1e-12);
+    const int hf = std::max(st.output.rf_hist_freq, st.output.mon_hist_freq);
+    if (hf > 0 && (inc % hf == 0 || last)) write_rf();
     if (t >= next_hist - 1e-12 * st.period || last) {
       W.history(si, inc, t, A.total_time, dt_prev, ke);
       double pm = 100 * (total_mass(A) / mass0 - 1);

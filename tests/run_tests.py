@@ -129,6 +129,28 @@ def output_frequency_and_paths():
     ok &= check('frames found next to the .pvd (absolute -o)', present, len(files), 1e-12)
     return ok
 
+@case
+def reaction_history():
+    # *OUTPUT, HISTORY, FREQUENCY=1 with *NODE OUTPUT, NSET=, RF1..RF3 in an explicit step: total reaction of the set
+    # at every increment in <job>_rf.csv, equal to the field output reaction at the end of the step
+    src = os.path.join(OUT, 'rfhist.inp')
+    bar(src, 'C3D8R')
+    deck = open(src).read().replace('*End Step', '*Output, history, frequency=1\n*Node Output, nset=XL\nRF1, RF2, RF3\n*End Step')
+    open(src, 'w').write(deck)
+    run('rfhist')
+    rows = open(os.path.join(OUT, 'rfhist_rf.csv')).read().strip().splitlines()
+    ninc = int(re.search(r'\((\d+) increments', open(os.path.join(OUT, 'rfhist.dat')).read()).group(1))
+    ok = check('reaction history: one line per increment (+ initial)', len(rows) - 1, ninc + 1, 1e-12)
+    RF = last('rfhist', 'RF')
+    xl = [int(x) for x in re.search(r'\*Nset, nset=XL\n([^\n]+)', deck).group(1).split(',')]
+    f = sorted(glob.glob(os.path.join(OUT, 'rfhist_vtk', '*.vtu')))[-1]
+    m = re.search(r'Name="NodeLabel"[^>]*>\n(.*?)\n</DataArray>', open(f).read(), re.S)
+    bl = base64.b64decode(m.group(1)); nb = struct.unpack('<I', bl[:4])[0]
+    lab = list(struct.unpack('<%di' % (nb // 4), bl[4:4 + nb]))
+    fx = sum(RF[3 * lab.index(n)] for n in xl)
+    ok &= check('reaction history: last value = field reaction', float(rows[-1].split(',')[1]), fx, 1e-5)
+    return ok
+
 if __name__ == '__main__':
     allok = True
     for c in cases:

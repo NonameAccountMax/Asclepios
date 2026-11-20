@@ -83,4 +83,9 @@ S
 *Output, history, time interval=5e-05
 *Incrementation Output
 DT, DMASS
+*Output, history, frequency=1
+*Node Output, nset=FIX
+RF1, RF2, RF3
+*Node Output, nset=MON
+U1, U2, U3
 *End Step

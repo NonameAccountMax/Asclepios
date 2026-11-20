@@ -69,6 +69,28 @@ OutputWriter::~OutputWriter() { close(); }
 void OutputWriter::close() {
   if (hist_) { std::fclose(hist_); hist_ = nullptr; }
   if (sta_) { std::fclose(sta_); sta_ = nullptr; }
+  if (rfh_) { std::fclose(rfh_); rfh_ = nullptr; }
+  if (monh_) { std::fclose(monh_); monh_ = nullptr; }
+}
+
+// total reaction of the node set of the history request, one line per requested increment (<job>_rf.csv)
+void OutputWriter::rf_history(double total_time, const double r[3]) {
+  if (!rfh_) {
+    rfh_ = std::fopen((job_ + "_rf.csv").c_str(), "w");
+    if (!rfh_) return;
+    std::fprintf(rfh_, "total_time,RF1,RF2,RF3\n");
+  }
+  std::fprintf(rfh_, "%.12g,%.9g,%.9g,%.9g\n", total_time, r[0], r[1], r[2]);
+}
+
+// displacements and rotations of the nodes of the history request (<job>_mon.csv, one line per node and increment)
+void OutputWriter::mon_history(double total_time, int label, const double* u6) {
+  if (!monh_) {
+    monh_ = std::fopen((job_ + "_mon.csv").c_str(), "w");
+    if (!monh_) return;
+    std::fprintf(monh_, "total_time,node,U1,U2,U3,UR1,UR2,UR3\n");
+  }
+  std::fprintf(monh_, "%.12g,%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", total_time, label, u6[0], u6[1], u6[2], u6[3], u6[4], u6[5]);
 }
 
 void OutputWriter::sta_header(int step, const std::string& name, bool explicit_step) {

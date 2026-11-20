@@ -1027,21 +1027,10 @@ class ShellGroup : public ElementGroup {
       }
       out.e_art += 0.5 * ((hfo[0] + hf[0]) * dqx + (hfo[1] + hf[1]) * dqy + (hfo[2] + hf[2]) * dqtx +
                           (hfo[3] + hf[3]) * dqty + (o[4] + S.hgs[0]) * dgx + (o[5] + S.hgs[1]) * dgy);
-      // viscous part of the transverse shear mode (rate), zeta ~ 0.1 of the mode critical damping; none on the
-      // membrane and rotation modes (the relaxed stiffness has no viscous term)
-      double vq[6] = {0, 0, 0, 0, 0, 0};
-      if (in.dynamic && in.dt > 0) {
-        const double mtr_hg = rho * t0 * gm.A / 4.0, Ihg = irot[e * 4] * msf[e];
-        const double zeta = 0.1;
-        const double cmx = 2 * zeta * std::sqrt(Em * kxx * mtr_hg / gg), cmy = 2 * zeta * std::sqrt(Em * kyy * mtr_hg / gg);
-        const double cbx = 2 * zeta * std::sqrt(Db * kby * Ihg / gg), cby = 2 * zeta * std::sqrt(Db * kbx * Ihg / gg);
-        const double cg0 = hv[0] > 0 ? 2 * zeta * std::sqrt(kv[0] / hv[0]) : 0.0;
-        const double cg1 = hv[1] > 0 ? 2 * zeta * std::sqrt(kv[1] / hv[1]) : 0.0;
-        (void)cmx; (void)cmy; (void)cbx; (void)cby;
-        vq[4] = cg0 * dgx / in.dt; vq[5] = cg1 * dgy / in.dt;
-        out.e_visc += vq[0] * dqx + vq[1] * dqy + vq[2] * dqtx + vq[3] * dqty + vq[4] * dgx + vq[5] * dgy;
-      }
-      const double Gx = S.hgs[0] + vq[4], Gy = S.hgs[1] + vq[5];
+      // no viscous term on the hourglass modes: the force of a single S4R launched at 1000 mm/s is the stiffness
+      // force K u from the first increment (Abaqus/Explicit, free elements and a clamped plate kicked at one node:
+      // same displacements to 1e-5, same spectrum up to the highest plate modes)
+      const double Gx = S.hgs[0], Gy = S.hgs[1];
       // moments conjugate to the warping correction: d(q_x)/d(theta_y) = -sum(gamma z)/4 at every node,
       // d(q_y)/d(theta_x) = +sum(gamma z)/4 (without them the stiffness is not symmetric and the rigid
       // rotations of a warped element have a negative energy)

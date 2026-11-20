@@ -63,6 +63,11 @@ SF
 *Output, history, time interval=0.00015
 *Incrementation Output
 DT, DMASS
+*Output, history, frequency=1
+*Node Output, nset=FIX
+RF1, RF2, RF3
+*Node Output, nset=MON
+U1, U2, U3, UR1, UR2, UR3
 *End Step
 *Step, name=Support, nlgeom=YES
 *Dynamic, Explicit
@@ -78,6 +83,11 @@ SF
 *Output, history, time interval=0.00015
 *Incrementation Output
 DT, DMASS
+*Output, history, frequency=1
+*Node Output, nset=FIX
+RF1, RF2, RF3
+*Node Output, nset=MON
+U1, U2, U3, UR1, UR2, UR3
 *End Step
 *Step, name=Replace, nlgeom=YES
 *Dynamic, Explicit
@@ -93,4 +103,9 @@ SF
 *Output, history, time interval=0.00015
 *Incrementation Output
 DT, DMASS
+*Output, history, frequency=1
+*Node Output, nset=FIX
+RF1, RF2, RF3
+*Node Output, nset=MON
+U1, U2, U3, UR1, UR2, UR3
 *End Step
