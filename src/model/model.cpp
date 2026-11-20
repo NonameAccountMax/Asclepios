@@ -348,6 +348,14 @@ class Builder {
     std::string full = sc.prefix + name;
     auto& sets = is_node ? m.nsets : m.elsets;
     auto& out = sets[full];
+    if (is_node && c.has("ELSET")) {  // *NSET, ELSET=<element set>: the nodes of its elements
+      auto it = m.elsets.find(target_prefix + upper(c.get("ELSET")));
+      if (it == m.elsets.end()) it = m.elsets.find(upper(c.get("ELSET")));
+      if (it == m.elsets.end()) throw std::runtime_error("*NSET: unknown element set " + c.get("ELSET") + " (" + c.where() + ")");
+      for (int e : it->second) out.insert(out.end(), m.elems[e].nodes.begin(), m.elems[e].nodes.end());
+      dedupe(out);
+      return;
+    }
     bool gen = c.has("GENERATE");
     for (auto& d : c.data) {
       if (gen) {
@@ -761,8 +769,10 @@ class Builder {
           if (!st.output_defined) { st.output = OutputRequest(); st.output_defined = true; }
           st.output.field_intervals = c.geti("NUMBER INTERVAL", st.output.field_intervals);
           st.output.field_time_interval = c.getd("TIME INTERVAL", st.output.field_time_interval);
+          st.output.field_frequency = c.geti("FREQUENCY", st.output.field_frequency);
           if (c.has("TIME MARKS")) st.output.time_marks = c.getu("TIME MARKS") == "YES";
-          if (st.output.field_intervals == 0 && st.output.field_time_interval == 0) st.output.field_intervals = 20;
+          if (st.output.field_intervals == 0 && st.output.field_time_interval == 0 && st.output.field_frequency == 0)
+            st.output.field_intervals = 20;
         } else {
           last_output = 2;
           if (c.has("NUMBER INTERVAL")) st.output.history_intervals = c.geti("NUMBER INTERVAL", 200);

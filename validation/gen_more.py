@@ -546,6 +546,21 @@ def input_features():
              'by 0.1.', [c11, ids[3, 3]], [c00, c10, c01], True, 'linear', 'linear', category='feature', group='input',
              twin=False)
 
+    # *NSET, ELSET=: the nodes of an element set (here the first column of elements, clamped)
+    d = Deck('nset_from_elset', 'S4R cantilever plate clamped through a node set built from an element set')
+    quads, ids = quad_plate(d, 8, 2, 20.0, 5.0)
+    shell(d, 'S4R', quads, 0.5, 'STEEL')
+    root = [k + 1 for k, q in enumerate(quads) if min(d.nodes[n][0] for n in q) < 1e-9]
+    d.model += ['*Elset, elset=ROOT'] + [', '.join(map(str, root))] + ['*Nset, nset=CLAMP, elset=ROOT']
+    fix = sorted({n for k in root for n in quads[k - 1]})
+    tip = [ids[8, j] for j in range(3)]
+    d.steps += static_step('Load', ['*Boundary', 'CLAMP, ENCASTRE', '*Cload'] +
+                           ['%d, 3, %s' % (n, fmt(-1.0 * w)) for n, w in zip(tip, (0.25, 0.5, 0.25))], False,
+                           rot=True, nframes=1)
+    register(d, 'static', 'S4R', '*NSET, ELSET=', 'Cantilever plate clamped on the nodes of its first column of '
+             'elements, given as *NSET, ELSET= (node set built from an element set), tip load.', tip, fix, True,
+             'linear', 'linear', category='feature', group='input', twin=False)
+
     d = Deck('transverse_shear_thick', 'Thick S4R cantilever with user transverse shear stiffness')
     quads, ids = quad_plate(d, 10, 2, 20.0, 4.0)
     shell(d, 'S4R', quads, 4.0, 'STEEL')

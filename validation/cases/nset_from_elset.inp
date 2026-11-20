@@ -1,0 +1,83 @@
+*Heading
+S4R cantilever plate clamped through a node set built from an element set
+*Node
+1, 0., 0., 0.
+2, 2.5, 0., 0.
+3, 5, 0., 0.
+4, 7.5, 0., 0.
+5, 10, 0., 0.
+6, 12.5, 0., 0.
+7, 15, 0., 0.
+8, 17.5, 0., 0.
+9, 20, 0., 0.
+10, 0., 2.5, 0.
+11, 2.5, 2.5, 0.
+12, 5, 2.5, 0.
+13, 7.5, 2.5, 0.
+14, 10, 2.5, 0.
+15, 12.5, 2.5, 0.
+16, 15, 2.5, 0.
+17, 17.5, 2.5, 0.
+18, 20, 2.5, 0.
+19, 0., 5, 0.
+20, 2.5, 5, 0.
+21, 5, 5, 0.
+22, 7.5, 5, 0.
+23, 10, 5, 0.
+24, 12.5, 5, 0.
+25, 15, 5, 0.
+26, 17.5, 5, 0.
+27, 20, 5, 0.
+*Element, type=S4R, elset=EALL
+1, 1, 2, 11, 10
+2, 2, 3, 12, 11
+3, 3, 4, 13, 12
+4, 4, 5, 14, 13
+5, 5, 6, 15, 14
+6, 6, 7, 16, 15
+7, 7, 8, 17, 16
+8, 8, 9, 18, 17
+9, 10, 11, 20, 19
+10, 11, 12, 21, 20
+11, 12, 13, 22, 21
+12, 13, 14, 23, 22
+13, 14, 15, 24, 23
+14, 15, 16, 25, 24
+15, 16, 17, 26, 25
+16, 17, 18, 27, 26
+*Nset, nset=MON
+9, 18, 27
+*Nset, nset=FIX
+1, 2, 10, 11, 19, 20
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+*Elset, elset=MONE
+1, 9, 16
+*Shell Section, elset=EALL, material=STEEL
+0.5, 5
+*Elset, elset=ROOT
+1, 9
+*Nset, nset=CLAMP, elset=ROOT
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=NO
+*Static
+1., 1.
+*Boundary
+CLAMP, ENCASTRE
+*Cload
+9, 3, -0.25
+18, 3, -0.5
+27, 3, -0.25
+*Output, field, number interval=1, time marks=YES
+*Node Output
+U, RF, UR, RM
+*Element Output, elset=MONE
+S, SF
+*Output, history, variable=PRESELECT
+*End Step

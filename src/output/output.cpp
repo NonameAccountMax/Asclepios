@@ -106,7 +106,9 @@ void OutputWriter::frame(int step, const std::string& step_name, double st, doub
   const Model& m = A_.m;
   const int nn = A_.nn;
   char fname[512];
-  std::snprintf(fname, sizeof(fname), "%s/%s_%05d.vtu", dir_.c_str(), job_.c_str(), nframes_);
+  const size_t js = job_.find_last_of('/');
+  const std::string jbase = js == std::string::npos ? job_ : job_.substr(js + 1);
+  std::snprintf(fname, sizeof(fname), "%s/%s_%05d.vtu", dir_.c_str(), jbase.c_str(), nframes_);
   FILE* f = std::fopen(fname, "w");
   if (!f) { warn("cannot write %s", fname); return; }
   // cells
@@ -170,7 +172,9 @@ void OutputWriter::frame(int step, const std::string& step_name, double st, doub
   std::fclose(f);
   char entry[600];
   const char* base = std::strrchr(fname, '/');
-  std::snprintf(entry, sizeof(entry), "<DataSet timestep=\"%.9g\" group=\"\" part=\"0\" file=\"%s/%s\"/>", tt, dir_.c_str(), base ? base + 1 : fname);
+  const size_t ds = dir_.find_last_of('/');
+  const std::string dbase = ds == std::string::npos ? dir_ : dir_.substr(ds + 1);
+  std::snprintf(entry, sizeof(entry), "<DataSet timestep=\"%.9g\" group=\"\" part=\"0\" file=\"%s/%s\"/>", tt, dbase.c_str(), base ? base + 1 : fname);
   pvd_entries_.push_back(entry);
   ++nframes_;
   write_pvd();

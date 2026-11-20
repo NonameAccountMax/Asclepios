@@ -255,7 +255,8 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     info("  increment %4d  t=%.4g  dt=%.4g  iterations %d", inc, t, dt, it - 1);
     W.history(si, inc, t, A.total_time, dt, 0.0);
     bool last = t >= st.period * (1 - 1e-12);
-    if (nfr <= 0 || t >= next_frame - 1e-9 * st.period || last) {
+    const int ffreq = st.output.field_frequency;
+    if (ffreq > 0 ? (inc % ffreq == 0 || last) : (nfr <= 0 || t >= next_frame - 1e-9 * st.period || last)) {
       W.frame(si, st.name, t, A.total_time);
       if (nfr > 0) while (next_frame <= t + 1e-9 * st.period) next_frame += fr_dt;
     }

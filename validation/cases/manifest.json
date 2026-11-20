@@ -7849,6 +7849,51 @@
   "deferred": false
  },
  {
+  "name": "nset_from_elset",
+  "category": "feature",
+  "group": "input",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "*NSET, ELSET=",
+  "description": "Cantilever plate clamped on the nodes of its first column of elements, given as *NSET, ELSET= (node set built from an element set), tip load.",
+  "mon": [
+   9,
+   18,
+   27
+  ],
+  "fix": [
+   1,
+   2,
+   10,
+   11,
+   19,
+   20
+  ],
+  "mone": [
+   1,
+   9,
+   16
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.05,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": null,
+  "deferred": false
+ },
+ {
   "name": "transverse_shear_thick",
   "category": "feature",
   "group": "input",

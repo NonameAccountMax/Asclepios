@@ -106,6 +106,29 @@ def contact_impact():
     ok &= check('impact: mechanical energy kept (0.70-1.0)', min(max(r, 0.70), 1.0), r, 1e-12)
     return ok
 
+@case
+def output_frequency_and_paths():
+    # *OUTPUT, FIELD, FREQUENCY=n in a static step (a frame every n increments and at the end of the step; ignored
+    # in explicit steps, as Abaqus/Explicit does), job written through an absolute -o path in another directory:
+    # every frame listed in the .pvd exists next to it
+    src = os.path.join(OUT, 'freq.inp')
+    bar(src, 'C3D8R', static=True, nlgeom='YES', disp=1.0)
+    deck = open(src).read()
+    deck = re.sub(r'\*Output, field[^\n]*', '*Output, field, frequency=3', deck)
+    deck = re.sub(r'(\*Static[^\n]*\n)[^\n]*', r'\g<1>0.05, 1.', deck)
+    open(src, 'w').write(deck)
+    job = os.path.join(OUT, 'sub', 'freqjob')
+    os.makedirs(os.path.dirname(job), exist_ok=True)
+    r = subprocess.run([BIN, src, '-q', '-o', job], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip())
+    files = re.findall(r'file="([^"]+)"', open(job + '.pvd').read())
+    ninc = int(re.search(r'\((\d+) increments', open(job + '.dat').read()).group(1))
+    ok = check('field frequency 3: number of frames', len(files), 1 + ninc // 3 + (1 if ninc % 3 else 0), 1e-12)
+    present = sum(os.path.exists(os.path.join(os.path.dirname(job), f)) for f in files)
+    ok &= check('frames found next to the .pvd (absolute -o)', present, len(files), 1e-12)
+    return ok
+
 if __name__ == '__main__':
     allok = True
     for c in cases:

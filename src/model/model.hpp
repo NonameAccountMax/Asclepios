@@ -140,6 +140,7 @@ struct LoadBlock {  // one keyword occurrence inside a step
 struct OutputRequest {
   int field_intervals = 0;         // NUMBER INTERVAL
   double field_time_interval = 0;  // TIME INTERVAL
+  int field_frequency = 0;         // FREQUENCY (Abaqus/Standard): a frame every n increments and at the step end
   // TIME MARKS=YES: explicit increments are shortened to reach the field output times exactly; by default (NO, as
   // Abaqus/Explicit) a frame is written at the end of the first increment that reaches or passes the output time
   bool time_marks = false;

@@ -129,7 +129,10 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
 
   static double mass0 = 0;
   static double dt_last_inc = 0;
-  const int nfr = st.output.field_intervals;
+  // FREQUENCY applies to Abaqus/Standard field output only: ignored here, as Abaqus/Explicit does (20 intervals)
+  if (st.output.field_frequency > 0)
+    warn("step %s: *OUTPUT, FIELD, FREQUENCY ignored in an explicit step (NUMBER INTERVAL or TIME INTERVAL)", st.name.c_str());
+  const int nfr = st.output.field_intervals > 0 || st.output.field_time_interval > 0 ? st.output.field_intervals : 20;
   const double fr_dt = nfr > 0 ? st.period / nfr : (st.output.field_time_interval > 0 ? st.output.field_time_interval : st.period);
   const int nhist = std::max(1, st.output.history_intervals);
   const double hist_dt = st.period / nhist;
