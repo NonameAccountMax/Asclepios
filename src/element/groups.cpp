@@ -23,7 +23,7 @@ std::vector<std::unique_ptr<ElementGroup>> make_element_groups(const Model& m) {
       std::unique_ptr<ElementGroup> grp;
       switch (t) {
         case ElType::C3D8R: case ElType::C3D8: case ElType::C3D8I: case ElType::C3D4: grp = make_solid_group(); break;
-        case ElType::S4R: case ElType::S4: case ElType::S3R: grp = make_shell_group(); break;
+        case ElType::S4R: case ElType::S4: case ElType::S3R: case ElType::S3RS: grp = make_shell_group(); break;
         case ElType::B31: grp = make_beam_group(); break;
         case ElType::CONN3D2: grp = make_connector_group(); break;
         default: continue;
@@ -32,7 +32,7 @@ std::vector<std::unique_ptr<ElementGroup>> make_element_groups(const Model& m) {
       it = g.emplace(t, std::move(grp)).first;
     }
     bool kind_ok = (s.kind == Section::SOLID && (t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4)) ||
-                   (s.kind == Section::SHELL && (t == ElType::S4R || t == ElType::S4 || t == ElType::S3R)) ||
+                   (s.kind == Section::SHELL && (t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS)) ||
                    (s.kind == Section::BEAM && t == ElType::B31) || (s.kind == Section::CONNECTOR && t == ElType::CONN3D2);
     if (!kind_ok) throw std::runtime_error("element " + m.elem_name(e) + ": section type does not match element type");
     if (s.kind != Section::CONNECTOR && s.material < 0) throw std::runtime_error("element " + m.elem_name(e) + ": section without material");

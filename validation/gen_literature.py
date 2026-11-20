@@ -184,7 +184,7 @@ def clamped_plate(etype, n):
     d = Deck('lit_clamped_plate_%s' % etype.lower(), '%s clamped square plate under pressure (a / t = 100), %d x %d '
              'mesh' % (etype, n, n))
     quads, ids = quad_plate(d, n, n, 20.0, 20.0)
-    shell(d, etype, tris_from_quads(quads) if etype == 'S3R' else quads, 0.2, 'STEEL')
+    shell(d, etype, tris_from_quads(quads) if etype.startswith('S3') else quads, 0.2, 'STEEL')
     d.model += ['*Surface, type=ELEMENT, name=STOP', 'EALL, SPOS']
     edge = d.select(lambda x, y, z: near(x, 0) or near(y, 0) or near(x, 20.0) or near(y, 20.0))
     q = 0.01
@@ -196,6 +196,31 @@ def clamped_plate(etype, n):
         'pressure 0.01: deflection of the centre (thin plate theory, w = 0.00126532 q a^4 / D).',
         'Timoshenko and Woinowsky-Krieger (1959), Theory of Plates and Shells, sec. 44; series value from Taylor and '
         'Govindjee (2004), Commun. Numer. Meth. Engng 20:757-765: 0.00126532 q a^4 / D',
+        [check_u(ids[n // 2, n // 2], 3, w, 0.02, sign=-1.0, label='centre deflection')], edge)
+
+
+def thick_plate(etype, n):
+    d = Deck('lit_thick_plate_%s' % etype.lower(), '%s simply supported thick square plate under pressure (a / t = 10), '
+             '%d x %d mesh' % (etype, n, n))
+    a, t, q, nu = 10.0, 1.0, 0.1, 0.3
+    quads, ids = quad_plate(d, n, n, a, a)
+    shell(d, etype, tris_from_quads(quads) if etype.startswith('S3') else quads, t, 'STEEL')
+    d.model += ['*Surface, type=ELEMENT, name=STOP', 'EALL, SPOS']
+    # hard simple support: w and the rotation about the edge normal held on every edge
+    d.nset('EX', d.select(lambda x, y, z: near(x, 0) or near(x, a)))
+    d.nset('EY', d.select(lambda x, y, z: near(y, 0) or near(y, a)))
+    d.nset('NALL', list(d.nodes))
+    edge = d.select(lambda x, y, z: near(x, 0) or near(y, 0) or near(x, a) or near(y, a))
+    dflex = 210000.0 * t ** 3 / (12 * (1 - nu ** 2))
+    kgt = 5.0 / 6.0 * 210000.0 / (2 * (1 + nu)) * t
+    w = 0.00406235 * q * a ** 4 / dflex + 0.0736713 * q * a * a / kgt
+    d.steps += static_step('Load', ['*Boundary', 'NALL, 1, 2', 'EX, 3, 4', 'EY, 3, 3', 'EY, 5, 5',
+                                    '*Dsload', 'STOP, P, %s' % fmt(q)], False, rot=True, nframes=1)
+    lit(d, etype, 'thick plate', 'Simply supported (hard) square plate (a = 10, t = 1, E = 210000, nu = 0.3, shear '
+        'factor 5/6) under uniform pressure 0.1: deflection of the centre, Mindlin plate theory (shear part 5 %).',
+        'Wang, Reddy and Lee (2000), Shear Deformable Beams and Plates, Elsevier: w = w_K + M_K / (k G t) for simply '
+        'supported polygonal plates; w_K = 0.00406235 q a^4 / D (Timoshenko and Woinowsky-Krieger 1959, sec. 30), '
+        'Marcus moment at the centre M_K = 0.0736713 q a^2; w = 0.4273 q a^4 / (100 D)',
         [check_u(ids[n // 2, n // 2], 3, w, 0.02, sign=-1.0, label='centre deflection')], edge)
 
 
@@ -265,6 +290,8 @@ def generate():
         nafems_le1(etype, 48, 24)
     clamped_plate('S4R', 16)
     clamped_plate('S3R', 32)
+    clamped_plate('S3RS', 16)
+    thick_plate('S3RS', 16)
     lame_cylinder('C3D8R', 8, 16)
     lame_cylinder('C3D4', 16, 32)
     elastica(5.0, 40)

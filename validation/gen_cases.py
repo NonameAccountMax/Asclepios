@@ -31,9 +31,9 @@ KNOWN_QUANTITIES.update({name: (['E'], ENERGY_NOTE) for name in ('c3d8r_thermal'
                                                                   'c3d8_plastic')})
 KNOWN_QUANTITIES['symmetry_bcs_xpl'] = (['RM'], 'Reaction moments not compared: the corner nodes carry both the clamping '
                                         'and the symmetry conditions')
-S3R_XPL_RM = ('S3R reaction moments about the clamped edge not compared in explicit dynamics (the reference values do '
-              'not follow from equilibrium); asclepios gives the implicit value')
-for _n in ('elem_s3_xpl', 's3r_pressure_xpl', 's3r_pressure_pulse'):
+S3R_XPL_RM = ('Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit '
+              'dynamics (the reference values do not follow from equilibrium); asclepios gives the implicit value')
+for _n in ('elem_s3_xpl', 's3r_pressure_xpl', 's3r_pressure_pulse', 'elem_s3rs_xpl'):
     KNOWN_QUANTITIES[_n] = (['RM'], S3R_XPL_RM)
 SCORDELIS_RM = ('Reaction moments along the diaphragms not compared on this coarse curved mesh (8 x 8, 5 degrees per '
                 'element): they differ from the reference by a discretisation term that vanishes with refinement '

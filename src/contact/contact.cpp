@@ -121,7 +121,7 @@ bool GeneralContact::define(const Step& st) {
       int ge = G.ids[e];
       if (!incl[ge]) continue;
       const int* cn = &G.conn[e * G.nen];
-      if (G.type == ElType::S4R || G.type == ElType::S4 || G.type == ElType::S3R) {
+      if (G.type == ElType::S4R || G.type == ElType::S4 || G.type == ElType::S3R || G.type == ElType::S3RS) {
         Vec3 p[4];
         for (int I = 0; I < G.nen; ++I) p[I] = m.X[cn[I]];
         // smallest height of the triangular facets (a quadrilateral is split along its 0-2 diagonal)

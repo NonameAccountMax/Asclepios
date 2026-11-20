@@ -1,4 +1,4 @@
-// S4R / S3R shells: Belytschko-Lin-Tsay style corotational one-point element (C0 triangle for S3R),
+// S4R / S3R / S3RS shells: Belytschko-Lin-Tsay style corotational one-point element (C0 triangle for S3R, S3RS),
 // Simpson integration through the thickness, stiffness hourglass control derived from exact element
 // modes (in-plane bending of the membrane, curvature variation of the rotations, linear transverse
 // shear sampled at the edge midpoints) and a small drilling stiffness.
@@ -326,11 +326,41 @@ double quad_shear_ops(const Geo& g, double G[4][4][3]) {
   return gg;
 }
 
-// Transverse shear of the triangle from its three edge strains (assumed natural strain, as for the quadrilateral):
-// the shear field a + c (-y, x) (coordinates from the centroid) whose tangential component at the middle of each
-// edge reproduces the edge strain. Zero for every field with linear rotations and quadratic deflection. G[c][I][k]:
-// derivative of a_x (c = 0), a_y (c = 1) and c (c = 2) with respect to dof k of node I (0: w, 1: theta_x,
-// 2: theta_y); G[3] = 0. jp: polar moment of the area about the centroid (energy of the rotational part).
+// S3RS transverse shear from the three edge strains: the shear field a + c (-y, x) (coordinates from the centroid)
+// whose tangential component at the middle of each edge reproduces the edge strain; the element keeps the uniform
+// part a only (one point at the centroid, no stiffness on the circulation c). G[c][I][k]: derivative of a_x (c = 0),
+// a_y (c = 1) and c (c = 2) with respect to dof k of node I (0: w, 1: theta_x, 2: theta_y); G[3] = 0. Reproduces
+// the single-element Abaqus/Explicit S3RS stiffness to 1e-7 (5 shapes, thickness 0.01 to 1)
+void tri_edge_shear_ops(const Geo& g, double G[4][4][3]) {
+  double M[3][3], R[3][3][3];  // rows: edges; R[edge][node][dof]
+  for (int k = 0; k < 3; ++k) {
+    const int a = k, b = (k + 1) % 3;
+    const double tx = g.xl[b][0] - g.xl[a][0], ty = g.xl[b][1] - g.xl[a][1];
+    const double mx = 0.5 * (g.xl[a][0] + g.xl[b][0]), my = 0.5 * (g.xl[a][1] + g.xl[b][1]);
+    M[k][0] = tx; M[k][1] = ty; M[k][2] = mx * ty - my * tx;
+    for (int I = 0; I < 3; ++I) R[k][I][0] = R[k][I][1] = R[k][I][2] = 0.0;
+    R[k][b][0] += 1.0; R[k][a][0] -= 1.0;
+    for (int N : {a, b}) { R[k][N][1] += -0.5 * ty; R[k][N][2] += 0.5 * tx; }
+  }
+  // inverse of M by cofactors
+  const double c00 = M[1][1] * M[2][2] - M[1][2] * M[2][1], c01 = M[1][2] * M[2][0] - M[1][0] * M[2][2];
+  const double c02 = M[1][0] * M[2][1] - M[1][1] * M[2][0];
+  const double det = M[0][0] * c00 + M[0][1] * c01 + M[0][2] * c02;
+  double Mi[3][3];
+  Mi[0][0] = c00 / det; Mi[1][0] = c01 / det; Mi[2][0] = c02 / det;
+  Mi[0][1] = (M[0][2] * M[2][1] - M[0][1] * M[2][2]) / det;
+  Mi[1][1] = (M[0][0] * M[2][2] - M[0][2] * M[2][0]) / det;
+  Mi[2][1] = (M[0][1] * M[2][0] - M[0][0] * M[2][1]) / det;
+  Mi[0][2] = (M[0][1] * M[1][2] - M[0][2] * M[1][1]) / det;
+  Mi[1][2] = (M[0][2] * M[1][0] - M[0][0] * M[1][2]) / det;
+  Mi[2][2] = (M[0][0] * M[1][1] - M[0][1] * M[1][0]) / det;
+  for (int c = 0; c < 3; ++c)
+    for (int I = 0; I < 3; ++I)
+      for (int q = 0; q < 3; ++q) G[c][I][q] = Mi[c][0] * R[0][I][q] + Mi[c][1] * R[1][I][q] + Mi[c][2] * R[2][I][q];
+  for (int I = 0; I < 3; ++I) G[3][I][0] = G[3][I][1] = G[3][I][2] = 0.0;
+  for (int q = 0; q < 4; ++q) for (int a = 0; a < 3; ++a) G[q][3][a] = 0.0;
+}
+
 // transverse shear of the triangle as a degenerate quad: corners (k+1, k+2, k, k), the degenerate corner k being
 // the apex of the most isosceles view of the triangle (the other two angles closest). Homogeneous shear from the
 // covariant edge strains (no shear for constant curvature), with the circulation of the edge strains ("crop
@@ -472,7 +502,7 @@ class ShellGroup : public ElementGroup {
         ts_factor[e] = 1.0 / (1.0 + 0.25e-4 * area / (s.thickness * s.thickness));
       }
     }
-    if (nen == 3) {  // S3R: thin-shell factor as S4R, degenerate corner and crop-circle coefficients
+    if (nen == 3) {  // S3R: thin-shell factor as S4R, degenerate corner and crop-circle coefficients; S3RS factor
       ts_factor.assign(size(), 1.0);
       tri_k.assign(size(), 0);
       tri_c.assign(size() * 2, 0.0);
@@ -483,7 +513,18 @@ class ShellGroup : public ElementGroup {
         Geo g0;
         geometry(x, 3, g0);
         tri_collapse_setup(g0, tri_k[e], &tri_c[e * 2]);
-        if (!s.has_ts) ts_factor[e] = 1.0 / (1.0 + 0.25e-4 * g0.A / (s.thickness * s.thickness));
+        if (s.has_ts) continue;
+        const double t = s.thickness, fp = 1.0 / (1.0 + 0.25e-4 * g0.A / (t * t));
+        if (type != ElType::S3RS) { ts_factor[e] = fp; continue; }
+        // S3RS: full shear stiffness on thick elements (no thin-shell factor); on thin ones the shear acts as a
+        // penalty scaled by t / (2.4 L) (L the shortest edge) and by the thin-shell factor. The switch lies
+        // between t^2 / A = 0.080 and 0.092 (single-element probes, 7 shapes): taken at 1/12
+        double L2 = 1e300;
+        for (int I = 0; I < 3; ++I) {
+          const double dx = g0.xl[(I + 1) % 3][0] - g0.xl[I][0], dy = g0.xl[(I + 1) % 3][1] - g0.xl[I][1];
+          L2 = std::min(L2, dx * dx + dy * dy);
+        }
+        ts_factor[e] = 12.0 * t * t >= g0.A ? 1.0 : fp * t / (2.4 * std::sqrt(L2));
       }
     }
     for (int e = 0; e < size(); ++e) {
@@ -642,6 +683,7 @@ class ShellGroup : public ElementGroup {
     double ggm = 4.0;
     if (n == 4 && type == ElType::S4) edge_shear_ops(gm.xl, Gm, invm);
     else if (n == 4) ggm = quad_shear_ops(gm, Gm);
+    else if (type == ElType::S3RS) tri_edge_shear_ops(gm, Gm);
     else tri_degenerate_shear_ops(gm, tri_k[e], &tri_c[e * 2], Gm, cwm);
     dg[0] = dg[1] = 0;
     for (int I = 0; I < n; ++I)
@@ -921,6 +963,7 @@ class ShellGroup : public ElementGroup {
     double G1[4][4][3], inv1[4], cw1;
     if (n == 4 && type == ElType::S4) edge_shear_ops(g1.xl, G1, inv1);
     else if (n == 4) quad_shear_ops(g1, G1);
+    else if (type == ElType::S3RS) tri_edge_shear_ops(g1, G1);
     else tri_degenerate_shear_ops(g1, tri_k[e], &tri_c[e * 2], G1, cw1);
     for (int I = 0; I < n; ++I) {
       double b1 = g1.B1[I], b2 = g1.B2[I];
@@ -930,7 +973,7 @@ class ShellGroup : public ElementGroup {
       fl[I][4] += A * (b1 * M[0] + b2 * M[2]);
       for (int q = 0; q < 3; ++q) fl[I][2 + q] += A * (G1[0][I][q] * Q[0] + G1[1][I][q] * Q[1]);
     }
-    if (n == 3) {  // rotational part of the shear field of the triangle (physical shear energy)
+    if (n == 3 && type != ElType::S3RS) {  // rotational part of the shear field of the triangle (physical shear energy)
       double dgc = 0;
       for (int I = 0; I < 3; ++I) dgc += Gm[2][I][0] * du[I][2] + Gm[2][I][1] * dth[I][0] + Gm[2][I][2] * dth[I][1];
       S.hgs[0] += kv[0] * dgc;

@@ -13,7 +13,7 @@ replacement for a commercial package.
 | Area | Supported |
 |---|---|
 | Input | `*INCLUDE`, `*PARAMETER` (expressions), `*PART` / `*ASSEMBLY` / `*INSTANCE` (translation, rotation), `Assembly.Instance.set` names, `*NODE`, `*ELEMENT`, `*NSET` / `*ELSET` (GENERATE, INSTANCE), `*SURFACE` (ELEMENT SPOS/SNEG/S1…S6, NODE), `*ORIENTATION` (rectangular) |
-| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN) |
+| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN) |
 | Materials | isotropic `*ELASTIC`, tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC, `*HYPERELASTIC` NEO HOOKE, linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
@@ -100,6 +100,10 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   triangle seen as a degenerate quadrilateral whose two merged corners sit at its most isosceles vertex (homogeneous part from the covariant edge
   strains plus a shape-dependent share of their circulation, weak stiffness 0.001 on the circulation, same thin-shell
   factor as S4R), drilling on the corner rotations (explicit: against the element spin, the first node counted twice).
+  S3RS: membrane, curvature and drilling as S3R; uniform transverse shear from the three edge strains (the shear field
+  whose tangential components at the edge midpoints reproduce them, one point at the centroid, no stiffness on their
+  circulation); full shear stiffness k G t on thick elements (t² ≥ A/12), a penalty k G t · t / (2.4 L) times the
+  thin-shell factor on thin ones (L the shortest edge).
 - **Shell rotary inertia** (explicit): the same about the three axes, nodal mass times A/12 + ((L²/16)⁴ + (t²/6)⁴)^¼,
   with L the shortest edge of a triangle or the area over the longest median of a quadrilateral (the distance
   between opposite edges of a parallelogram); rotations do not control the stable increment.
@@ -121,9 +125,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-165 small decks, run after every change of the solver:
+167 small decks, run after every change of the solver:
 
-- every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, B31, CONN3D2) under tension, bending, torsion, shear,
+- every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
   rigid rotation;
 - classic benchmarks of the finite element literature, compared with their published values (below);
@@ -134,7 +138,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 Displacements, rotations, reaction forces and energy histories are compared over the whole load history: with the
 closed-form solution wherever the nodal solution is known by hand (46 cases, within 0.1 %; most are exact), with
-published values for the literature benchmarks (15 cases), and otherwise with reference results that each user
+published values for the literature benchmarks (17 cases), and otherwise with reference results that each user
 produces on a machine where a licence of the reference solver is available. Reference results of commercial solvers,
 and comparisons with them, are not distributed with this repository.
 
@@ -158,6 +162,8 @@ Refined meshes, linear static unless stated; error relative to the published con
 | NAFEMS LE1 elliptic membrane | S3R, 48 × 24 × 2 | same | 93.97 MPa | 92.7 MPa | 1.36 % | NAFEMS (1990) |
 | Clamped square plate, a / t = 100 | S4R, 16 × 16 | centre deflection | 0.013198 | 0.013159 | 0.29 % | Timoshenko and Woinowsky-Krieger (1959) |
 | Clamped square plate, a / t = 100 | S3R, 32 × 32 × 2 | same | 0.013056 | 0.013159 | 0.78 % | Timoshenko and Woinowsky-Krieger (1959) |
+| Clamped square plate, a / t = 100 | S3RS, 16 × 16 × 2 | same | 0.013238 | 0.013159 | 0.60 % | Timoshenko and Woinowsky-Krieger (1959) |
+| Simply supported thick plate, a / t = 10 (Mindlin) | S3RS, 16 × 16 × 2 | centre deflection | 2.1963e-4 | 2.2219e-4 | 1.15 % | Wang, Reddy and Lee (2000) |
 | Thick cylinder under internal pressure (Lamé) | C3D8R, 8 × 16 | inner / outer radial displacement | 9.0874e-3 / 5.7829e-3 | 9.0794e-3 / 5.7778e-3 | 0.09 % | Timoshenko and Goodier (1970) |
 | Thick cylinder under internal pressure (Lamé) | C3D4, 16 × 32 × 6 | same | 9.0122e-3 / 5.7761e-3 | 9.0794e-3 / 5.7778e-3 | 0.74 % | Timoshenko and Goodier (1970) |
 | Elastica, P L² / EI = 5 (large rotation) | B31, 40 | tip displacement across / along the beam | 71.368 / 38.700 | 71.379 / 38.763 | 0.16 % | Mattiasson (1981) |
@@ -198,8 +204,8 @@ Features exercised by the validation suite and not supported yet:
 
 Accuracy and performance:
 
-- Shells: drilling rotations and element stresses of static in-plane problems; S3 and S3RS are read but computed
-  with the S3R formulation.
+- Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
+  formulation.
 - Dynamics: reactions of beams in free vibration (high-frequency content); stresses of the most compressed elements
   in large-strain plastic impacts; stability of thin Fung shells closing with contact (valve model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).

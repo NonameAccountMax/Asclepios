@@ -306,7 +306,7 @@ void Analysis::external_forces(double st, double tt, std::vector<double>& f) {
     int nf = 0;
     double sgn = 1;
     switch (el.type) {
-      case ElType::S4R: case ElType::S4: case ElType::S3R:
+      case ElType::S4R: case ElType::S4: case ElType::S3R: case ElType::S3RS:
         nf = (int)el.nodes.size();
         for (int i = 0; i < nf; ++i) nodes[i] = el.nodes[i];
         sgn = pl.face.face < 0 ? -1.0 : 1.0;  // SPOS face: outward normal = +n

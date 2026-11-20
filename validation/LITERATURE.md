@@ -118,6 +118,31 @@ Source: Timoshenko and Woinowsky-Krieger (1959), Theory of Plates and Shells, se
 | S3R | 8 | centre deflection | 0.0092323 | 0.013159 | 29.84 % |
 | S3R | 16 | centre deflection | 0.012367 | 0.013159 | 6.02 % |
 | S3R | 32 | centre deflection | 0.013056 | 0.013159 | 0.78 % |
+| S3RS | 4 | centre deflection | 0.009869 | 0.013159 | 25.00 % |
+| S3RS | 8 | centre deflection | 0.012656 | 0.013159 | 3.83 % |
+| S3RS | 16 | centre deflection | 0.013238 | 0.013159 | 0.60 % |
+| S3RS | 32 | centre deflection | 0.013095 | 0.013159 | 0.49 % |
+
+## Simply supported thick plate under pressure (a / t = 10)
+
+Source: Wang, Reddy and Lee (2000), Shear Deformable Beams and Plates, Elsevier: w = w_K + M_K / (k G t) for simply supported polygonal plates; w_K = 0.00406235 q a^4 / D (Timoshenko and Woinowsky-Krieger 1959, sec. 30), Marcus moment at the centre M_K = 0.0736713 q a^2; w = 0.4273 q a^4 / (100 D).
+
+![Simply supported thick plate under pressure (a / t = 10)](literature/thick_plate.png)
+
+| Element | Mesh | Quantity | asclepios | Published | Error |
+|---|---|---|---|---|---|
+| S4R | 4 | centre deflection | 0.00022569 | 0.00022219 | 1.58 % |
+| S4R | 8 | centre deflection | 0.00022303 | 0.00022219 | 0.38 % |
+| S4R | 16 | centre deflection | 0.00022239 | 0.00022219 | 0.09 % |
+| S4R | 32 | centre deflection | 0.00022224 | 0.00022219 | 0.02 % |
+| S3R | 4 | centre deflection | 0.00016866 | 0.00022219 | 24.09 % |
+| S3R | 8 | centre deflection | 0.000209 | 0.00022219 | 5.93 % |
+| S3R | 16 | centre deflection | 0.00021895 | 0.00022219 | 1.46 % |
+| S3R | 32 | centre deflection | 0.00022138 | 0.00022219 | 0.36 % |
+| S3RS | 4 | centre deflection | 0.00017925 | 0.00022219 | 19.33 % |
+| S3RS | 8 | centre deflection | 0.00021179 | 0.00022219 | 4.68 % |
+| S3RS | 16 | centre deflection | 0.00021963 | 0.00022219 | 1.15 % |
+| S3RS | 32 | centre deflection | 0.00022155 | 0.00022219 | 0.29 % |
 
 ## Thick cylinder under internal pressure (Lame)
 

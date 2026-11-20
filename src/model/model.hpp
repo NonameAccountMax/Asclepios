@@ -9,7 +9,7 @@
 
 namespace abq {
 
-enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, B31, T3D2, CONN3D2, UNKNOWN };
+enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, UNKNOWN };
 const char* eltype_name(ElType t);
 ElType eltype_from(const std::string& abaqus_name, int& nnodes);
 

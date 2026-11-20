@@ -20,6 +20,7 @@ const char* eltype_name(ElType t) {
     case ElType::S4R: return "S4R";
     case ElType::S4: return "S4";
     case ElType::S3R: return "S3R";
+    case ElType::S3RS: return "S3RS";
     case ElType::B31: return "B31";
     case ElType::T3D2: return "T3D2";
     case ElType::CONN3D2: return "CONN3D2";
@@ -35,7 +36,8 @@ ElType eltype_from(const std::string& n0, int& nn) {
   if (n == "C3D4") { nn = 4; return ElType::C3D4; }
   if (n == "S4R" || n == "S4RS" || n == "S4R5") { nn = 4; return ElType::S4R; }
   if (n == "S4") { nn = 4; return ElType::S4; }
-  if (n == "S3R" || n == "S3" || n == "S3RS") { nn = 3; return ElType::S3R; }
+  if (n == "S3R" || n == "S3") { nn = 3; return ElType::S3R; }
+  if (n == "S3RS") { nn = 3; return ElType::S3RS; }
   if (n == "B31" || n == "B31H") { nn = 2; return ElType::B31; }
   if (n == "T3D2") { nn = 2; return ElType::T3D2; }
   if (n == "CONN3D2") { nn = 2; return ElType::CONN3D2; }
