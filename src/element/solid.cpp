@@ -4,6 +4,7 @@
 // strain increment from the mid-increment configuration, stresses rotated with Hughes-Winget.
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 
 #include "element/groups.hpp"
 #include "material/material.hpp"
@@ -248,9 +249,10 @@ class SolidGroup : public ElementGroup {
  public:
   int npt = 1;
   std::vector<PointState> st;    // size()*npt
-  std::vector<double> hgq;       // C3D8R: 12 per element (4 modes x 3 comps)
-  std::vector<double> hgk;       // hourglass stiffness per element (initial, explicit)
-  std::vector<double> hgv;       // C3D8R, explicit: relaxing part of the hourglass forces (12 per element)
+  std::vector<double> hgq;       // C3D8R: 12 per element (4 modes x 3 comps): generalized hourglass strains
+                                 // (default control) or total forces (enhanced control)
+  std::vector<double> hgl;       // C3D8R, explicit: element length in the initial configuration (relaxation time)
+  std::vector<double> hgv;       // C3D8R, explicit: relaxed part of the hourglass strains (12 per element)
   std::vector<double> hgf;       // C3D8R, explicit: applied hourglass forces (12 per element)
   std::vector<char> hgr;         // C3D8R, explicit: relaxed hourglass stiffness (default) or constant
   std::vector<double> hgs;       // hourglass scale of the section (*SECTION CONTROLS)
@@ -267,7 +269,7 @@ class SolidGroup : public ElementGroup {
     rot = false;
     st.assign(size() * npt, PointState());
     if (type == ElType::C3D8R) {
-      hgq.assign(size() * 12, 0.0); hgv.assign(size() * 12, 0.0); hgf.assign(size() * 12, 0.0); hgr.assign(size(), 1); hgk.assign(size(), 0.0); hgs.assign(size(), 1.0); fdt.assign(size(), 1);
+      hgq.assign(size() * 12, 0.0); hgv.assign(size() * 12, 0.0); hgf.assign(size() * 12, 0.0); hgr.assign(size(), 1); hgl.assign(size(), 0.0); hgs.assign(size(), 1.0); fdt.assign(size(), 1);
       hgKi.assign(size(), -1); hgK.clear();
     }
     mat.resize(size());
@@ -283,9 +285,9 @@ class SolidGroup : public ElementGroup {
         double V = hex_mean_grad(x, b);
         double bb = 0;
         for (int I = 0; I < 8; ++I) bb += norm2(b[I]);
-        // explicit procedures: instantaneous stiffness 8/15 G V sum_I |grad N_I|^2 for the vectors gamma below,
-        // isotropic (single-element Abaqus/Explicit runs, HOURGLASS=STIFFNESS: exact for cubes and bricks, any nu)
-        hgk[e] = 8.0 / 15.0 * s.hg_scale * mat[e]->shear_modulus() * V * bb;
+        // explicit procedures: the relaxation time of the hourglass forces is set by the initial element (the
+        // undamped stable-increment length of the undeformed brick), the stiffness follows the current one
+        hgl[e] = std::max(2.0 / std::sqrt(8 * bb), s.face_dt ? face_length(x, V) : 0.0);
         hgr[e] = s.hg_relax;
         hgs[e] = s.hg_scale;
         fdt[e] = s.face_dt;
@@ -302,8 +304,8 @@ class SolidGroup : public ElementGroup {
     }
   }
 
-  void save(BinOut& o) const override { ElementGroup::save(o); o.vec(st); o.vec(hgq); o.vec(hgv); o.vec(hgf); o.vec(hgk); o.vec(hgs); }
-  void load(BinIn& in) override { ElementGroup::load(in); in.vec(st); in.vec(hgq); in.vec(hgv); in.vec(hgf); in.vec(hgk); in.vec(hgs); }
+  void save(BinOut& o) const override { ElementGroup::save(o); o.vec(st); o.vec(hgq); o.vec(hgv); o.vec(hgf); o.vec(hgl); o.vec(hgs); }
+  void load(BinIn& in) override { ElementGroup::load(in); in.vec(st); in.vec(hgq); in.vec(hgv); in.vec(hgf); in.vec(hgl); in.vec(hgs); }
   double alpha_damping(int e) const override { return mat[e]->damp_alpha; }
 
   void mass(int e, const double* X, double* mt, double* mr) const override {
@@ -433,16 +435,16 @@ class SolidGroup : public ElementGroup {
           }
         }
         // relaxed stiffness (explicit default, HOURGLASS=RELAX STIFFNESS): standard linear solid on each mode,
-        // force = Q_e - r Q_v with Q_e the elastic force at the instantaneous stiffness, Q_v following Q_e with
-        // the relaxation time tau (exponential kernel, integrated exactly for a linear Q_e over the increment) and
-        // r = 0.9 (long-term stiffness 0.1 times the instantaneous one); tau = 1000 times the undamped stable
-        // increment of the element. Fitted on single-element Abaqus/Explicit runs (hourglass mode prescribed, then
-        // held: relaxation of the reaction, independent of the step time, scaling with size, density and modulus)
+        // relaxed strain q_v following q with the relaxation time tau (exponential kernel, integrated exactly for
+        // a linear q over the increment), r = 0.9 (long-term stiffness 0.1 times the instantaneous one); tau = 1000
+        // times the undamped stable increment of the initial element (independent of later stretching). Fitted on
+        // single-element Abaqus/Explicit runs (hourglass mode prescribed, then held: relaxation of the reaction,
+        // independent of the step time, scaling with size, density and modulus; bricks stretched beforehand)
         const bool relax = in.dynamic && hgr[e] && hgKi[e] < 0;
         const double rr = relax ? 0.9 : 0.0;
         double ra = 0, rb = 0;
         if (relax && in.dt > 0) {
-          const double tau = 1000.0 * std::max(Le, Ldt) / std::sqrt(M / rho), x = in.dt / tau;
+          const double tau = 1000.0 * hgl[e] / std::sqrt(M / rho), x = in.dt / tau;
           rb = x < 1e-3 ? x * (1.0 - x * (0.5 - x / 6.0)) : 1.0 - std::exp(-x);  // 1 - exp(-x)
           ra = 1.0 - rb / x;      // weight of the increment of Q_e
         }
@@ -451,7 +453,13 @@ class SolidGroup : public ElementGroup {
         // vectors with unit nodal values, with a factor per direction proportional to sum_I (dN_I/dx_i)^2 (current
         // mean gradients): k_i = c G V sum_I (dN_I/dx_i)^2, c = 0.0754 for the vectors gamma below (1/8 included),
         // which reproduces the Abaqus results of bending, torsion, pressure and the NAFEMS LE10 plate
-        double kd3[3] = {hgk[e], hgk[e], hgk[e]};
+        // explicit: instantaneous stiffness 8/15 G V sum_I |grad N_I|^2 on the current configuration (isotropic;
+        // single-element Abaqus/Explicit runs, HOURGLASS=STIFFNESS and RELAX STIFFNESS, bricks stretched from
+        // lambda = 0.5 to 1.5: exact to 1e-4), G the elastic shear modulus also during plastic flow
+        double bbc = 0;
+        for (int I = 0; I < 8; ++I) bbc += norm2(b1[I]);
+        const double kc = 8.0 / 15.0 * hgs[e] * mat[e]->shear_modulus() * V1 * bbc;
+        double kd3[3] = {kc, kc, kc};
         if (!in.dynamic && !(mat[e]->fung || mat[e]->neohooke)) {
           double Si[3] = {0, 0, 0};
           for (int I = 0; I < 8; ++I) { Si[0] += b1[I].x * b1[I].x; Si[1] += b1[I].y * b1[I].y; Si[2] += b1[I].z * b1[I].z; }
@@ -480,10 +488,22 @@ class SolidGroup : public ElementGroup {
             dQ = Vec3(v[0], v[1], v[2]);
           }
           Vec3 qold = load3(qn + 3 * a), vold = load3(qvn + 3 * a), fold = load3(qfn + 3 * a);
-          Vec3 qnew = qold + dQ;
-          Vec3 vnew = vold * (1.0 - rb) + qold * rb + dQ * ra;
-          // enhanced control: total forces; default: increments of Q_e - r Q_v, scaled during plastic flow
-          Vec3 fnew = Kq ? qnew : fold + (dQ - (vnew - vold) * rr) * hg_flow;
+          Vec3 qnew, vnew, fnew;
+          if (Kq) {  // enhanced control: total forces of the coupled stiffness
+            qnew = qold + dQ;
+            vnew = vold;
+            fnew = qnew;
+          } else {
+            // default: the relaxation acts on the generalized hourglass strains (q: total, q_v: relaxed part
+            // following q with the time tau); force increments k (dq - r dq_v) at the current stiffness, scaled
+            // during plastic flow. Same as relaxing the forces while k is constant; differs when the element
+            // shape changes (single-element Abaqus/Explicit runs: compression to lambda = 0.5 together with
+            // an hourglass mode, elastic and plastic, reproduced to 4 digits)
+            qnew = qold + dq;
+            vnew = vold * (1.0 - rb) + qold * rb + dq * ra;
+            const Vec3 dv = vnew - vold;
+            fnew = fold + (dQ - Vec3(dv.x * kd3[0], dv.y * kd3[1], dv.z * kd3[2]) * rr) * hg_flow;
+          }
           out.e_art += 0.5 * dot(fold + fnew, dq);
           store3(qn + 3 * a, qnew);
           store3(qvn + 3 * a, vnew);

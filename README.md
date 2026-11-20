@@ -80,9 +80,11 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   `TIME MARKS=YES` the output times are reached exactly, the increments before each of them being made equal (the
   remainder spread over up to 10 increments).
 - **C3D8R hourglass control**: Flanagan-Belytschko vectors. Explicit procedures: relaxed stiffness (`RELAX STIFFNESS`,
-  the default), a standard linear solid on each mode: instantaneous stiffness 8/15·G·V·Σ|∇N|²,
-  long-term 0.1 of it, relaxation time 1000 undamped stable increments of the element; during plastic flow the force
-  increments are scaled by max(0.1, H/(3G + H)); `HOURGLASS=STIFFNESS` keeps the instantaneous value. Implicit
+  the default), a standard linear solid on each mode: instantaneous stiffness 8/15·G·V·Σ|∇N|² on the current
+  shape of the brick, long-term 0.1 of it, relaxation of the generalized hourglass strains with a time of 1000
+  undamped stable increments of the initial element (force increments k·(Δq − 0.9·Δq_v) at the current stiffness);
+  during plastic flow the force increments are scaled by max(0.1, H/(3G + H)); `HOURGLASS=STIFFNESS` keeps the
+  instantaneous value. Implicit
   procedures: 0.005 G-based with a stiffness per spatial direction (sum of the squared mean gradients in that
   direction). Enhanced control (`HOURGLASS=ENHANCED`, and by default for hyperelastic materials): coupled stiffness of the 12 hourglass modes taken from the
   incompatible-mode brick (9 modes condensed, initial moduli) evaluated on the parallelepiped of the centre
@@ -130,7 +132,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-173 small decks, run after every change of the solver:
+174 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and

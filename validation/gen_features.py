@@ -449,6 +449,40 @@ def element_features():
              '1.4 ms (about six relaxation times): the deflection grows as the hourglass stiffness relaxes.', tip, fix,
              False, 'dynamic', category='feature', group='element', twin=False)
 
+    # hourglass control of C3D8R on stretched bricks (explicit): every node follows a homogeneous stretch lambda
+    # along z (lateral 1/sqrt(lambda)) except one corner, free along x and pushed sideways once the stretch is held:
+    # its motion is resisted by the uniform-strain and hourglass stiffnesses of the current (stretched) brick. Every
+    # other node prescribed, slow push: tolerance of the static Abaqus-referenced cases (the hourglass stiffness of
+    # the undeformed brick gives 2.4 % on U)
+    d = Deck('hourglass_stretched_c3d8r_xpl', 'Stretched C3D8R bricks, corner pushed sideways (explicit): hourglass')
+    corners = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)]
+    variants = [(0.5, 'STEEL', 2500.), (0.75, 'STEEL', 4800.), (1.5, 'STEEL', 6900.), (0.5, 'COPPER', 600.)]
+    body, mon, fix, conns = [], [], [], {'STEEL': [], 'COPPER': []}
+    d.model += ['*Amplitude, name=PUSH, definition=SMOOTH STEP', '0., 0., 0.004, 0., 0.005, 1.']
+    for k, (lam, mat, push) in enumerate(variants):
+        ids = [d.node(3.0 * k + x, y, z) for x, y, z in corners]
+        conns[mat].append(ids)
+        lt = 1.0 / math.sqrt(lam)
+        for n, (x, y, z) in zip(ids, corners):
+            u = [(lt - 1) * (x - 0.5), (lt - 1) * (y - 0.5), (lam - 1) * z]
+            free = (x, y, z) == (1, 1, 1)
+            (mon if free else fix).append(n)
+            for j in range(3):
+                if free and j == 0:
+                    continue
+                name = 'S%dD%d' % (n, j + 1)
+                d.model += ['*Amplitude, name=%s, definition=SMOOTH STEP' % name, '0., 0., 0.004, %s, 0.008, %s' % (fmt(u[j]), fmt(u[j]))]
+                body += ['*Boundary, amplitude=%s' % name, '%d, %d, %d, 1.' % (n, j + 1, j + 1)]
+        body += ['*Cload, amplitude=PUSH', '%d, 1, %s' % (ids[6], fmt(push))]
+    solid(d, 'C3D8R', conns['STEEL'], 'STEEL', elset='EST')
+    solid(d, 'C3D8R', conns['COPPER'], 'COPPER', elset='ECU')
+    d.steps += explicit_step('Push', 0.008, body, nframes=40)
+    register(d, 'explicit', 'C3D8R', 'hourglass of stretched bricks', 'Four 1 mm C3D8R bricks stretched homogeneously '
+             'to lambda = 0.5, 0.75 and 1.5 (elastic steel) and 0.5 (elastic-plastic copper) over 4 ms, every node '
+             'prescribed except one corner, free along x and pushed sideways (about 0.2 mm) once the stretch is held: the '
+             'relaxed hourglass stiffness follows the current shape of the brick.', mon, fix, False, 'linear',
+             category='feature', group='element', twin=False)
+
     # in-plane bending of a row of S3R triangles in explicit dynamics: drilling of the triangles (merged corner of
     # the degenerate quadrilateral counted twice, rotations against the element spin)
     d = Deck('s3r_inplane_cantilever_xpl', 'S3R strip, in-plane tip load (explicit): triangle drilling')
