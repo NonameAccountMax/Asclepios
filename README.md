@@ -209,9 +209,10 @@ Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: default rotary inertia of beams (isotropic here, anisotropic in Abaqus: reactions of beams in free
-  vibration differ by 10 %); stresses of the most compressed elements
-  in large-strain plastic impacts; stability of thin Fung shells closing with contact (valve model).
+- Dynamics: default rotary inertia of beams (isotropic here, anisotropic in Abaqus); beam-to-shell impact (energy
+  and reactions within 20 %) and self-contact of a coiled strip (reactions after the first contact); stresses of the
+  most compressed elements in large-strain plastic impacts; stability of thin Fung shells closing with contact (valve
+  model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).
 - Energies: ALLIE from material-point quantities (strain energy plus plastic dissipation) instead of the work of nodal
   forces.

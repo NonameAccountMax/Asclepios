@@ -189,6 +189,8 @@ def history_error(mine, ref, key):
         mser = [[r[0]] + r[c0:c0 + 3] for r in mh[lab]]
         if key == 'UR' and max(norm(r[1:]) for r in rser) > 1.0:
             return None
+        if key == 'UR' and max(norm(r[1:]) for r in rser) < 1e-3:  # numerical zero at this node
+            continue
         dts = sorted(b[0] - a[0] for a, b in zip(rser[:-1], rser[1:]) if b[0] > a[0])
         w = RF_WINDOW * dts[len(dts) // 2]
         times = [r[0] for r in rser]
@@ -200,15 +202,22 @@ def history_error(mine, ref, key):
 
 def field_error(mine, ref, key):
     """Peak-normalised error of a nodal vector field over all reference frames and monitored nodes. Rotations that
-    stay below 1e-3 rad in the reference (numerical zero, e.g. a flat impact) are not compared."""
+    stay below 1e-3 rad in the reference (numerical zero, e.g. a flat impact), for the case or at a monitored node,
+    are not compared."""
     peak, err = field_peak(ref, key), 0.0
     if peak == 0.0 or (key == 'UR' and peak < 1e-3):
         return None
     h = history_error(mine, ref, key)
     if h is not None:
         return h
+    small = set()  # monitored nodes whose rotation stays a numerical zero (below 1e-3 rad)
+    if key == 'UR':
+        labs = {lab for fr in ref['frames'] for lab in fr.get(key, {})}
+        small = {lab for lab in labs if max(norm(fr[key][lab]) for fr in ref['frames'] if lab in fr.get(key, {})) < 1e-3}
     for fr in ref['frames']:
         for lab, v in fr.get(key, {}).items():
+            if lab in small:
+                continue
             series = [[m['t'], m[key][lab]] for m in mine['frames'] if lab in m.get(key, {})]
             if not series:
                 return float('inf')
