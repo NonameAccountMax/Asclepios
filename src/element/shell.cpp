@@ -516,15 +516,17 @@ class ShellGroup : public ElementGroup {
         if (s.has_ts) continue;
         const double t = s.thickness, fp = 1.0 / (1.0 + 0.25e-4 * g0.A / (t * t));
         if (type != ElType::S3RS) { ts_factor[e] = fp; continue; }
-        // S3RS: full shear stiffness on thick elements (no thin-shell factor); on thin ones the shear acts as a
-        // penalty scaled by t / (2.4 L) (L the shortest edge) and by the thin-shell factor. The switch lies
-        // between t^2 / A = 0.080 and 0.092 (single-element probes, 7 shapes): taken at 1/12
+        // S3RS: full shear stiffness on thick elements (t > L / 5, L the shortest edge; no thin-shell factor); on
+        // thin ones the shear acts as a penalty scaled by t / (2.4 L) and by the thin-shell factor, independent of
+        // the elastic constants (single-element probes: 6 shapes, thickness swept across the switch, three moduli
+        // and Poisson ratios)
         double L2 = 1e300;
         for (int I = 0; I < 3; ++I) {
           const double dx = g0.xl[(I + 1) % 3][0] - g0.xl[I][0], dy = g0.xl[(I + 1) % 3][1] - g0.xl[I][1];
           L2 = std::min(L2, dx * dx + dy * dy);
         }
-        ts_factor[e] = 12.0 * t * t >= g0.A ? 1.0 : fp * t / (2.4 * std::sqrt(L2));
+        const double L = std::sqrt(L2);
+        ts_factor[e] = 5.0 * t > L ? 1.0 : fp * t / (2.4 * L);
       }
     }
     for (int e = 0; e < size(); ++e) {

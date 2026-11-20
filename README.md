@@ -102,8 +102,8 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   factor as S4R), drilling on the corner rotations (explicit: against the element spin, the first node counted twice).
   S3RS: membrane, curvature and drilling as S3R; uniform transverse shear from the three edge strains (the shear field
   whose tangential components at the edge midpoints reproduce them, one point at the centroid, no stiffness on their
-  circulation); full shear stiffness k G t on thick elements (t² ≥ A/12), a penalty k G t · t / (2.4 L) times the
-  thin-shell factor on thin ones (L the shortest edge).
+  circulation); full shear stiffness k G t on thick elements (t > L/5, L the shortest edge), a penalty
+  k G t · t / (2.4 L) times the thin-shell factor on thin ones.
 - **Shell rotary inertia** (explicit): the same about the three axes, nodal mass times A/12 + ((L²/16)⁴ + (t²/6)⁴)^¼,
   with L the shortest edge of a triangle or the area over the longest median of a quadrilateral (the distance
   between opposite edges of a parallelogram); rotations do not control the stable increment.
