@@ -53,6 +53,8 @@ void Analysis::setup() {
   temp.assign(nn, 0); temp_prev.assign(nn, 0); fv1.assign(nn, 0);
   fixed.assign(6 * nn, 0);
   node_rot.assign(nn, 0);
+  node_aniso.assign(nn, 0);
+  jrot.assign(6 * (size_t)nn, 0.0);
   groups = make_element_groups(m);
   ties.clear();
   for (const auto& el : m.elems)
@@ -65,6 +67,15 @@ void Analysis::setup() {
     efor[g].assign((size_t)G.size() * G.nen * 6, 0.0);
     if (G.rot && G.type != ElType::CONN3D2)
       for (int n : G.conn) node_rot[n] = 1;
+    if (G.rot) {
+      std::vector<double> xe(3 * G.nen);
+      double J6[6];
+      for (int e = 0; e < G.size(); ++e) {
+        for (int I = 0; I < G.nen; ++I) for (int k = 0; k < 3; ++k) xe[3 * I + k] = X[3 * G.conn[e * G.nen + I] + k];
+        if (G.rotary_tensor(e, xe.data(), J6))
+          for (int I = 0; I < G.nen; ++I) node_aniso[G.conn[e * G.nen + I]] = 1;
+      }
+    }
     int cnt = G.size();
     info("  %-8s %8d elements", eltype_name(G.type), cnt);
   }
@@ -94,6 +105,74 @@ void Analysis::lump_masses() {
       }
     }
   }
+  rotary_tensors(false);
+}
+
+void Analysis::rotary_tensors(bool with_increment) {
+  any_aniso = false;
+  for (int n = 0; n < nn; ++n)
+    if (node_aniso[n]) { any_aniso = true; for (int k = 0; k < 6; ++k) jrot[6 * n + k] = 0.0; }
+  if (!any_aniso) return;
+  for (auto& gp : groups) {
+    auto& G = *gp;
+    if (!G.rot) continue;
+    std::vector<double> xe(3 * G.nen);
+    double J6[6];
+    for (int e = 0; e < G.size(); ++e) {
+      for (int I = 0; I < G.nen; ++I) {
+        const int n = G.conn[e * G.nen + I];
+        for (int k = 0; k < 3; ++k) xe[3 * I + k] = X[3 * n + k] + u[6 * n + k] + (with_increment ? du[6 * n + k] : 0.0);
+      }
+      if (!G.rotary_tensor(e, xe.data(), J6)) continue;
+      for (int I = 0; I < G.nen; ++I) {
+        const int n = G.conn[e * G.nen + I];
+        for (int k = 0; k < 6; ++k) jrot[6 * n + k] += J6[k] * G.msf[e];
+      }
+    }
+  }
+}
+
+namespace {
+Mat3 node_inertia(const std::vector<double>& jrot, double mr, int n) {
+  const double* j = &jrot[6 * (size_t)n];
+  Mat3 J;
+  J.m[0][0] = j[0] + mr; J.m[1][1] = j[1] + mr; J.m[2][2] = j[2] + mr;
+  J.m[0][1] = J.m[1][0] = j[3]; J.m[0][2] = J.m[2][0] = j[4]; J.m[1][2] = J.m[2][1] = j[5];
+  return J;
+}
+}  // namespace
+
+void Analysis::rotary_accelerations(int n, const double* r, const double* w, double* acc, double* react) const {
+  const Mat3 J = node_inertia(jrot, mr[n], n);
+  const Vec3 om(w[0], w[1], w[2]);
+  const Vec3 g = cross(om, J * om);  // gyroscopic moment
+  double rhs[3] = {r[0] - g.x, r[1] - g.y, r[2] - g.z};
+  // fixed dofs: zero acceleration, the reduced system is solved on the free ones
+  Mat3 K = J;
+  double b[3];
+  for (int i = 0; i < 3; ++i) {
+    const bool fx = fixed[6 * n + 3 + i];
+    b[i] = fx ? 0.0 : rhs[i];
+    if (fx)
+      for (int j = 0; j < 3; ++j) { K.m[i][j] = K.m[j][i] = 0.0; }
+  }
+  for (int i = 0; i < 3; ++i) if (fixed[6 * n + 3 + i]) K.m[i][i] = 1.0;
+  const double d = K.det();
+  Vec3 x = std::fabs(d) > 0 ? K.inverse() * Vec3(b[0], b[1], b[2]) : Vec3();
+  const double xa[3] = {x.x, x.y, x.z};
+  for (int i = 0; i < 3; ++i) {
+    const bool fx = fixed[6 * n + 3 + i];
+    acc[i] = fx ? 0.0 : xa[i];
+    double ja = 0;
+    for (int j = 0; j < 3; ++j) ja += J.m[i][j] * (fixed[6 * n + 3 + j] ? 0.0 : xa[j]);
+    react[i] = fx ? -(rhs[i] - ja) : 0.0;
+  }
+}
+
+double Analysis::rotary_energy(int n, const double* w) const {
+  const Mat3 J = node_inertia(jrot, mr[n], n);
+  const Vec3 om(w[0], w[1], w[2]);
+  return 0.5 * dot(om, J * om);
 }
 
 void Analysis::temperatures(double st, double tt) {

@@ -1,0 +1,65 @@
+*Heading
+Free B31 elements twisted by axial moments (explicit): default rotary inertia about the beam axis
+*Node
+1, 0., 0., 0.
+2, 1, 0., 0.
+3, 0., 50, 0.
+4, 2, 50, 0.
+5, 0., 100, 0.
+6, 1, 101, 1
+*Element, type=B31, elset=B1
+1, 1, 2
+*Element, type=B31, elset=B2
+2, 3, 4
+*Element, type=B31, elset=B3
+3, 5, 6
+*Nset, nset=MON
+1, 2, 3, 4, 5, 6
+*Elset, elset=B1
+1
+*Elset, elset=B2
+2
+*Elset, elset=B3
+3
+*Elset, elset=MONE
+1
+*Beam Section, elset=B1, material=STEEL, section=RECT
+2., 1.
+0., 0., -1.
+*Beam Section, elset=B2, material=STEEL, section=PIPE
+3., 0.5
+0., 0., -1.
+*Beam Section, elset=B3, material=STEEL, section=RECT
+2., 1.
+0., 0., -1.
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=YES
+*Dynamic, Explicit, direct user control
+1e-09, 1e-08
+*Cload
+1, 4, 100000
+2, 4, 100000
+3, 4, 10000000
+4, 4, 10000000
+5, 4, 57735.02692
+5, 5, 57735.02692
+5, 6, 57735.02692
+6, 4, 57735.02692
+6, 5, 57735.02692
+6, 6, 57735.02692
+*Output, field, number interval=10
+*Node Output
+U, RF, UR, RM, V
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT, time interval=5e-11
+*Output, history, time interval=5e-11
+*Incrementation Output
+DT, DMASS
+*End Step

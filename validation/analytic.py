@@ -805,6 +805,36 @@ def heat_transfer(case, nodes):
     return fr, {}
 
 
+def beam_twist(case, nodes):
+    """Free B31 elements twisted about their axis by a moment M at both nodes: rigid rotation with the default
+    rotary inertia J = rho L / 2 (I11 + I22) per node (RECT: (b h^3 + h b^3) / 12, PIPE: thin wall at the mean
+    radius, 2 pi r^3 t), theta = M t^2 / (2 J)."""
+    from gen_features import BEAM_TWIST
+    rho = 7.85e-9
+    polar = {'RECT': (2.0 * 1.0 ** 3 + 1.0 * 2.0 ** 3) / 12, 'PIPE': 2 * math.pi * (3.0 - 0.25) ** 3 * 0.5}
+    elems = []
+    for sec, dims, p0, p1, moment in BEAM_TWIST:
+        length = math.dist(p0, p1)
+        axis = [(q - p) / length for p, q in zip(p0, p1)]
+        elems.append((p0, p1, axis, moment, rho * length / 2 * polar[sec]))
+
+    def owner(x, y, z):
+        for p0, p1, axis, moment, J in elems:
+            if math.dist((x, y, z), p0) < 1e-9 or math.dist((x, y, z), p1) < 1e-9:
+                return axis, moment, J
+        raise KeyError((x, y, z))
+
+    def rot(t, x, y, z):
+        axis, moment, J = owner(x, y, z)
+        th = moment * t * t / (2 * J)
+        return tuple(th * a for a in axis)
+    times = ramp(10, 1e-8)
+    fr = frames_of(case, nodes, times, lambda t, x, y, z: (0.0, 0.0, 0.0), rot)
+    ts = [0.0] + times
+    ke = [[t, sum(2 * 0.5 * (moment * t) ** 2 / J for _, _, _, moment, J in elems)] for t in ts]
+    return fr, {'ALLKE': ke, 'ALLWK': ke}
+
+
 SOLUTIONS = {
     'tension': solid_tension, 'thermal': solid_thermal, 'shear_hyper': solid_shear, 'plastic': solid_plastic,
     's4r_membrane': shell_membrane, 's3r_membrane': shell_membrane, 's4r_bending': shell_bending,
@@ -831,7 +861,7 @@ SOLUTIONS = {
     # the initial connector force is not a load: equilibrium (free length reached) from the first increment
     'connector_reference_length': lambda c, n: (frames_of(c, n, ramp(10), lambda t, x, y, z: (-1.0, 0.0, 0.0),
                                                           rf=lambda t: (0.0, 0.0, 0.0)), {}),
-    'elem_b31h': b31_bending,
+    'elem_b31h': b31_bending, 'beam_rotary_inertia_torsion_xpl': beam_twist,
 }
 
 

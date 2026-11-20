@@ -111,8 +111,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   with L the shortest edge of a triangle or the area over the longest median of a quadrilateral (the distance
   between opposite edges of a parallelogram); S3RS: nodal mass times max(A/4, t²/6); rotations do not control the
   stable increment.
-- **B31 rotary inertia**: physical flexural inertia ρ·I·L/2 per node (exact rotary inertia of Timoshenko beams,
-  here isotropic with the larger moment); `ROTARY INERTIA=ISOTROPIC`: ρ·L/2·I_max·max((2 + 3u)/(2 + u), 6u/(1 + u))
+- **B31 rotary inertia**: by default the lumped inertia of the half element, anisotropic and carried by the beam
+  frame, ρ·L/2·(I11 + I22, I11, I22) about (axis, n1, n2) per node; the rotational equations of these nodes include
+  the gyroscopic moment ω × (J·ω). `ROTARY INERTIA=ISOTROPIC`: ρ·L/2·I_max·max((2 + 3u)/(2 + u), 6u/(1 + u))
   about every axis, u = A·L²/(24·I_min), independent of the elastic constants.
 - **B31 bulk viscosity** (explicit): b1·ρ·c·L on the axial strain rate and half of it on the curvature rates
   (moments 0.5·b1·ρ·c·L·I·κ̇); none on transverse shear and torsion.
@@ -132,7 +133,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-174 small decks, run after every change of the solver:
+176 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
@@ -213,10 +214,8 @@ Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: default rotary inertia of beams (isotropic here, anisotropic in Abaqus); beam-to-shell impact (energy
-  and reactions within 20 %) and self-contact of a coiled strip (reactions after the first contact); stresses of the
-  most compressed elements in large-strain plastic impacts; stability of thin Fung shells closing with contact (valve
-  model).
+- Dynamics: beam-to-shell impact (energy and reactions within 20 %) and self-contact of a coiled strip (reactions
+  after the first contact); stability of thin Fung shells closing with contact (valve model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).
 - Energies: ALLIE from material-point quantities (strain energy plus plastic dissipation) instead of the work of nodal
   forces.

@@ -1,0 +1,166 @@
+*Heading
+Free B31 elements, smooth nodal moments (explicit): default anisotropic rotary inertia
+*Node
+1, 0., 0., 0.
+2, 1, 0., 0.
+3, 0., 50, 0.
+4, 5, 50, 0.
+5, 0., 100, 0.
+6, 20, 100, 0.
+7, 0., 150, 0.
+8, 1, 150, 0.
+9, 0., 200, 0.
+10, 5, 200, 0.
+11, 0., 250, 0.
+12, 20, 250, 0.
+13, 0., 300, 0.
+14, 1, 300, 0.
+15, 0., 350, 0.
+16, 5, 350, 0.
+17, 0., 400, 0.
+18, 20, 400, 0.
+*Element, type=B31, elset=B1
+1, 1, 2
+*Element, type=B31, elset=B2
+2, 3, 4
+*Element, type=B31, elset=B3
+3, 5, 6
+*Element, type=B31, elset=B4
+4, 7, 8
+*Element, type=B31, elset=B5
+5, 9, 10
+*Element, type=B31, elset=B6
+6, 11, 12
+*Element, type=B31, elset=B7
+7, 13, 14
+*Element, type=B31, elset=B8
+8, 15, 16
+*Element, type=B31, elset=B9
+9, 17, 18
+*Nset, nset=MON
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+17, 18
+*Elset, elset=B1
+1
+*Elset, elset=B2
+2
+*Elset, elset=B3
+3
+*Elset, elset=B4
+4
+*Elset, elset=B5
+5
+*Elset, elset=B6
+6
+*Elset, elset=B7
+7
+*Elset, elset=B8
+8
+*Elset, elset=B9
+9
+*Elset, elset=MONE
+1
+*Amplitude, name=QS1, definition=SMOOTH STEP
+0., 0., 2e-08, 1.
+*Beam Section, elset=B1, material=STEEL, section=CIRC
+1.
+0., 0., -1.
+*Beam Section, elset=B2, material=STEEL, section=CIRC
+1.
+0., 0., -1.
+*Beam Section, elset=B3, material=STEEL, section=CIRC
+1.
+0., 0., -1.
+*Beam Section, elset=B4, material=STEEL, section=RECT
+2., 1.
+0., 0., -1.
+*Beam Section, elset=B5, material=STEEL, section=RECT
+2., 1.
+0., 0., -1.
+*Beam Section, elset=B6, material=STEEL, section=RECT
+2., 1.
+0., 0., -1.
+*Beam Section, elset=B7, material=STEEL, section=PIPE
+3., 0.5
+0., 0., -1.
+*Beam Section, elset=B8, material=STEEL, section=PIPE
+3., 0.5
+0., 0., -1.
+*Beam Section, elset=B9, material=STEEL, section=PIPE
+3., 0.5
+0., 0., -1.
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Step, name=Load, nlgeom=YES
+*Dynamic, Explicit, direct user control
+1e-09, 4e-08
+*Cload, amplitude=QS1
+1, 4, 154134.3896
+1, 5, -77067.19478
+1, 6, 107894.0727
+2, 4, 154134.3896
+2, 5, -77067.19478
+2, 6, 107894.0727
+3, 4, 770671.9478
+3, 5, -385335.9739
+3, 6, 539470.3635
+4, 4, 770671.9478
+4, 5, -385335.9739
+4, 6, 539470.3635
+5, 4, 3082687.791
+5, 5, -1541343.896
+5, 6, 2157881.454
+6, 4, 3082687.791
+6, 5, -1541343.896
+6, 6, 2157881.454
+7, 4, 130833.3333
+7, 5, -65416.66667
+7, 6, 91583.33333
+8, 4, 130833.3333
+8, 5, -65416.66667
+8, 6, 91583.33333
+9, 4, 654166.6667
+9, 5, -327083.3333
+9, 6, 457916.6667
+10, 4, 654166.6667
+10, 5, -327083.3333
+10, 6, 457916.6667
+11, 4, 2616666.667
+11, 5, -1308333.333
+11, 6, 1831666.667
+12, 4, 2616666.667
+12, 5, -1308333.333
+12, 6, 1831666.667
+13, 4, 6411027.266
+13, 5, -3205513.633
+13, 6, 4487719.086
+14, 4, 6411027.266
+14, 5, -3205513.633
+14, 6, 4487719.086
+15, 4, 32055136.33
+15, 5, -16027568.17
+15, 6, 22438595.43
+16, 4, 32055136.33
+16, 5, -16027568.17
+16, 6, 22438595.43
+17, 4, 128220545.3
+17, 5, -64110272.66
+17, 6, 89754381.72
+18, 4, 128220545.3
+18, 5, -64110272.66
+18, 6, 89754381.72
+*Output, field, number interval=8
+*Node Output
+U, RF, UR, RM, V
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT, time interval=2e-10
+*Output, history, time interval=2e-10
+*Incrementation Output
+DT, DMASS
+*End Step

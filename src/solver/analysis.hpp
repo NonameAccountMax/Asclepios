@@ -51,6 +51,16 @@ struct Analysis {
   std::vector<double> mt, mr, cdamp;              // nn masses, rotary inertia, alpha*m
   std::vector<double> temp, temp_prev, fv1;       // nn
   std::vector<char> node_rot;                     // node carries rotational stiffness/inertia
+  // anisotropic rotary inertia (beams with the default exact inertia): per node symmetric tensor (xx, yy, zz, xy,
+  // xz, yz) added to mr, in the current configuration; node_aniso flags the nodes that carry one
+  std::vector<double> jrot;
+  std::vector<char> node_aniso;
+  bool any_aniso = false;
+  void rotary_tensors(bool with_increment);       // jrot at X + u (+ du)
+  // rotational accelerations of an anisotropic node: J a = r - w x (J w) on the free rotational dofs; r and the
+  // result on the fixed dofs are the reactions (Abaqus sign: rf = -(r - J a))
+  void rotary_accelerations(int n, const double* r, const double* w, double* acc, double* react) const;
+  double rotary_energy(int n, const double* w) const;  // 0.5 w.(mr + J) w
   std::vector<char> fixed;                        // 6nn prescribed dof (current step)
   // kinematic ties (CONN3D2 JOIN): the translations of node b are those of node a
   std::vector<std::pair<int, int>> ties;

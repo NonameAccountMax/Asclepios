@@ -2,6 +2,7 @@
 // along the axis (uniform shear, no locking), cross-section integration points for CIRC / PIPE /
 // RECT (J2 plasticity in sigma11 + torsion shear, thermal expansion). Purely elastic sections use
 // resultants. Transverse shear stiffness with Abaqus' slenderness compensation factor (0.25).
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
@@ -132,17 +133,17 @@ class BeamGroup : public ElementGroup {
       double Ks = shear_stiff(e, L, G);
       double om_ax2 = 4 * E / (rho * L * L);
       double Ineed = 1.2 * (2 * std::max(E * std::max(P.I11, P.I22), G * P.J) / L + Ks * L / 2) / om_ax2;
-      // nodal rotary inertia: by default the physical flexural inertia rho I L / 2 (Abaqus default EXACT rotary
-      // inertia of Timoshenko beams, here isotropic with the larger flexural moment). ROTARY INERTIA=ISOTROPIC:
-      // rho L / 2 Imax max((2 + 3u) / (2 + u), 6u / (1 + u)) about every axis, u = A L^2 / (24 Imin);
-      // independent of the elastic constants and of the density (single-element Abaqus/Explicit runs: 3 sections,
-      // L / r from 0.5 to 50, three moduli: 1e-5)
+      // nodal rotary inertia. Default (Abaqus EXACT rotary inertia of Timoshenko beams): the lumped inertia of the
+      // half element, anisotropic and carried by the beam frame, rho L / 2 (I11 + I22, I11, I22) about (axis, n1,
+      // n2) (rotary_tensor; free single-element Abaqus/Explicit runs: torsional rotations exact to 2e-4 for CIRC
+      // and PIPE). ROTARY INERTIA=ISOTROPIC: rho L / 2 Imax max((2 + 3u) / (2 + u), 6u / (1 + u)) about every
+      // axis, u = A L^2 / (24 Imin); independent of the elastic constants and of the density (single-element
+      // Abaqus/Explicit runs: 3 sections, L / r from 0.5 to 50, three moduli: 1e-5)
       (void)Ineed;
-      const double Iflex = rho * L / 2 * std::max(P.I11, P.I22);
       const double Imin = std::min(P.I11, P.I22), Imax = std::max(P.I11, P.I22);
       const double u = P.A * L * L / (24.0 * Imin);
       const double Iiso = rho * L / 2 * Imax * std::max((2 + 3 * u) / (2 + u), 6 * u / (1 + u));
-      irot[e] = s.rotary_isotropic ? Iiso : Iflex;
+      irot[e] = s.rotary_isotropic ? Iiso : 0.0;
     }
     pts.assign((size_t)poff[size()] * 4, 0.0);
   }
@@ -157,6 +158,23 @@ class BeamGroup : public ElementGroup {
     double m = mat[e]->density * props[pidx[e]].A * L0[e] / 2;
     mt[0] = mt[1] = m;
     mr[0] = mr[1] = irot[e];
+  }
+
+  bool rotary_tensor(int e, const double* x, double* J6) const override {
+    if (sec[e]->rotary_isotropic) return false;
+    const SectionProps& P = props[pidx[e]];
+    const Vec3 t = normalized(load3(x + 3) - load3(x));
+    Vec3 n1 = load3(st[e].n1);
+    n1 = normalized(n1 - t * dot(n1, t));
+    const Vec3 n2 = cross(t, n1);
+    const double c = mat[e]->density * L0[e] / 2, a = c * (P.I11 + P.I22), b1 = c * P.I11, b2 = c * P.I22;
+    auto add = [&](const Vec3& d, double s) {
+      J6[0] += s * d.x * d.x; J6[1] += s * d.y * d.y; J6[2] += s * d.z * d.z;
+      J6[3] += s * d.x * d.y; J6[4] += s * d.x * d.z; J6[5] += s * d.y * d.z;
+    };
+    for (int k = 0; k < 6; ++k) J6[k] = 0;
+    add(t, a); add(n1, b1); add(n2, b2);
+    return true;
   }
 
   void compute(int e, const ElemIn& in, ElemOut& out, bool commit) override {
@@ -249,8 +267,16 @@ class BeamGroup : public ElementGroup {
     // stable increment: axial wave and rotational (bending + coupled shear) bound
     double xi = in.dynamic ? in.bv1 : 0.0;
     double dt_ax = L1 / c * (std::sqrt(1 + xi * xi) - xi);
-    double In = irot[e] * msf[e], mt = rho * P.A * L0[e] / 2;
-    double om_r2 = 2 * std::max(E * std::max(P.I11, P.I22), G * P.J) / (L1 * In) + Ks * L1 * (2.0 / (L1 * L1 * mt) + 1.0 / (2 * In));
+    const double mt = rho * P.A * L0[e] / 2;
+    double om_r2;
+    if (sec[e]->rotary_isotropic) {
+      const double In = irot[e] * msf[e];
+      om_r2 = 2 * std::max(E * std::max(P.I11, P.I22), G * P.J) / (L1 * In) + Ks * L1 * (2.0 / (L1 * L1 * mt) + 1.0 / (2 * In));
+    } else {  // anisotropic inertia: bending about n1 and n2 (with the coupled shear) and torsion, each on its own
+      const double cI = rho * L0[e] / 2;
+      auto bend = [&](double I) { return 2 * E / (L1 * cI) + Ks * L1 * (2.0 / (L1 * L1 * mt) + 1.0 / (2 * cI * I)); };
+      om_r2 = std::max({bend(P.I11), bend(P.I22), 2 * G * P.J / (L1 * cI * (P.I11 + P.I22))});
+    }
     out.dt_stable = std::min(dt_ax, 2.0 / std::sqrt(om_r2));
     if (commit) {
       store3(S.n1, n11);

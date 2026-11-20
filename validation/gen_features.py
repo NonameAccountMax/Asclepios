@@ -12,6 +12,13 @@ from deck import (QS_DURATION, Deck, _smooth_amplitude, beam_line, edge_shares, 
 
 NS = 'not supported by asclepios yet: '
 
+# B31 sections of the rotary inertia cases: largest second moment of area (PIPE: thin wall at the mean radius)
+BEAM_IMAX = {'CIRC': math.pi / 4, 'RECT': 8.0 / 12, 'PIPE': math.pi * 2.75 ** 3 * 0.5}
+# twisted free elements: section, dimensions, end points, axial moment per node
+BEAM_TWIST = [('RECT', '2., 1.', (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 1e5),
+              ('PIPE', '3., 0.5', (0.0, 50.0, 0.0), (2.0, 50.0, 0.0), 1e7),
+              ('RECT', '2., 1.', (0.0, 100.0, 0.0), (1.0, 101.0, 1.0), 1e5)]
+
 
 def shell(d, etype, conns, t, mat, elset='EALL'):
     d.elements(etype, elset, conns)
@@ -577,6 +584,54 @@ def element_features():
              'length 1, 5 and 20; ROTARY INERTIA=ISOTROPIC) under constant nodal forces and moments, one increment of '
              '1e-9 s: the rotations are set by the nodal rotary inertias alone.', mon, [], True, 'linear',
              'linear', category='feature', group='element', twin=False)
+
+    # default (exact) rotary inertia of B31, anisotropic: rho L / 2 (I11 + I22) about the beam axis. Free elements
+    # twisted by equal moments about their axis at both nodes (rigid rotation, no strain): theta = M t^2 / (2 J)
+    d = Deck('beam_rotary_inertia_torsion_xpl', 'Free B31 elements twisted by axial moments (explicit): default '
+             'rotary inertia about the beam axis')
+    loads, mon = [], []
+    for k, (sec, dims, p0, p1, moment) in enumerate(BEAM_TWIST):
+        a, b = d.node(*p0), d.node(*p1)
+        d.elements('B31', 'B%d' % (k + 1), [[a, b]])
+        d.model += ['*Beam Section, elset=B%d, material=STEEL, section=%s' % (k + 1, sec), dims, '0., 0., -1.']
+        length = math.sqrt(sum((q - p) ** 2 for p, q in zip(p0, p1)))
+        axis = [(q - p) / length for p, q in zip(p0, p1)]
+        for nid in (a, b):
+            loads += ['%d, %d, %s' % (nid, 4 + j, fmt(moment * axis[j])) for j in range(3) if abs(axis[j]) > 1e-12]
+        mon += [a, b]
+    d.materials.add('STEEL')
+    d.steps += explicit_step('Load', 1e-8, ['*Cload'] + loads, rot=True, nframes=10, fixed_dt=1e-9)
+    register(d, 'explicit', 'B31', 'anisotropic rotary inertia', 'Three free B31 elements (RECT along x, PIPE, RECT '
+             'along a skew axis) twisted by equal moments about their axis at both nodes: rigid rotation set by the '
+             'default rotary inertia about the beam axis, rho L / 2 (I11 + I22) per node.', mon, [], True, 'exact',
+             'linear', category='feature', group='element', twin=False, reference='analytic')
+
+    # the same nine elements as beam_rotary_inertia_xpl with the default inertia, rho L / 2 (I11 + I22, I11, I22)
+    # about (axis, n1, n2): smooth moments (no load in the first increment, whose rotation Abaqus/Explicit does not
+    # apply to these nodes), forty increments of 1e-9, rotations of a few hundredths of a radian
+    d = Deck('beam_rotary_inertia_exact_xpl', 'Free B31 elements, smooth nodal moments (explicit): default anisotropic '
+             'rotary inertia')
+    amp = _smooth_amplitude(d, 2e-8)
+    loads, mon, k = [], [], 0
+    for sec, dims in secs:
+        for length in (1.0, 5.0, 20.0):
+            a, b = d.node(0.0, 50.0 * k, 0.0), d.node(length, 50.0 * k, 0.0)
+            d.elements('B31', 'B%d' % (k + 1), [[a, b]])
+            d.model += ['*Beam Section, elset=B%d, material=STEEL, section=%s' % (k + 1, sec), dims, '0., 0., -1.']
+            k += 1
+            # moments scaled with the largest flexural inertia: angular accelerations of about 5e13 rad/s^2
+            mref = 5e13 * 7.85e-9 * length / 2 * BEAM_IMAX[sec]
+            for nid in (a, b):
+                loads += ['%d, 4, %s' % (nid, fmt(mref)), '%d, 5, %s' % (nid, fmt(-0.5 * mref)),
+                          '%d, 6, %s' % (nid, fmt(0.7 * mref))]
+            mon += [a, b]
+    d.materials.add('STEEL')
+    d.steps += explicit_step('Load', 4e-8, ['*Cload, amplitude=%s' % amp] + loads, rot=True, nframes=8,
+                             fixed_dt=1e-9)
+    register(d, 'explicit', 'B31', 'anisotropic rotary inertia', 'Nine free single B31 elements (CIRC, RECT, PIPE; '
+             'length 1, 5 and 20; default rotary inertia) under smooth nodal moments about the three axes: '
+             'anisotropic nodal inertia rho L / 2 (I11 + I22, I11, I22) carried by the beam frame, with the '
+             'gyroscopic moment.', mon, [], True, 'linear', 'linear', category='feature', group='element', twin=False)
 
 
 # ------------------------------------------------------------------------------------- loads and conditions

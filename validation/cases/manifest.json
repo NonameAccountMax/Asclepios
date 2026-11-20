@@ -4186,6 +4186,96 @@
   "deferred": false
  },
  {
+  "name": "beam_rotary_inertia_torsion_xpl",
+  "category": "feature",
+  "group": "element",
+  "procedure": "explicit",
+  "element": "B31",
+  "mode": "anisotropic rotary inertia",
+  "description": "Three free B31 elements (RECT along x, PIPE, RECT along a skew axis) twisted by equal moments about their axis at both nodes: rigid rotation set by the default rotary inertia about the beam axis, rho L / 2 (I11 + I22) per node.",
+  "mon": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "fix": [],
+  "mone": [
+   1
+  ],
+  "mone_type": "B31",
+  "rot": true,
+  "tol": {
+   "U": 0.001,
+   "RF": 0.001,
+   "S": 0.001,
+   "E": 0.001
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "analytic",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": null,
+  "deferred": false
+ },
+ {
+  "name": "beam_rotary_inertia_exact_xpl",
+  "category": "feature",
+  "group": "element",
+  "procedure": "explicit",
+  "element": "B31",
+  "mode": "anisotropic rotary inertia",
+  "description": "Nine free single B31 elements (CIRC, RECT, PIPE; length 1, 5 and 20; default rotary inertia) under smooth nodal moments about the three axes: anisotropic nodal inertia rho L / 2 (I11 + I22, I11, I22) carried by the beam frame, with the gyroscopic moment.",
+  "mon": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18
+  ],
+  "fix": [],
+  "mone": [
+   1
+  ],
+  "mone_type": "B31",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.05,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": null,
+  "deferred": false
+ },
+ {
   "name": "load_gravity",
   "category": "feature",
   "group": "load",

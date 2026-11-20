@@ -263,6 +263,16 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
           // applied load carried by the prescribed nodes)
           A.rf[i] = A.fixed[i] ? -(A.fext[i] + A.fcon[i] - A.fint[i] - fvis[i]) : 0.0;
         }
+      for (int n = 0; n < nn; ++n)
+        if (A.node_aniso[n]) {  // anisotropic rotary inertia (coupled rotational dofs)
+          double r[3], acc[3], re[3];
+          for (int k = 0; k < 3; ++k) r[k] = A.fext[6 * n + 3 + k] + A.fcon[6 * n + 3 + k] - A.fint[6 * n + 3 + k];
+          A.rotary_accelerations(n, r, &A.v[6 * n + 3], acc, re);
+          for (int k = 0; k < 3; ++k) {
+            A.a[6 * n + 3 + k] = acc[k];
+            if (A.fixed[6 * n + 3 + k]) A.rf[6 * n + 3 + k] = re[k] + fvis[6 * n + 3 + k];
+          }
+        }
       W.frame(si, st.name, 0.0, A.total_time);
       write_rf();
     } else {
@@ -316,7 +326,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     // increment size (avoid a tiny last increment: spread the remainder over up to 10 increments)
     double rem = st.period - t;
     if (dt >= rem) dt = rem;
-    else if (rem < 10 * dt) { double nrem = std::ceil(rem / dt); dt = rem / nrem; }
+    else if (rem < 10 * dt) { double nrem = std::ceil(rem / dt * (1 - 1e-9)); dt = rem / nrem; }  // rem / dt = 5 + 1e-15: 5 increments
     // with TIME MARKS=YES the field output times are reached exactly: the increments before an output time are made
     // equal (remainder spread over up to 10 increments; shortening only the last one, periodically, made an
     // undamped beam model unstable); otherwise the frame is written at the end of the increment that reaches or
@@ -399,6 +409,21 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
         else { A.rf[i] = 0; A.a[i] = mm > 0 ? r / mm : 0.0; }
         if (std::isnan(A.a[i])) A.a[i] = 0;
       }
+    if (A.any_aniso) {  // anisotropic rotary inertia: tensor of the current beam frames, gyroscopic moment
+      A.rotary_tensors(true);
+#pragma omp parallel for num_threads(A.nthreads) schedule(static)
+      for (int n = 0; n < nn; ++n) {
+        if (!A.node_aniso[n]) continue;
+        double r[3], acc[3], re[3];
+        for (int k = 0; k < 3; ++k) { const int i = 6 * n + 3 + k; r[k] = A.fext[i] + A.fcon[i] - A.fint[i] - fd[i]; }
+        A.rotary_accelerations(n, r, &A.v[6 * n + 3], acc, re);
+        for (int k = 0; k < 3; ++k) {
+          const int i = 6 * n + 3 + k;
+          A.a[i] = std::isnan(acc[k]) ? 0.0 : acc[k];
+          A.rf[i] = re[k];
+        }
+      }
+    }
     if (!A.ties.empty()) A.tie_accelerations();
 #pragma omp parallel for num_threads(A.nthreads) reduction(+ : ke, ker) schedule(static)
     for (int n = 0; n < nn; ++n)
@@ -406,6 +431,15 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
         int i = 6 * n + k;
         double mm = k < 3 ? A.mt[n] : A.mr[n];
         double vf = A.v[i] + 0.5 * dt * A.a[i];
+        if (k >= 3 && A.node_aniso[n]) {
+          if (k == 3) {
+            const double w[3] = {vf, A.v[i + 1] + 0.5 * dt * A.a[i + 1], A.v[i + 2] + 0.5 * dt * A.a[i + 2]};
+            const double er = A.rotary_energy(n, w);
+            ke += er;
+            ker += er;
+          }
+          continue;
+        }
         ke += 0.5 * mm * vf * vf;
         if (k >= 3) ker += 0.5 * mm * vf * vf;
       }
