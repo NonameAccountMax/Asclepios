@@ -6,13 +6,16 @@
 //    shell plane by the half thickness (perpendicular to the edge, along the bisector at a corner;
 //    at most half the facet size and 0.6 x facet size x sine of the angle to each edge), so that
 //    the contact surface does not extend beyond the edge;
-//  - node-to-facet and node-to-segment penalty: k = 0.3 min(m_slave, m_master) / dt^2 (mass and
-//    time increment scaled, so that contact barely lowers the stable increment);
+//  - node-to-facet and node-to-segment penalty from the stable increment of the elements of each node: contact
+//    frequency W^2 = max(1/(3 dt^2), 1.1 max_i 1/dt_i^2) over the pair, nodal stiffnesses that keep each node
+//    stable at 1/W, pair stiffness = softer of slave and master, 9/11 of its smallest value since the contact
+//    started, shared between the contacts of a node; the increment is bounded by 1/W of the active contacts
+//    (0.3 m/dt^2 between two critical nodes, stiffer for light nodes of soft elements);
 //  - facet half thickness h = min(t/2, 0.3 x smallest facet height), segment radius
 //    r = min(r, 0.3 x segment length) (thickness reduced on small facets);
-//  - normal viscous damping of 3 % of the critical damping of the contact spring;
+//  - normal viscous damping of 3 % of the critical damping of the contact spring with the lighter side;
 //  - Coulomb friction, tangential penalty stiffness equal to the normal one;
-//  - incremental normal force (no jump when k = f(dt) changes, when a node switches facet or when a
+//  - incremental normal force (no jump when k changes, when a node switches facet or when a
 //    contact is found deep); initial overclosures act as offsets released as the nodes separate;
 //  - candidate pairs from a bucket grid, rebuilt when nodes moved more than half the margin.
 #include "contact/contact.hpp"
@@ -102,6 +105,11 @@ struct GeneralContact::Impl {
   // incremental normal force: force and penetration of the previous increment (pen < 0: no contact)
   std::vector<double> fn_t, pen_t, fn_s, pen_s;
   std::vector<Vec3> last_n;  // direction pushing the slave out at the previous increment
+  // penalty: frequency bound of every node (1/dt_e^2 of its stiffest element), per slave and pass the contact
+  // frequency, pair stiffness, damping mass and smallest pair stiffness since the contact started
+  std::vector<double> node_w2;
+  std::vector<double> cw2_t, cw2_s, md_t, md_s, kmin_t, kmin_s;
+  double w2_max = 0;  // largest contact frequency of the increment (stable increment bound)
   double mu = 0;
   std::vector<Hit> hit_t, hit_s;
   std::vector<Vec3> force_t, force_s;
@@ -234,6 +242,7 @@ bool GeneralContact::define(const Step& st) {
   P.ft.assign(ns, Vec3());
   P.fn_t.assign(ns, 0.0); P.fn_s.assign(ns, 0.0); P.pen_t.assign(ns, -1.0); P.pen_s.assign(ns, -1.0);
   P.last_n.assign(ns, Vec3());
+  for (auto* v : {&P.cw2_t, &P.cw2_s, &P.md_t, &P.md_s, &P.kmin_t, &P.kmin_s}) v->assign(ns, 0.0);
   P.hit_t.resize(ns); P.hit_s.resize(ns); P.force_t.resize(ns); P.force_s.resize(ns);
   P.mu = st.contact_property >= 0 ? m.interactions[st.contact_property].friction : 0.0;
   double lsum = 0, hmax = 0;
@@ -385,6 +394,32 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     for (int si = 0; si < ns; ++si) std::copy(lists[si].begin(), lists[si].end(), P.cand.begin() + P.cand_off[si]);
   }
 
+  // ---- penalty stiffness of a pair, from the frequency bound w_i^2 = 1/dt_e^2 of each node (stable increment
+  // of its stiffest element) and the contact frequency W^2 = max(w_ref^2/3, 1.1 max_i w_i^2) of the pair: each
+  // node gets k_i = 2 m_i W^2 (1 - r_i)/(1 - r_i/2), r_i = w_i^2/W^2, so that its own stiffness plus the
+  // contact spring stays stable at the increment 1/W; the pair stiffness is the softer of the slave and of the
+  // master facet (nodal flexibilities weighted by the contact point coordinates). A massive node stiffer
+  // than the contact frequency is not limiting; light nodes of soft elements get a stiffer spring.
+  const double wref2 = dt > 0 ? 1.0 / (dt * dt) : 0.0;
+  P.node_w2.assign(nn, 0.0);
+  for (auto& gp : A.groups) {
+    const ElementGroup& G = *gp;
+    for (int e = 0; e < G.size(); ++e) {
+      const double d = G.dt_last[e] * std::sqrt(G.msf[e]);
+      if (!(d > 0 && d < 1e29)) continue;
+      for (int I = 0; I < G.nen; ++I) {
+        const int nd = G.conn[e * G.nen + I];
+        P.node_w2[nd] = std::max(P.node_w2[nd], 1.0 / (d * d));
+      }
+    }
+  }
+  auto node_k = [&](int nd, double w2) {
+    const double mi = A.mt[nd];
+    if (!(mi > 0)) return 1e300;
+    const double r = std::min(P.node_w2[nd] / w2, 1.0 / 1.1);
+    return 2 * mi * w2 * (1 - r) / (1 - 0.5 * r);
+  };
+
   // ---- detection: deepest facet hit and deepest segment hit per slave node
   const bool first = P.first_eval;
   P.first_eval = false;
@@ -440,7 +475,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       if (id >= 0) { if (h.pen > bt.pen) bt = h; }
       else if (h.pen > bs.pen) bs = h;
     }
-    for (int pass = 0; pass < 2; ++pass) {  // penalty stiffness k = 0.3 min(m_slave, m_master) / dt^2
+    for (int pass = 0; pass < 2; ++pass) {
       Hit& h = pass ? bs : bt;
       if (h.master == INT_MIN) continue;
       int nm = h.master >= 0 ? 3 : 2;
@@ -449,11 +484,19 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       for (int i = 0; i < nm; ++i) mm += h.w[i] * A.mt[mn[i]];
       double msl = A.mt[n];
       double meff = std::min(msl > 0 ? msl : 1e300, mm > 0 ? mm : 1e300);
-      static const bool kslave = std::getenv("ABQ_K_SLAVE") != nullptr;
-      if (kslave && msl > 0) meff = msl;
       if (meff >= 1e299) { h = Hit(); continue; }
-      static const double kfac = std::getenv("ABQ_KFAC") ? std::atof(std::getenv("ABQ_KFAC")) : 0.3;
-      h.k = kfac * meff / (dt * dt);
+      // contact frequency: the stiffest node of the pair, at least a third of the increment frequency
+      double w2 = wref2 / 3;
+      w2 = std::max(w2, 1.1 * P.node_w2[n]);
+      for (int i = 0; i < nm; ++i) w2 = std::max(w2, 1.1 * P.node_w2[mn[i]]);
+      const double ks = node_k(n, w2);
+      double flex = 0;
+      for (int i = 0; i < nm; ++i) if (h.w[i] > 0) flex += h.w[i] / node_k(mn[i], w2);
+      const double kc = std::min(ks, flex > 0 ? 1.0 / flex : 1e300);
+      if (!(kc > 0 && kc < 1e299)) { h = Hit(); continue; }
+      h.k = kc;
+      (pass ? P.cw2_s : P.cw2_t)[si] = w2;
+      (pass ? P.md_s : P.md_t)[si] = meff;
     }
     P.hit_t[si] = bt;
     P.hit_s[si] = bs;
@@ -483,34 +526,32 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     return;
   }
 
-  // stiffness shared by several contacts on the same node: k_eff = K min(1, 1/u), u = utilisation
+  // stiffness shared by several contacts on the same node: utilisation u of each node = sum over its contacts of
+  // k_pair / k_node (weighted by the contact point coordinates on the master side); a node used beyond 1 has its
+  // nodal stiffness divided by u in the pair stiffness
   std::vector<double> ksum(nn, 0.0);
   for (int si = 0; si < ns; ++si) {
     int n = P.slaves[si];
     for (int pass = 0; pass < 2; ++pass) {
       const Hit& h = pass ? P.hit_s[si] : P.hit_t[si];
       if (h.master == INT_MIN) continue;
-      ksum[n] += h.k;
       int nm = h.master >= 0 ? 3 : 2;
       const int* mn = h.master >= 0 ? &P.tri[3 * h.master] : &P.seg[2 * (-1 - h.master)];
-      for (int i = 0; i < nm; ++i) ksum[mn[i]] += h.k * h.w[i];
+      const double w2 = (pass ? P.cw2_s : P.cw2_t)[si];
+      ksum[n] += h.k / node_k(n, w2);
+      for (int i = 0; i < nm; ++i) ksum[mn[i]] += h.w[i] * h.k / node_k(mn[i], w2);
     }
   }
-  static const bool no_util = std::getenv("ABQ_NO_UTIL") != nullptr;
-  auto util = [&](int node) {
-    if (no_util) return 1.0;
-    double cap = 0.3 * A.mt[node] / (dt * dt);
-    return ksum[node] > cap && ksum[node] > 0 ? cap / ksum[node] : 1.0;
-  };
 
   // ---- response: incremental normal force F = min(F_prev + k dpen, k pen) >= 0. Changes of k (with dt),
   // switches between facets and contacts found already deep do not create force jumps (no energy is
   // injected); a new contact only loads the approach of the current increment, so initial or lateral
   // overclosures act as offsets that are released as the nodes separate.
-  double efric = 0, edamp = 0;
+  double efric = 0, edamp = 0, w2mx = 0;
   int ncont = 0;
   long ndeep = 0;
-#pragma omp parallel for num_threads(A.nthreads) reduction(+ : efric, edamp, ncont, ndeep) schedule(dynamic, 64)
+#pragma omp parallel for num_threads(A.nthreads) reduction(+ : efric, edamp, ncont, ndeep) reduction(max : w2mx) \
+    schedule(dynamic, 64)
   for (int si = 0; si < ns; ++si) {
     int n = P.slaves[si];
     const Vec3 dus = load3(&A.du[6 * n]);
@@ -524,9 +565,18 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       if (h.master == INT_MIN) { pp = -1; fn = 0; continue; }
       int nm = h.master >= 0 ? 3 : 2;
       const int* mn = h.master >= 0 ? &P.tri[3 * h.master] : &P.seg[2 * (-1 - h.master)];
-      double sc = util(n);
-      for (int i = 0; i < nm; ++i) if (h.w[i] > 1e-3) sc = std::min(sc, util(mn[i]));
-      const double k = h.k * sc;
+      // smallest pair stiffness since the contact started (the penalty never stiffens during a contact), 9/11 of
+      // it, reduced by the sharing of the nodes
+      const double w2 = (pass ? P.cw2_s : P.cw2_t)[si];
+      double& kmin = (pass ? P.kmin_s : P.kmin_t)[si];
+      kmin = pp >= 0 && kmin > 0 ? std::min(kmin, h.k) : h.k;
+      double flex = 0;
+      for (int i = 0; i < nm; ++i)
+        if (h.w[i] > 0) flex += h.w[i] * std::max(1.0, ksum[mn[i]]) / node_k(mn[i], w2);
+      const double kshared = std::min(node_k(n, w2) / std::max(1.0, ksum[n]), flex > 0 ? 1.0 / flex : 1e300);
+      const double k = 9.0 / 11.0 * kmin * std::min(1.0, kshared / h.k);
+      const double mdamp = (pass ? P.md_s : P.md_t)[si];
+      w2mx = std::max(w2mx, w2);
       Vec3 dum;
       for (int i = 0; i < nm; ++i) dum += load3(&A.du[6 * mn[i]]) * h.w[i];
       double Fn;
@@ -543,12 +593,11 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       Fn = std::max(Fn, 0.0);
       fn = Fn;
       pp = h.pen;
-      // normal viscous damping, 3 % of the critical damping of the contact spring (k = kfac m / dt^2, so
-      // c = 2 zeta sqrt(k m) = 2 zeta k dt / sqrt(kfac)); the total normal force stays compressive
+      // normal viscous damping, 3 % of the critical damping of the contact spring with the lighter side of the
+      // pair, c = 2 zeta sqrt(k m); the total normal force stays compressive
       double Ft = Fn;
       if (dt > 0) {
-        static const double kf = std::getenv("ABQ_KFAC") ? std::atof(std::getenv("ABQ_KFAC")) : 0.3;
-        const double c = 2 * 0.03 * k * dt / std::sqrt(kf);
+        const double c = 2 * 0.03 * std::sqrt(k * mdamp);
         Ft = std::max(0.0, Fn - c * dot(dus - dum, h.n) / dt);
         // dissipated by the damper, integrated as the work of the contact forces (trapezoidal rule)
         edamp += -0.5 * (fd_old + Ft - Fn) * dot(dus - dum, h.n);
@@ -590,6 +639,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     }
   }
   en.friction += efric;
+  P.w2_max = w2mx;
   // the damping part of the contact work is dissipation: reported with the viscous energy (as the contact
   // damping energy in ALLVD), and removed from the contact work so that the energy balance is unchanged
   en.viscous += edamp;
@@ -602,28 +652,34 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   (void)increment;
 }
 
+double GeneralContact::dt_limit() const {
+  return p_ && p_->w2_max > 0 ? 1.0 / std::sqrt(p_->w2_max) : 1e30;
+}
+
 void GeneralContact::save(BinOut& o) const {
-  o.tag("contact.v2");
+  o.tag("contact.v3");
   bool has = p_ != nullptr;
   o.pod(has);
   if (!has) return;
   const Impl& P = *p_;
   o.vec(P.last_master); o.vec(P.last_side); o.vec(P.ft); o.vec(P.hit_t); o.vec(P.hit_s); o.vec(P.force_t); o.vec(P.force_s);
   o.vec(P.fn_t); o.vec(P.pen_t); o.vec(P.fn_s); o.vec(P.pen_s); o.vec(P.last_n);
+  o.vec(P.kmin_t); o.vec(P.kmin_s);
   o.pod(P.first_eval);
 }
 
 void GeneralContact::load(BinIn& in) {
   std::string tg = in.read_tag();
-  if (tg != "contact.v2" && tg != "contact") throw std::runtime_error("restart file: contact section expected");
+  if (tg != "contact.v3" && tg != "contact.v2" && tg != "contact") throw std::runtime_error("restart file: contact section expected");
   bool has;
   in.pod(has);
   if (!has) return;
   if (!p_) throw std::runtime_error("restart: contact state without a contact definition");
   Impl& P = *p_;
   in.vec(P.last_master); in.vec(P.last_side); in.vec(P.ft); in.vec(P.hit_t); in.vec(P.hit_s); in.vec(P.force_t); in.vec(P.force_s);
-  if (tg == "contact.v2") {
+  if (tg != "contact") {
     in.vec(P.fn_t); in.vec(P.pen_t); in.vec(P.fn_s); in.vec(P.pen_s); in.vec(P.last_n);
+    if (tg == "contact.v3") { in.vec(P.kmin_t); in.vec(P.kmin_s); }
   } else {  // first format (total penalty with offsets per slave/master pair): convert
     struct KV { int64_t k; double v; };
     std::vector<KV> ip;

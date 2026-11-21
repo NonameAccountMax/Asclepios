@@ -194,7 +194,7 @@ def history_error(mine, ref, key):
             continue
         dts = sorted(b[0] - a[0] for a, b in zip(rser[:-1], rser[1:]) if b[0] > a[0])
         w = RF_WINDOW * dts[len(dts) // 2]
-        times = [r[0] for r in rser]
+        times = window_times(rser, mser, w)
         fr, fm = window_average(rser, times, w), window_average(mser, times, w)
         peak = max(peak, max(norm(v) for v in fr))
         out_err = max(out_err, max(norm([a - b for a, b in zip(x, y)]) for x, y in zip(fm, fr)))
@@ -256,16 +256,25 @@ def window_average(series, times, w):
     return out
 
 
+def window_times(ref, mine, w):
+    """Reference times at which the moving averages are compared: none past half a window before the end of the
+    histories (the last value would be held over half a window and the ringing at that instant would not be
+    averaged); before the start, the initial value is the true one."""
+    tend = min(ref[-1][0], mine[-1][0]) - 0.5 * w
+    return [r[0] for r in ref if r[0] <= tend] or [ref[-1][0]]
+
+
 def rf_error(mine, ref):
     """Total reaction force; not compared when it is a numerical zero (pure moment, self-equilibrated loads):
     below 1e-3 of the characteristic force of the problem. Explicit cases with reaction histories at every
     increment (both sides): compared after a moving average over RF_WINDOW reference increments, which removes the
-    ringing near the highest frequencies of the mesh (sampled at the frames with an arbitrary phase)."""
+    ringing near the highest frequencies of the mesh (sampled at the frames with an arbitrary phase); see
+    window_times."""
     rh, mh = ref.get('rf_hist'), mine.get('rf_hist')
     if rh and mh and len(rh) > 2 and len(mh) > 2:
         dts = sorted(b[0] - a[0] for a, b in zip(rh[:-1], rh[1:]) if b[0] > a[0])
         w = RF_WINDOW * dts[len(dts) // 2]
-        times = [r[0] for r in rh]
+        times = window_times(rh, mh, w)
         fr_ref, fr_mine = window_average(rh, times, w), window_average(mh, times, w)
         peak = max(norm(v) for v in fr_ref)
         if peak == 0.0 or peak < 1e-3 * force_scale(ref):
@@ -342,8 +351,11 @@ def energy_error(mine, ref, energies=None):
 
 def run_case(case):
     t0 = time.time()
+    # energy histories at every increment: compared with the reference at its own output times (an Abaqus history
+    # point may fall one increment after the requested time, in the middle of an impact)
+    env = dict(os.environ, ABQ_HISTORY_EVERY_INCREMENT='1')
     r = subprocess.run([BIN, os.path.join(CASES, case['name'] + '.inp'), '-q', '-j', '2'], cwd=OUT,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=env)
     ok = r.returncode == 0 and os.path.exists(os.path.join(OUT, case['name'] + '.pvd'))
     with open(os.path.join(OUT, case['name'] + '.status'), 'w') as f:
         f.write('ok\n' if ok else 'failed\n')

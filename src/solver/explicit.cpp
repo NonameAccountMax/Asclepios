@@ -187,8 +187,6 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       gdt.ok = 1;
     }
   };
-  // penalty contact adds up to ~0.6/dt^2 to the nodal frequencies: keep a margin
-  double cfac = 1.0;
 
   if (resume) {
     BinIn in(A.restart_in);
@@ -205,7 +203,6 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     t = c.t; dt_prev = c.dt_prev; dt = c.dt; dt_el = c.dt_el; next_frame = c.next_frame; next_hist = c.next_hist;
     next_print = c.next_print; mass0 = c.mass0; dt_last_inc = c.dt_last_inc; inc = c.inc; ms_counter = c.ms_counter;
     nfail_tot = c.nfail_tot; nfail_inc = c.nfail_inc; crit = c.crit;
-    cfac = A.contact->active() ? 0.93 : 1.0;
     A.next_save = A.save_interval > 0 ? (std::floor(A.total_time / A.save_interval + 1e-9) + 1) * A.save_interval : 0;
     info("  resumed from %s at step time %.6e (total %.6e, increment %d)", A.restart_in.c_str(), t, A.total_time, inc);
     W.frame(si, st.name, t, A.total_time);
@@ -286,8 +283,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     inc = 0;
     dt_el = fresh.dt_min;
     crit = fresh.dt_elem;
-    cfac = A.contact->active() ? 0.93 : 1.0;
-    dt = st.fixed_dt && st.user_dt > 0 ? st.user_dt : dt_el * std::min(1.0, st.dt_scale) * cfac;
+    dt = st.fixed_dt && st.user_dt > 0 ? st.user_dt : dt_el * std::min(1.0, st.dt_scale);
     if (A.save_interval > 0 && A.next_save <= A.total_time) A.next_save = (std::floor(A.total_time / A.save_interval + 1e-9) + 1) * A.save_interval;
   }
   auto save_restart = [&]() {
@@ -486,16 +482,24 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       gdt.countdown = gdt.ok ? 20 : 1;
     }
     double dt_next = st.fixed_dt && st.user_dt > 0 ? st.user_dt
-                                                   : dt_el * (gdt.ok ? gdt.ratio : 1.0) * std::min(1.0, st.dt_scale) * cfac;
+                                                   : dt_el * (gdt.ok ? gdt.ratio : 1.0) * std::min(1.0, st.dt_scale);
     // limit the growth of the increment (a sudden x10 jump after a stiff transient destabilises the
     // viscous terms, which are evaluated with the rate du/dt of the new increment)
-    if (!(st.fixed_dt && st.user_dt > 0)) dt_next = std::min(dt_next, 1.25 * dt_full);
+    if (!(st.fixed_dt && st.user_dt > 0)) {
+      dt_next = std::min(dt_next, 1.25 * dt_full);
+      if (A.contact->active()) dt_next = std::min(dt_next, A.contact->dt_limit());
+    }
     dt = dt_next;
 
     bool last = t >= st.period * (1 - 1e-12);
     const int hf = std::max(st.output.rf_hist_freq, st.output.mon_hist_freq);
     if (hf > 0 && (inc % hf == 0 || last)) write_rf();
-    if (t >= next_hist - 1e-12 * st.period || last) {
+    // ABQ_HISTORY_EVERY_INCREMENT: energy history at every increment (validation: the reference histories are then
+    // compared with the exact values at their own times); the .sta keeps the requested interval
+    static const bool hist_all = std::getenv("ABQ_HISTORY_EVERY_INCREMENT") != nullptr;
+    const bool at_hist = t >= next_hist - 1e-12 * st.period || last;
+    if (hist_all && !at_hist) W.history(si, inc, t, A.total_time, dt_prev, ke);
+    if (at_hist) {
       W.history(si, inc, t, A.total_time, dt_prev, ke);
       double pm = 100 * (total_mass(A) / mass0 - 1);
       W.sta_line("%6d %10d %10.3E %10.3E %10.1f %10.3E %10s %11.3E %11.3E %9.2E %8d", si + 1, inc, t, A.total_time, wall() - t0wall,

@@ -127,6 +127,24 @@ def contact_features():
              'within the shell (moved back by the half thickness), which sets the instant of impact.', [sids[0, 0], sids[1, 0], sids[1, 2], ids[4, 4]],
              edge, True, 'contact', category='feature', group='contact')
 
+    d = Deck('contact_penalty_soft_light', 'Soft and light S4R sheets dropped flat on clamped S4R plates (general contact penalty)')
+    pq, pids = quad_plate(d, 2, 1, 2.0, 1.0)
+    shell(d, 'S4R', pq, 0.2, 'STEEL', 'PLATE')
+    sheets = []
+    for k, (mat, x0, gap) in enumerate((('SOFT7', 0.3, 0.25), ('LIGHT7', 1.3, 0.27))):
+        q, sid = quad_plate(d, 1, 1, 0.4, 0.4, x0=(x0, 0.3, gap))  # 0.05 / 0.07 above contact
+        shell(d, 'S4R', q, 0.2, mat, 'SHEET%d' % (k + 1))
+        sheets.append(sid)
+    d.nset('SHEETN', [n for sid in sheets for n in sid.values()])
+    d.initial += ['*Initial Conditions, type=VELOCITY', 'SHEETN, 3, -1000.']
+    d.steps += explicit_step('Drop', 1.2e-4, ['*Boundary', 'FIX, ENCASTRE'] + general_contact(d), rot=True,
+                             nframes=40)
+    register(d, 'explicit', 'S4R', 'contact penalty', 'Two free single-element sheets dropped flat at 1 m/s on clamped '
+             'plates: a soft one (E 7000) and a light one (density / 10). The penalty follows the stable increment of the '
+             'elements of each node (stiffer spring for light nodes of soft elements), which sets the duration of the '
+             'impact and the rebound velocity.', [sheets[0][0, 0], sheets[1][0, 0]], list(pids.values()), True,
+             'contact', category='feature', group='contact')
+
     d = Deck('contact_pair_surface', 'S4R sheet dropped on a clamped S4R plate, surface-to-surface contact pair')
     ids, edge = clamped_plate(d)
     squads, sids = quad_plate(d, 3, 3, 6.0, 6.0, x0=(7.0, 7.0, 1.0))

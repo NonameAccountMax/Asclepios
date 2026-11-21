@@ -20,6 +20,8 @@ class GeneralContact {
   // penalty forces for the end-of-increment configuration (X + u + du); dt = current increment
   void compute(double dt, std::vector<double>& f, Energies& en, int increment);
   int ncontacts() const { return ncontacts_; }
+  // stable increment bound of the current contacts (1/W of the stiffest pair; huge without contact)
+  double dt_limit() const;
   // restart (after define() of the same step)
   void save(BinOut& o) const;
   void load(BinIn& in);

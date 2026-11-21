@@ -2868,6 +2868,50 @@
   "deferred": false
  },
  {
+  "name": "contact_penalty_soft_light",
+  "category": "feature",
+  "group": "contact",
+  "procedure": "explicit",
+  "element": "S4R",
+  "mode": "contact penalty",
+  "description": "Two free single-element sheets dropped flat at 1 m/s on clamped plates: a soft one (E 7000) and a light one (density / 10). The penalty follows the stable increment of the elements of each node (stiffer spring for light nodes of soft elements), which sets the duration of the impact and the rebound velocity.",
+  "mon": [
+   7,
+   11
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "mone": [
+   1,
+   2
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.15,
+   "RF": 0.2,
+   "S": 0.25,
+   "E": 0.15
+  },
+  "analysis": "nonlinear",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": null,
+  "energies": null,
+  "deferred": false
+ },
+ {
   "name": "contact_pair_surface",
   "category": "feature",
   "group": "contact",
@@ -14395,6 +14439,50 @@
   "supported": false,
   "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
   "twin_of": "contact_shell_edge",
+  "literature": null,
+  "energies": null,
+  "deferred": false
+ },
+ {
+  "name": "contact_penalty_soft_light_std",
+  "category": "feature",
+  "group": "contact",
+  "procedure": "implicit dynamic",
+  "element": "S4R",
+  "mode": "contact penalty",
+  "description": "Two free single-element sheets dropped flat at 1 m/s on clamped plates: a soft one (E 7000) and a light one (density / 10). The penalty follows the stable increment of the elements of each node (stiffer spring for light nodes of soft elements), which sets the duration of the impact and the rebound velocity.",
+  "mon": [
+   7,
+   11
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "mone": [
+   1,
+   2
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.15,
+   "RF": 0.2,
+   "S": 0.25,
+   "E": 0.15
+  },
+  "analysis": "implicit dynamic",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": false,
+  "unsupported_reason": "implicit dynamics (*DYNAMIC) not implemented",
+  "twin_of": "contact_penalty_soft_light",
   "literature": null,
   "energies": null,
   "deferred": false

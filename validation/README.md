@@ -1,7 +1,7 @@
 # Validation
 
-The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 278
-small decks (223 cases and 55 twins), each running in seconds:
+The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 280
+small decks (224 cases and 56 twins), each running in seconds:
 
 - **elements and deformation modes**: every element type supported by asclepios (C3D8R, C3D8, C3D4, S4R, S3R, B31,
   CONN3D2) under tension, bending, torsion, shear, large rotations, pressure, hyperelasticity, plasticity with load
@@ -75,10 +75,13 @@ are relative to the peak reference value of each quantity over the whole history
   over 30 reference increments, i.e. below about a tenth of the highest frequency of the mesh: in impacts and sudden
   loads the reactions and rotations ring at the highest plate modes (200-600 kHz for a 2.5 mm steel mesh), and frames
   sampled every few microseconds catch that ringing with an arbitrary phase (the spectra agree up to those modes);
+  the averages stop half a window before the end of the histories (the last value is not held beyond it);
 - S: same on each element quantity, the largest of them is reported (the membrane stress of a shell is compared when
   it reaches 5 % of the peak stress, and not once the section has yielded);
 - E: max over time of |E − E_ref| for ALLIE, ALLKE and ALLWK, divided by the largest of these energies, evaluated at
-  the history times of the coarser of the two series (the finer one is interpolated).
+  the history times of the coarser of the two series (the finer one is interpolated). The validation runs write the
+  asclepios energies at every increment (`ABQ_HISTORY_EVERY_INCREMENT=1`), so they are exact at the reference times,
+  including a reference point written one increment after the requested time during an impact.
 
 Also reported, without pass/fail: the ratio of the numbers of increments (asclepios / reference). The Abaqus references
 also store the stable time increment (DT), the mass change (DMASS), the hourglass energy (ALLAE) and the number of

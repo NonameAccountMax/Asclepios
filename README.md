@@ -60,7 +60,8 @@ Output files:
 
 Diagnostics on stderr: `ABQ_TRACE_NODE=Inst.123` (node state at each increment), `ABQ_TRACE_ELEM=<id>`
 (shell state), `ABQ_TRACE_DT=<id>` (components of a shell's stable increment), `ABQ_CONTACT_DIAG=1`
-(contact pairs and contact work). `make elemtest` builds `bin/elemtest`; `bin/elemtest deck.inp [nl]` checks the first element of a deck: finite
+(contact pairs and contact work). `ABQ_HISTORY_EVERY_INCREMENT=1` writes the energy history at every increment of
+an explicit step (the `.sta` keeps the requested interval). `make elemtest` builds `bin/elemtest`; `bin/elemtest deck.inp [nl]` checks the first element of a deck: finite
 difference stiffness, symmetry, eigenvalues, exact critical increment against the estimated one.
 `tools/cmp_vtk.py` compares a result frame with a reference surface (legacy VTK).
 
@@ -128,12 +129,16 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   for CIRC (weights making area and second moment exact); 5 x 5 Simpson for RECT.
 - **Plane-stress hyperelasticity**: Newton iteration on the thickness stretch (S33 = 0), with an exact
   derivative for the Fung model.
-- **Contact**: penalty method, k = 0.3·min(m_slave, m_master)/Δt², normal viscous damping of 3 % of critical
+- **Contact**: penalty method. Each node has a frequency bound 1/Δt_e (stable increment of its stiffest element);
+  a contact pair gets the frequency Ω² = max(1/(3Δt²), 1.1·max Ω_i²) of its nodes, nodal springs that keep each
+  node stable at 1/Ω, and the softer of the slave and master springs (0.3·m/Δt² between two critical nodes,
+  stiffer for light nodes of soft elements), never stiffened during a contact and shared between the contacts of
+  a node; the increment is bounded by 1/Ω of the active contacts. Normal viscous damping of 3 % of critical
   (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL),
   shell half thickness limited to 0.3 times the smallest triangular facet height; free shell edges rounded within
   the shell (their nodes moved back into the shell plane by the half thickness, along the bisector at corners, at
   most half the facet size), so that the contact surface does not extend beyond the edge. The normal force is updated
-  incrementally, so it does not jump when Δt changes, when a node moves to another facet, or when a contact
+  incrementally, so it does not jump when the stiffness changes, when a node moves to another facet, or when a contact
   is detected already penetrated. Initial overclosures are removed by a strain-free adjustment (half the
   penetration on each side, reported in the displacements). Coulomb friction.
 - **Static implicit**: Newton-Raphson; element tangents by central finite differences of the internal force
@@ -141,7 +146,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-180 small decks, run after every change of the solver:
+181 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
@@ -222,8 +227,10 @@ Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: beam-to-shell impact (energy and reactions within 20 %) and self-contact of a coiled strip (first
-  impact at the same instant and with the same impulse, reactions of the later rebounds); viscous dissipation of
+- Dynamics: beam-to-shell impact (energy and reactions within 20 %, beam end rotations 16 %: the B31 stable
+  increment, which sets the contact stiffness of the beam nodes, is 15 % below the reference one for this section)
+  and self-contact of a coiled strip (first impact at the same instant and with the same impulse, reactions of the
+  later rebounds); viscous dissipation of
   shell bulk viscosity on strongly tapered quadrilaterals (up to 15 % high); stability of thin Fung shells closing with contact (valve model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).
 - Energies: ALLIE from material-point quantities (strain energy plus plastic dissipation) instead of the work of nodal
