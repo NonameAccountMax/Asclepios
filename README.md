@@ -18,7 +18,7 @@ replacement for a commercial package.
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
 | Loads | `*BOUNDARY` (displacement, velocity, ENCASTRE…, OP=NEW), `*CLOAD`, `*DSLOAD` / `*DLOAD` P (follower pressure), `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, step or total time); loads propagate between steps |
-| Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`; node-to-facet with rounded edges beyond the facet boundaries, node-to-beam segment |
+| Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`; node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), node-to-beam segment |
 | Output | `*OUTPUT, FIELD` (NUMBER INTERVAL / TIME INTERVAL; FREQUENCY in static steps, ignored in explicit ones as Abaqus/Explicit does), `*OUTPUT, HISTORY` (number of intervals) |
 
 Unknown keywords produce a single warning and are ignored.
@@ -90,7 +90,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   incompatible-mode brick (9 modes condensed, initial moduli) evaluated on the parallelepiped of the centre
   Jacobian.
 - **Shells**: corotational formulation, through-thickness Simpson integration, linear bulk viscosity on membrane
-  dilatation and curvature rates. S4R: one-point membrane and bending; transverse shear from the covariant shear
+  dilatation (b1·ρ·c·L_m) and curvature rates (b1·ρ·c·L_b·h²/12), with the plate wave speed c (Poisson ratio
+  limited to 0.49 at fixed bulk modulus for nearly incompressible materials), L_m the element length of the stable
+  increment and L_b the area over the longest midline (quadrilaterals) or the shortest edge (triangles). S4R: one-point membrane and bending; transverse shear from the covariant shear
   strains of the four edges (no shear for any Kirchhoff state), uniform part at the centre with the stiffness
   κGt/(1 + 0.25·10⁻⁴ A/t²) plus one stabilised mode (half the sum of the edge-strain variations, projected on the
   bilinear hourglass vector); hourglass stiffness of the membrane and rotation modes in Flanagan-Belytschko form
@@ -128,7 +130,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   derivative for the Fung model.
 - **Contact**: penalty method, k = 0.3·min(m_slave, m_master)/Δt², normal viscous damping of 3 % of critical
   (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL),
-  shell half thickness limited to 0.3 times the smallest triangular facet height. The normal force is updated
+  shell half thickness limited to 0.3 times the smallest triangular facet height; free shell edges rounded within
+  the shell (their nodes moved back into the shell plane by the half thickness, along the bisector at corners, at
+  most half the facet size), so that the contact surface does not extend beyond the edge. The normal force is updated
   incrementally, so it does not jump when Δt changes, when a node moves to another facet, or when a contact
   is detected already penetrated. Initial overclosures are removed by a strain-free adjustment (half the
   penetration on each side, reported in the displacements). Coulomb friction.
@@ -137,7 +141,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-176 small decks, run after every change of the solver:
+180 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
@@ -218,8 +222,9 @@ Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: beam-to-shell impact (energy and reactions within 20 %) and self-contact of a coiled strip (reactions
-  after the first contact); stability of thin Fung shells closing with contact (valve model).
+- Dynamics: beam-to-shell impact (energy and reactions within 20 %) and self-contact of a coiled strip (first
+  impact at the same instant and with the same impulse, reactions of the later rebounds); viscous dissipation of
+  shell bulk viscosity on strongly tapered quadrilaterals (up to 15 % high); stability of thin Fung shells closing with contact (valve model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).
 - Energies: ALLIE from material-point quantities (strain energy plus plastic dissipation) instead of the work of nodal
   forces.

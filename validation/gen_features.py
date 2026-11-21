@@ -112,6 +112,21 @@ def contact_features():
              'into contact with the strip itself (self-contact in general contact).', tip + [ids[20, 1]], fix, True,
              'contact', category='feature', group='contact')
 
+    d = Deck('contact_shell_edge', 'S4R strip dropped on its free edge onto a clamped S4R plate (general contact)')
+    ids, edge = clamped_plate(d)
+    squads, sids = quad_plate(d, 3, 2, 6.0, 4.0, x0=(7.0, 0.0, 0.0))
+    for k, (x, y, z) in list(d.nodes.items()):
+        if k in sids.values():  # strip in the plane y = 10, lower edge 1 above the plate
+            d.nodes[k] = (x, 10.0, 1.0 + y)
+    shell(d, 'S4R', squads, 0.6, 'STEEL', 'STRIP')
+    d.nset('STRIPN', list(sids.values()))
+    d.initial += ['*Initial Conditions, type=VELOCITY', 'STRIPN, 3, -2000.']
+    d.steps += explicit_step('Impact', 4.3e-4, ['*Boundary', 'FIX, ENCASTRE'] + general_contact(d), rot=True)
+    register(d, 'explicit', 'S4R', 'contact shell edge', 'Vertical strip (thickness 0.6) dropped at 2 m/s on its '
+             'free edge onto a clamped plate, up to the end of the first impact: the free edge of a shell is rounded '
+             'within the shell (moved back by the half thickness), which sets the instant of impact.', [sids[0, 0], sids[1, 0], sids[1, 2], ids[4, 4]],
+             edge, True, 'contact', category='feature', group='contact')
+
     d = Deck('contact_pair_surface', 'S4R sheet dropped on a clamped S4R plate, surface-to-surface contact pair')
     ids, edge = clamped_plate(d)
     squads, sids = quad_plate(d, 3, 3, 6.0, 6.0, x0=(7.0, 7.0, 1.0))
@@ -537,6 +552,64 @@ def element_features():
              'nodal forces and moments, one increment of 1e-9 s: the motion is set by the lumped nodal masses and '
              'rotary inertias alone.', mon, [], True, 'linear', 'linear', category='feature', group='element',
              twin=False)
+
+    # shell bulk viscosity: free single elements with all nodal velocities prescribed (in-plane dilatation or
+    # uniform curvature rate), viscous dissipation ALLVD compared. Rates chosen so that every element dissipates
+    # about the same energy (small strains: 1e-3 at most)
+    def bulk_viscosity_case(name, title, items, element, description):
+        d = Deck(name, title)
+        bcs, mon = [], []
+        for k, (etype, corners, mat, mode) in enumerate(items):
+            n = len(corners)
+            cx, cy = sum(c[0] for c in corners) / n, sum(c[1] for c in corners) / n
+            area = 0.5 * abs(sum(corners[i][0] * corners[(i + 1) % n][1] - corners[(i + 1) % n][0] * corners[i][1]
+                                 for i in range(n)))
+            rho, modulus = {'STEEL': (7.85e-9, 2.3e5), 'STEEL49': (7.85e-9, 2.76e5), 'NH45': (1.1e-9, 729.0),
+                            'NH499': (1.1e-9, 7896.0), 'FUNG': (1.06e-9, 7896.0)}[mat]
+            rate = 10.0 * (0.0425 / math.sqrt(rho * modulus)) ** 0.5 / area ** 0.75
+            if mode == 'bend':
+                rate *= 35.0
+            ids = [d.node(x - cx + 10.0 * k, y - cy, 0.0) for (x, y) in corners]
+            elset = 'P%d' % (k + 1)
+            shell(d, etype, [ids], 0.1, mat, elset=elset)
+            if mat == 'FUNG':
+                d.model[-2] += ', orientation=ORI'
+                if '*Orientation, name=ORI, local directions=2' not in d.model:
+                    d.model[:0] = ['*Orientation, name=ORI, local directions=2', '1., 0., 0., 0., 1., 0.']
+            for nid, (x, y) in zip(ids, corners):
+                x, y = x - cx, y - cy
+                vals = (rate * x, rate * y, 0, 0, 0, 0) if mode == 'dil' else (0, 0, 0, rate * y, -rate * x, 0)
+                bcs += ['%d, %d, %d, %s' % (nid, dof + 1, dof + 1, fmt(v)) for dof, v in enumerate(vals)]
+            mon += ids
+        d.model += ['*Amplitude, name=CONSTANT', '0., 1., 1., 1.']
+        d.steps += explicit_step('Move', 5e-6, ['*Boundary, type=VELOCITY, amplitude=CONSTANT'] + bcs, rot=True,
+                                 nframes=10)
+        register(d, 'explicit', element, 'bulk viscosity', description, mon, [], True, 'linear', category='feature',
+                 group='element', twin=False, energies=['ALLVD'])
+
+    sq, rect2, para, rect4 = ([(0, 0), (1, 0), (1, 1), (0, 1)], [(0, 0), (2, 0), (2, 1), (0, 1)],
+                              [(0, 0), (1, 0), (1.6, 1), (0.6, 1)], [(0, 0), (4, 0), (4, 1), (0, 1)])
+    rt1, equi, obt, sliv = ([(0, 0), (1, 0), (0, 1)], [(0, 0), (1, 0), (0.5, 0.8660254)], [(0, 0), (3, 0), (1, 0.5)],
+                            [(0, 0), (5, 0), (2.5, 0.3)])
+    bulk_viscosity_case('shell_bulk_viscosity_s4r_xpl', 'Free S4R elements, prescribed velocities (explicit): bulk '
+                        'viscosity', [('S4R', sq, 'STEEL', 'dil'), ('S4R', para, 'STEEL', 'dil'),
+                                      ('S4R', rect2, 'STEEL', 'bend'), ('S4R', para, 'STEEL', 'bend')], 'S4R',
+                        'Four free S4R elements (square, parallelogram, rectangle) with all nodal velocities '
+                        'prescribed: constant in-plane dilatation rate or constant curvature rate. Viscous dissipation '
+                        'of the linear bulk viscosity (membrane pressure and pressure moment) compared.')
+    bulk_viscosity_case('shell_bulk_viscosity_s3r_xpl', 'Free S3R elements, prescribed velocities (explicit): bulk '
+                        'viscosity', [('S3R', rt1, 'STEEL', 'dil'), ('S3R', sliv, 'STEEL', 'dil'),
+                                      ('S3R', equi, 'STEEL', 'bend'), ('S3R', obt, 'STEEL', 'bend')], 'S3R',
+                        'Four free S3R elements (right, slender, equilateral and obtuse triangles) with all nodal '
+                        'velocities prescribed: constant in-plane dilatation rate or constant curvature rate. Viscous '
+                        'dissipation of the linear bulk viscosity compared.')
+    bulk_viscosity_case('shell_bulk_viscosity_hyper_xpl', 'Free S4R and S3R elements, compressible and nearly '
+                        'incompressible materials (explicit): bulk viscosity',
+                        [('S4R', sq, 'NH45', 'dil'), ('S4R', sq, 'NH499', 'bend'), ('S3R', rt1, 'FUNG', 'dil'),
+                         ('S4R', rect4, 'STEEL49', 'bend')], 'S4R + S3R',
+                        'Free S4R and S3R elements with all nodal velocities prescribed, neo-Hooke (nu = 0.45 and '
+                        '0.499), Fung (nearly incompressible) and elastic (nu = 0.49) materials: wave speed of the '
+                        'bulk viscosity, with the Poisson ratio limited to 0.49 at fixed bulk modulus.')
 
     # S3RS: same nodal masses as S3R, rotary inertia mass times max(A / 4, t^2 / 6)
     d = Deck('s3rs_rotary_inertia_xpl', 'Free S3RS elements, nodal forces and moments (explicit): lumped inertia')

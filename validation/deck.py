@@ -23,6 +23,9 @@ MATERIALS = {
              '8., 0., 100., 0., 0., 8., 0., 0.\n'
              '0., 12., 0., 0., 0., 0., 8., 0.\n'
              '0., 0., 0., 0., 12., 2e-05, 2e-05\n'),
+    'STEEL49': '*Material, name=STEEL49\n*Density\n7.85e-09\n*Elastic\n210000., 0.49\n',
+    'NH45': '*Material, name=NH45\n*Density\n1.1e-09\n*Hyperelastic, neo hooke\n100., 0.001\n',
+    'NH499': '*Material, name=NH499\n*Density\n1.1e-09\n*Hyperelastic, neo hooke\n100., 2e-05\n',
     'HEAVY': '*Material, name=HEAVY\n*Density\n7.85e-06\n*Elastic\n210000., 0.3\n',
     'STEEL_DAMP': '*Material, name=STEEL_DAMP\n*Density\n7.85e-09\n*Elastic\n210000., 0.3\n*Damping, alpha=200.\n',
     'STEEL_TDEP': ('*Material, name=STEEL_TDEP\n*Density\n7.85e-09\n*Elastic\n210000., 0.3, 0.\n150000., 0.3, 200.\n'
@@ -351,7 +354,7 @@ def explicit_step(name, duration, body, rot=False, nframes=20, extra=None, fixed
 # ---------------------------------------------------------------------------------------------- registry
 def register(d, procedure, element, mode, description, mon, fix, rot, tol, analysis='nonlinear', known=None,
              reference='abaqus', supported=True, reason=None, twin=True, category='element', group=None,
-             literature=None):
+             literature=None, energies=None):
     """Writes the deck and its manifest entry. In twin mode, writes the twin instead (Abaqus-referenced cases only)."""
     d.nset('MON', mon)
     if fix:
@@ -377,7 +380,7 @@ def register(d, procedure, element, mode, description, mon, fix, rot, tol, analy
              'analysis': analysis,
              'known': known or KNOWN.get(name), 'reference': reference, 'known_quantities': kq[0],
              'known_quantities_note': kq[1], 'supported': supported, 'unsupported_reason': reason,
-             'twin_of': d.name if MODE['twin'] else None, 'literature': literature,
+             'twin_of': d.name if MODE['twin'] else None, 'literature': literature, 'energies': energies,
              'deferred': (group == 'application') and ('application validation case, addressed once the simple '
                                                        'tests are validated')}
     CASES.append(entry)

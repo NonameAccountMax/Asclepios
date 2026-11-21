@@ -922,33 +922,64 @@ class ShellGroup : public ElementGroup {
     double om_b2 = g1.A * tcur * tcur * tcur * lam / (12.0 * Imin) +
                    kts * g1.A * hq +
                    Db * kblam * gg / Imin + 2.0 * std::max(kv[0] * hv[0], kv[1] * hv[1]) + (n == 3 ? 4.2 : 2.0) * kd / Imin;
-    // Linear bulk viscosity of shells (Abaqus/Explicit doc, "Bulk viscosity"): membrane pressure
-    // p = b1 rho c_d L_e eps_vol_dot and "pressure moment" m = b1 h0^2/12 rho c_d L kappa_dot
-    // (kappa_dot = k11_dot + k22_dot), both with the dilatational wave speed c_d of the material
-    // (bulk modulus included: for nearly incompressible hyperelastic leaflets this is the dominant
-    // damping of curvature changes). The damping enters the stable increment through
-    // dt = 2/omega (sqrt(1 + xi^2) - xi), xi = nu / (2 omega).
+    // Linear bulk viscosity of shells: membrane pressure p = b1 rho c L_m eps_vol_dot (in-plane dilatation rate)
+    // and "pressure moment" m = b1 rho c L_b h0^2/12 (k11_dot + k22_dot), as in Abaqus/Explicit:
+    //  - c: plate wave speed sqrt(M / rho), M the effective in-plane modulus; for nearly incompressible materials
+    //    the Poisson ratio is limited to 0.49 at fixed bulk modulus, M >= 3K (1 - 2 x 0.49) / (1 - 0.49^2);
+    //  - L_m: element length of the stable increment, L_m^2 = max(1 / sum|B|^2, 0.92 L_e^2) for quadrilaterals and
+    //    max(4/3 / sum|B|^2, 0.97 L_e^2) for triangles, L_e = 2 c / omega of the one-point membrane eigenvalue;
+    //  - L_b: area / longest midline (quadrilaterals), shortest edge (triangles), independent of the material.
+    // (single-element Abaqus/Explicit runs with prescribed nodal velocities: viscous dissipation rate within
+    // 1e-4 for 18 shapes, nu = 0 to 0.499, elastic, neo-Hooke and Fung; 10 % on a kite-shaped quadrilateral)
+    // The damping enters the stable increment through dt = 2/omega (sqrt(1 + xi^2) - xi), xi = nu / (2 omega).
     double dtm, dtb;
     {
       double om_m = std::sqrt(std::max(om_m2, 1e-300)), om_b = std::sqrt(std::max(om_b2, 1e-300));
       double xim = 0, xib = 0;
       if (in.dynamic && in.bv1 > 0) {
-        const double cd = std::sqrt(dilatational_modulus(m) / rho);
-        const double Le = std::sqrt(2.0 / std::max(BB, 1e-300));
-        const double kv = in.bv1 * rho * cd * Le;
+        // plate modulus E/(1 - nu^2): Me itself for elastic materials; for hyperelastic ones Me is the largest
+        // eigenvalue of the tangent, E/(1 - nu) at rest (dilatation mode)
+        const double Kb = m.bulk_modulus(), Gs = m.shear_modulus();
+        double nu_m = nu, Mw = Me;
+        if (hyper(e)) {
+          nu_m = Kb > 0 && Gs > 0 ? (3 * Kb - 2 * Gs) / (2 * (3 * Kb + Gs)) : 0.49;
+          Mw = Me / (1 + nu_m);
+        }
+        if (Kb > 0 && std::isfinite(Kb)) Mw = std::max(Mw, 3.0 * Kb * (1 - 2 * 0.49) / (1 - 0.49 * 0.49));
+        nu_m = std::min(nu_m, 0.49);
+        const double c = std::sqrt(Mw / rho);
+        double Dn[3][3];
+        iso_plane_stress_D(1.0, nu_m, Dn);
+        const double Le2 = 4.0 / std::max(n * max_eig_DG(Dn, g1, n), 1e-300);
+        const double Lm = std::sqrt(n == 4 ? std::max(1.0 / std::max(BB, 1e-300), 0.92 * Le2)
+                                           : std::max(4.0 / 3.0 / std::max(BB, 1e-300), 0.97 * Le2));
+        double Lb;
+        if (n == 4) {
+          auto mid = [&](int a, int b, int k) { return 0.5 * (g1.xl[a][k] + g1.xl[b][k]); };
+          double l1 = std::hypot(mid(1, 2, 0) - mid(3, 0, 0), mid(1, 2, 1) - mid(3, 0, 1));
+          double l2 = std::hypot(mid(0, 1, 0) - mid(2, 3, 0), mid(0, 1, 1) - mid(2, 3, 1));
+          Lb = g1.A / std::max(std::max(l1, l2), 1e-300);
+        } else {
+          Lb = 1e300;
+          for (int I = 0; I < 3; ++I) {
+            const int J = (I + 1) % 3;
+            Lb = std::min(Lb, std::hypot(g1.xl[J][0] - g1.xl[I][0], g1.xl[J][1] - g1.xl[I][1]));
+          }
+        }
+        const double kvm = in.bv1 * rho * c * Lm, kvb = in.bv1 * rho * c * Lb * t0 * t0 / 12.0;
         if (in.dt > 0) {
           double dvol = de[0] + de[1];  // in-plane dilatation rate
-          double pbv = kv * dvol / in.dt;
+          double pbv = kvm * dvol / in.dt;
           N[0] += pbv * tcur; N[1] += pbv * tcur;
           out.e_visc += pbv * dvol * tcur * g1.A;
-          double mbv = kv * t0 * t0 / 12.0 * (dk[0] + dk[1]) / in.dt;
+          double mbv = kvb * (dk[0] + dk[1]) / in.dt;
           M[0] += mbv * tcur; M[1] += mbv * tcur;
           out.e_visc += mbv * tcur * (dk[0] + dk[1]) * g1.A;
         }
-        double Dv[3][3] = {{kv, kv, 0}, {kv, kv, 0}, {0, 0, 0}};
-        double nu_m = n * max_eig_DG(Dv, g1, n) / rho;
-        double nu_b = g1.A * tcur * kv * t0 * t0 / 12.0 * BB / Imin;
-        xim = std::max(in.bv1, 0.5 * nu_m / om_m);
+        double Dv[3][3] = {{kvm, kvm, 0}, {kvm, kvm, 0}, {0, 0, 0}};
+        double vis_m = n * max_eig_DG(Dv, g1, n) / rho;
+        double nu_b = g1.A * tcur * kvb * BB / Imin;
+        xim = std::max(in.bv1, 0.5 * vis_m / om_m);
         xib = 0.5 * nu_b / om_b;
       }
       dtm = 2.0 / om_m * (std::sqrt(1 + xim * xim) - xim);

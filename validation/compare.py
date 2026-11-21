@@ -8,7 +8,8 @@ set, energy histories), and compares them with reference/<case>.json when it exi
 Errors are relative to the peak reference value of each quantity over the whole history:
   U, UR : max over frames and monitored nodes of |x - x_ref| / max |x_ref|
   RF    : same on the total reaction force of the FIX node set
-  E     : max over time of |E - E_ref| for ALLIE, ALLKE, ALLWK, divided by the largest of these energies
+  E     : max over time of |E - E_ref| for ALLIE, ALLKE, ALLWK (or the energies listed by the case), divided by the
+          largest of these energies
 Writes RESULTS.md and returns a non-zero status if a case fails (or, with --strict, has no reference).
 
 usage: compare.py [case ...] [--no-run] [--jobs N] [--strict] [--update-readme]
@@ -322,8 +323,8 @@ def element_error(mine, ref, shell=False):
     return worst
 
 
-def energy_error(mine, ref):
-    keys = [k for k in ENERGIES if ref['history'].get(k) and mine['history'].get(k)]
+def energy_error(mine, ref, energies=None):
+    keys = [k for k in (energies or ENERGIES) if ref['history'].get(k) and mine['history'].get(k)]
     scale = max((abs(v) for k in keys for _, v in ref['history'][k]), default=0.0)
     if scale == 0.0:
         return None
@@ -380,7 +381,7 @@ def evaluate(case, ran):
     if nt is not None:
         res['U'] = max(res['U'] or 0.0, nt)
     res['S'] = element_error(mine, ref, shell=(case.get('mone_type') or '').startswith(('S3', 'S4')))
-    res['E'] = energy_error(mine, ref)
+    res['E'] = energy_error(mine, ref, case.get('energies'))
     if mine.get('increments') and ref.get('increments'):
         res['inc'] = mine['increments'] / float(ref['increments'])
     tol = dict(case['tol'])

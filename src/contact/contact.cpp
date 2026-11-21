@@ -2,6 +2,10 @@
 //  - contact entities: shell facets (triangles, two-sided, offset by a reduced half thickness),
 //    beam segments (radius), slave nodes (all nodes of the included elements); beyond a facet
 //    boundary the contact is with the rounded edge (closest point), so no gap between facets;
+//  - free shell edges are rounded within the shell: the nodes of a free edge are moved back into the
+//    shell plane by the half thickness (perpendicular to the edge, along the bisector at a corner;
+//    at most half the facet size and 0.6 x facet size x sine of the angle to each edge), so that
+//    the contact surface does not extend beyond the edge;
 //  - node-to-facet and node-to-segment penalty: k = 0.3 min(m_slave, m_master) / dt^2 (mass and
 //    time increment scaled, so that contact barely lowers the stable increment);
 //  - facet half thickness h = min(t/2, 0.3 x smallest facet height), segment radius
@@ -16,6 +20,7 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cmath>
 #include <cstdint>
@@ -78,6 +83,13 @@ struct GeneralContact::Impl {
   std::vector<double> seg_r;
   std::vector<int> slaves;    // node ids
   std::vector<double> slave_h;
+  // free shell edges: element nodes of each shell element touching a free edge (4, -1 padded) and its size,
+  // free edges (two nodes and the element), nodes on free edges with their edges, current offset of every node
+  std::vector<int> fe_elem;
+  std::vector<double> fe_size;
+  std::vector<int> fedge;
+  std::vector<int> fnode, fn_off, fn_edge;
+  std::vector<Vec3> shift;
   std::vector<int> slave_of;  // node -> slave index or -1
   std::vector<int> nb_off, nb;  // per slave: sorted nodes of its elements (facets touching them are excluded)
   std::vector<int> cand_off, cand;
@@ -115,6 +127,7 @@ bool GeneralContact::define(const Step& st) {
   }
   int nsolid = 0;
   std::vector<double> node_h(m.nn(), 1e30);
+  std::vector<std::array<int, 4>> shells;  // included shell elements (nodes, -1 padded)
   for (auto& gp : A_.groups) {
     ElementGroup& G = *gp;
     for (int e = 0; e < G.size(); ++e) {
@@ -136,6 +149,7 @@ bool GeneralContact::define(const Step& st) {
         if (G.nen == 4) { add(cn[0], cn[1], cn[2]); add(cn[0], cn[2], cn[3]); }
         else add(cn[0], cn[1], cn[2]);
         for (int I = 0; I < G.nen; ++I) node_h[cn[I]] = std::min(node_h[cn[I]], h);
+        shells.push_back({cn[0], cn[1], cn[2], G.nen == 4 ? cn[3] : -1});
       } else if (G.type == ElType::B31) {
         double L = norm(m.X[cn[1]] - m.X[cn[0]]);
         double r = std::min(0.5 * G.contact_thickness(e), 0.3 * L);
@@ -146,6 +160,47 @@ bool GeneralContact::define(const Step& st) {
         ++nsolid;
       }
     }
+  }
+  {  // free shell edges: element edges used by a single included shell element
+    std::vector<std::pair<uint64_t, int>> edges;  // (sorted node pair, element)
+    for (int k = 0; k < (int)shells.size(); ++k) {
+      const auto& q = shells[k];
+      int nv = q[3] >= 0 ? 4 : 3;
+      for (int i = 0; i < nv; ++i) {
+        uint64_t a = (uint64_t)q[i], b = (uint64_t)q[(i + 1) % nv];
+        edges.push_back({std::min(a, b) << 32 | std::max(a, b), k});
+      }
+    }
+    std::sort(edges.begin(), edges.end());
+    std::vector<int> elem_id(shells.size(), -1);
+    std::vector<std::vector<int>> node_edges(m.nn());
+    for (size_t i = 0; i < edges.size(); ++i) {
+      bool dup = (i > 0 && edges[i - 1].first == edges[i].first) ||
+                 (i + 1 < edges.size() && edges[i + 1].first == edges[i].first);
+      if (dup) continue;
+      int k = edges[i].second;
+      if (elem_id[k] < 0) {
+        elem_id[k] = (int)P.fe_size.size();
+        const auto& q = shells[k];
+        P.fe_elem.insert(P.fe_elem.end(), q.begin(), q.end());
+        Vec3 a = m.X[q[0]], b = m.X[q[1]], c = m.X[q[2]];
+        double area = q[3] >= 0 ? 0.5 * norm(cross(c - a, m.X[q[3]] - b)) : 0.5 * norm(cross(b - a, c - a));
+        P.fe_size.push_back(std::sqrt(area));
+      }
+      int a = (int)(edges[i].first >> 32), b = (int)(uint32_t)edges[i].first;
+      int id = (int)P.fedge.size() / 3;
+      P.fedge.insert(P.fedge.end(), {a, b, elem_id[k]});
+      node_edges[a].push_back(id);
+      node_edges[b].push_back(id);
+    }
+    P.fn_off.push_back(0);
+    for (int n = 0; n < m.nn(); ++n) {
+      if (node_edges[n].empty()) continue;
+      P.fnode.push_back(n);
+      P.fn_edge.insert(P.fn_edge.end(), node_edges[n].begin(), node_edges[n].end());
+      P.fn_off.push_back((int)P.fn_edge.size());
+    }
+    P.shift.assign(m.nn(), Vec3());
   }
   if (nsolid) warn("general contact: %d solid elements included; solid faces are not supported yet and are ignored", nsolid);
   P.slave_of.assign(m.nn(), -1);
@@ -209,6 +264,48 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   };
   const int ns = (int)P.slaves.size();
   const int ntri = (int)P.tri_h.size(), nseg = (int)P.seg_r.size();
+  // free shell edges moved back into the shell by the half thickness (current configuration)
+  const int nfn = (int)P.fnode.size();
+  for (int i = 0; i < nfn; ++i) {
+    const int n = P.fnode[i];
+    const int si = P.slave_of[n];
+    const double h = si >= 0 ? P.slave_h[si] : 0.0;
+    const Vec3 xn = X(n);
+    Vec3 inw[2], along[2];
+    double size = 1e300;
+    const int ne = P.fn_off[i + 1] - P.fn_off[i];
+    for (int j = 0; j < std::min(ne, 2); ++j) {
+      const int* ed = &P.fedge[3 * P.fn_edge[P.fn_off[i] + j]];
+      const int* q = &P.fe_elem[4 * ed[2]];
+      const Vec3 a = X(q[0]), b = X(q[1]), c = X(q[2]);
+      Vec3 nrm, ctr;
+      if (q[3] >= 0) { const Vec3 d = X(q[3]); nrm = cross(c - a, d - b); ctr = (a + b + c + d) * 0.25; }
+      else { nrm = cross(b - a, c - a); ctr = (a + b + c) * (1.0 / 3); }
+      const Vec3 other = X(ed[0] == n ? ed[1] : ed[0]);
+      along[j] = normalized(other - xn);
+      Vec3 w = normalized(cross(nrm, along[j]));
+      if (dot(w, ctr - xn) < 0) w = w * -1.0;
+      inw[j] = w;
+      size = std::min(size, P.fe_size[ed[2]]);
+    }
+    Vec3 d;
+    if (ne == 1) d = inw[0] * h;
+    else if (ne == 2) {
+      const double c = dot(inw[0], inw[1]);
+      if (c > -0.9) d = (inw[0] + inw[1]) * (h / (1 + c));  // both edges moved back by h
+    }
+    // at most half the facet size, and 0.6 x facet size x sine of the angle between the offset and each edge
+    double dmax = 0.5 * size, dl = norm(d);
+    if (dl > 0) {
+      for (int j = 0; j < std::min(ne, 2); ++j) {
+        const double ca = dot(d, along[j]) / dl;
+        if (ca > 0) dmax = std::min(dmax, 0.6 * size * std::sqrt(std::max(0.0, 1 - ca * ca)));
+      }
+      if (dl > dmax) d = d * (dmax / dl);
+    }
+    P.shift[n] = d;
+  }
+  auto Xs = [&](int n) { return X(n) + P.shift[n]; };
 
   // ---- candidate search when nodes moved more than half the margin
   bool rebuild = P.xref.empty();
@@ -216,14 +313,14 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     double dmax = 0;
     for (int si = 0; si < ns; ++si) {
       int n = P.slaves[si];
-      dmax = std::max(dmax, norm2(X(n) - load3(&P.xref[3 * n])));
+      dmax = std::max(dmax, norm2(Xs(n) - load3(&P.xref[3 * n])));
     }
     rebuild = std::sqrt(dmax) > 0.5 * P.margin;
   }
   if (rebuild) {
     ++P.rebuilds;
     P.xref.assign(3 * nn, 0.0);
-    for (int si = 0; si < ns; ++si) store3(&P.xref[3 * P.slaves[si]], X(P.slaves[si]));
+    for (int si = 0; si < ns; ++si) store3(&P.xref[3 * P.slaves[si]], Xs(P.slaves[si]));
     const double cs = P.cell;
     auto key = [](int64_t i, int64_t j, int64_t k) { return ((i + (1 << 20)) << 42) | ((j + (1 << 20)) << 21) | (k + (1 << 20)); };
     std::vector<std::pair<int64_t, int>> cells;
@@ -243,7 +340,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     double hs_max = 0;
     for (double h : P.slave_h) hs_max = std::max(hs_max, h);
     for (int t = 0; t < ntri; ++t) {
-      Vec3 a = X(P.tri[3 * t]), b = X(P.tri[3 * t + 1]), c = X(P.tri[3 * t + 2]);
+      Vec3 a = Xs(P.tri[3 * t]), b = Xs(P.tri[3 * t + 1]), c = Xs(P.tri[3 * t + 2]);
       double inf = P.tri_h[t] + hs_max + P.margin;
       Vec3 lo(std::min({a.x, b.x, c.x}) - inf, std::min({a.y, b.y, c.y}) - inf, std::min({a.z, b.z, c.z}) - inf);
       Vec3 hi(std::max({a.x, b.x, c.x}) + inf, std::max({a.y, b.y, c.y}) + inf, std::max({a.z, b.z, c.z}) + inf);
@@ -261,7 +358,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
 #pragma omp parallel for num_threads(A.nthreads) schedule(dynamic, 64)
     for (int si = 0; si < ns; ++si) {
       int n = P.slaves[si];
-      Vec3 x = X(n);
+      Vec3 x = Xs(n);
       int64_t kk = key((int64_t)std::floor(x.x / cs), (int64_t)std::floor(x.y / cs), (int64_t)std::floor(x.z / cs));
       auto lo = std::lower_bound(cells.begin(), cells.end(), std::make_pair(kk, INT_MIN));
       for (auto it = lo; it != cells.end() && it->first == kk; ++it) {
@@ -273,7 +370,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
           const int* tn = &P.tri[3 * id];
           if (near(tn[0]) || near(tn[1]) || near(tn[2])) continue;  // facets touching the node's elements
           double w[3]; bool in;
-          Vec3 q = closest_on_tri(x, X(tn[0]), X(tn[1]), X(tn[2]), w, in);
+          Vec3 q = closest_on_tri(x, Xs(tn[0]), Xs(tn[1]), Xs(tn[2]), w, in);
           if (norm(x - q) > P.slave_h[si] + P.tri_h[id] + P.margin) continue;
         } else {
           int s = -1 - id;
@@ -295,7 +392,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
 #pragma omp parallel for num_threads(A.nthreads) reduction(+ : ninit) schedule(dynamic, 64)
   for (int si = 0; si < ns; ++si) {
     int n = P.slaves[si];
-    Vec3 x = X(n);
+    Vec3 x = Xs(n);
     double hs = P.slave_h[si];
     Hit bt, bs;
     for (int c = P.cand_off[si]; c < P.cand_off[si + 1]; ++c) {
@@ -304,7 +401,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       h.master = id;
       if (id >= 0) {
         const int* tn = &P.tri[3 * id];
-        Vec3 a = X(tn[0]), b = X(tn[1]), cc = X(tn[2]);
+        Vec3 a = Xs(tn[0]), b = Xs(tn[1]), cc = Xs(tn[2]);
         bool in;
         Vec3 q = closest_on_tri(x, a, b, cc, h.w, in);
         Vec3 nrm = normalized(cross(b - a, cc - a));
