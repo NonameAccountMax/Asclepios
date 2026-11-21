@@ -124,6 +124,12 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   about every axis, u = A·L²/(24·I_min), independent of the elastic constants.
 - **B31 bulk viscosity** (explicit): b1·ρ·c·L on the axial strain rate and half of it on the curvature rates
   (moments 0.5·b1·ρ·c·L·I·κ̇); none on transverse shear and torsion; not included in the section force output.
+- **B31 stable increment** (explicit): for the rotary inertia ρ·L/2·I_b about each bending axis, the larger of
+  (2·E·I_a/L + K(I_b)·L/6)/I_rot (opposite nodal rotations, shear energy of the linear rotation field) and
+  K(I_a)·L·(2/(L²·m) + 1/(2·I_rot)) (equal rotations with opposite deflections), with I_a the second moment of the
+  other axis and K(I) the compensated shear stiffness of the plane of I, times 1.118; with ISOTROPIC rotary inertia
+  0.99·L/c; times √(1 + b1²) − b1. This cross pairing is how Abaqus/Explicit estimates the element increment
+  (free single elements: CIRC, PIPE, RECT, L/r from 0.5 to 50, two Poisson ratios: 0.2 %).
 - **B31 kinematics**: section frame rotated by the mean nodal rotation, axial strain from the chord, transverse
   shear strains and forces along the rotated section directions; transverse shear stiffness k·G·A with the
   slenderness compensation 1/(1 + 0.25·L²·A/(12·I)) of each bending plane (I22 for shear along n1, I11 along
@@ -137,7 +143,10 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   a contact pair gets the frequency Ω² = max(1/(3Δt²), 1.1·max Ω_i²) of its nodes, nodal springs that keep each
   node stable at 1/Ω, and the softer of the slave and master springs (0.3·m/Δt² between two critical nodes,
   stiffer for light nodes of soft elements), never stiffened during a contact and shared between the contacts of
-  a node; the increment is bounded by 1/Ω of the active contacts. Normal viscous damping of 3 % of critical
+  a node; the increment is bounded by 1/Ω of the active contacts. The master stiffness and its sharing use the
+  triangle of the facet under the contact point; the force goes to the four nodes of a quadrilateral facet with
+  the bilinear weights of the point (coordinates taken on the facet of the nodes, not the one drawn in by the
+  rounding of free edges). Normal viscous damping of 3 % of critical
   (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL),
   shell half thickness limited to 0.3 times the smallest triangular facet height; free shell edges rounded within
   the shell (their nodes moved back into the shell plane by the half thickness, along the bisector at corners, at
@@ -231,9 +240,7 @@ Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: beam-to-shell impact (energy and reactions within 20 %, beam end rotations 16 %: the B31 stable
-  increment, which sets the contact stiffness of the beam nodes, is 15 % below the reference one for this section)
-  and self-contact of a coiled strip (first contact within 8 %; the later chatter of the coil on the clamped edge, which
+- Dynamics: beam-to-shell impact (reactions within 14 %, energy 8 %, beam end rotations 15 %) and self-contact of a coiled strip (first contact within 7 %; the later chatter of the coil on the clamped edge, which
   goes straight into the reactions, is not compared); viscous dissipation of
   shell bulk viscosity on strongly tapered quadrilaterals (up to 15 % high); stability of thin Fung shells closing with contact (valve model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).

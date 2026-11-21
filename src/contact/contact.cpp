@@ -44,9 +44,28 @@ struct Hit {
   double pen = 0;
   double k = 0;          // penalty stiffness used
   Vec3 n;                // direction pushing the slave out
+  double w[3] = {0, 0, 0};       // contact point on the master triangle or segment (stiffness, sharing)
+  double wf[4] = {0, 0, 0, 0};   // weights of the nodes carrying the force (bilinear on quadrilaterals)
+  int side = 0;
+};
+struct HitV3 {  // restart files before contact.v4
+  int master = INT_MIN;
+  double pen = 0, k = 0;
+  Vec3 n;
   double w[3] = {0, 0, 0};
   int side = 0;
 };
+
+// barycentric coordinates of the projection of p on the plane of the triangle abc (outside [0, 1] beyond its edges)
+void plane_coords(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c, double w[3]) {
+  const Vec3 e1 = b - a, e2 = c - a, d = p - a;
+  const double d11 = dot(e1, e1), d12 = dot(e1, e2), d22 = dot(e2, e2), det = d11 * d22 - d12 * d12;
+  if (!(det > 0)) { w[0] = 1; w[1] = w[2] = 0; return; }
+  const double p1 = dot(d, e1), p2 = dot(d, e2);
+  w[1] = (d22 * p1 - d12 * p2) / det;
+  w[2] = (d11 * p2 - d12 * p1) / det;
+  w[0] = 1 - w[1] - w[2];
+}
 
 // closest point on a triangle (Ericson), barycentric weights; interior = projection inside
 Vec3 closest_on_tri(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c, double w[3], bool& interior) {
@@ -82,6 +101,21 @@ Vec3 closest_on_tri(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c, 
 struct GeneralContact::Impl {
   std::vector<int> tri;       // 3 per triangle
   std::vector<double> tri_h;
+  // per triangle, the nodes that carry its contact forces: the four nodes of its quadrilateral (bilinear weights,
+  // half 0 = nodes 0-1-2, half 1 = nodes 0-2-3) or its own three nodes (4th = -1)
+  std::vector<int> fac;
+  std::vector<signed char> fac_half;
+  // nodes of the master triangle or segment of a hit (weights w) and their number
+  const int* stiff_nodes(const Hit& h, int& nm) const {
+    nm = h.master >= 0 ? 3 : 2;
+    return h.master >= 0 ? &tri[3 * h.master] : &seg[2 * (-1 - h.master)];
+  }
+  // nodes carrying the force of a hit (weights wf) and their number
+  const int* master_nodes(const Hit& h, int& nm) const {
+    if (h.master >= 0) { const int* q = &fac[4 * h.master]; nm = q[3] >= 0 ? 4 : 3; return q; }
+    nm = 2;
+    return &seg[2 * (-1 - h.master)];
+  }
   std::vector<int> seg;       // 2 per segment
   std::vector<double> seg_r;
   std::vector<int> slaves;    // node ids
@@ -153,9 +187,14 @@ bool GeneralContact::define(const Step& st) {
         double hmin = G.nen == 4 ? std::min(tri_height(p[0], p[1], p[2]), tri_height(p[0], p[2], p[3]))
                                  : tri_height(p[0], p[1], p[2]);
         double h = std::min(0.5 * G.contact_thickness(e), 0.3 * hmin);
-        auto add = [&](int a, int b, int c) { P.tri.insert(P.tri.end(), {a, b, c}); P.tri_h.push_back(h); };
-        if (G.nen == 4) { add(cn[0], cn[1], cn[2]); add(cn[0], cn[2], cn[3]); }
-        else add(cn[0], cn[1], cn[2]);
+        auto add = [&](int a, int b, int c, int half) {
+          P.tri.insert(P.tri.end(), {a, b, c});
+          P.tri_h.push_back(h);
+          P.fac.insert(P.fac.end(), {cn[0], cn[1], cn[2], G.nen == 4 ? cn[3] : -1});
+          P.fac_half.push_back((signed char)half);
+        };
+        if (G.nen == 4) { add(cn[0], cn[1], cn[2], 0); add(cn[0], cn[2], cn[3], 1); }
+        else add(cn[0], cn[1], cn[2], 0);
         for (int I = 0; I < G.nen; ++I) node_h[cn[I]] = std::min(node_h[cn[I]], h);
         shells.push_back({cn[0], cn[1], cn[2], G.nen == 4 ? cn[3] : -1});
       } else if (G.type == ElType::B31) {
@@ -439,6 +478,22 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         Vec3 a = Xs(tn[0]), b = Xs(tn[1]), cc = Xs(tn[2]);
         bool in;
         Vec3 q = closest_on_tri(x, a, b, cc, h.w, in);
+        // weights of the master nodes from the coordinates of the contact point on the facet of the nodes
+        // themselves (not the one drawn in by the rounding of free edges): the stiffness and its sharing use the
+        // triangle, the force goes to the four nodes of a quadrilateral with the bilinear weights, (xi, eta) from
+        // the corners (0,0) (1,0) (1,1) or (0,0) (1,1) (0,1) of the half (clamped S4R plate facet in
+        // Abaqus/Explicit, small sheet dropped at 6 places: reactions of the plate nodes within 0.005, stiffness
+        // of a light plate within 6 %)
+        plane_coords(q, X(tn[0]), X(tn[1]), X(tn[2]), h.w);
+        double sw = 0;
+        for (int k = 0; k < 3; ++k) sw += (h.w[k] = std::max(h.w[k], 0.0));
+        for (int k = 0; k < 3; ++k) h.w[k] /= sw;
+        if (P.fac[4 * id + 3] >= 0) {
+          const double xi = P.fac_half[id] ? h.w[1] : h.w[1] + h.w[2], eta = P.fac_half[id] ? h.w[1] + h.w[2] : h.w[2];
+          h.wf[0] = (1 - xi) * (1 - eta); h.wf[1] = xi * (1 - eta); h.wf[2] = xi * eta; h.wf[3] = (1 - xi) * eta;
+        } else {
+          for (int k = 0; k < 3; ++k) h.wf[k] = h.w[k];
+        }
         Vec3 nrm = normalized(cross(b - a, cc - a));
         Vec3 d = x - q;
         double s = dot(d, nrm);
@@ -467,7 +522,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         Vec3 d = x - (a + ab * l);
         double dist = norm(d);
         if (dist < 1e-14) continue;
-        h.w[0] = 1 - l; h.w[1] = l;
+        h.w[0] = h.wf[0] = 1 - l; h.w[1] = h.wf[1] = l;
         h.pen = hs + P.seg_r[sg] - dist;
         h.n = d / dist;
       }
@@ -478,8 +533,8 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     for (int pass = 0; pass < 2; ++pass) {
       Hit& h = pass ? bs : bt;
       if (h.master == INT_MIN) continue;
-      int nm = h.master >= 0 ? 3 : 2;
-      const int* mn = h.master >= 0 ? &P.tri[3 * h.master] : &P.seg[2 * (-1 - h.master)];
+      int nm;
+      const int* mn = P.stiff_nodes(h, nm);
       double mm = 0;
       for (int i = 0; i < nm; ++i) mm += h.w[i] * A.mt[mn[i]];
       double msl = A.mt[n];
@@ -535,8 +590,8 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     for (int pass = 0; pass < 2; ++pass) {
       const Hit& h = pass ? P.hit_s[si] : P.hit_t[si];
       if (h.master == INT_MIN) continue;
-      int nm = h.master >= 0 ? 3 : 2;
-      const int* mn = h.master >= 0 ? &P.tri[3 * h.master] : &P.seg[2 * (-1 - h.master)];
+      int nm;
+      const int* mn = P.stiff_nodes(h, nm);
       const double w2 = (pass ? P.cw2_s : P.cw2_t)[si];
       ksum[n] += h.k / node_k(n, w2);
       for (int i = 0; i < nm; ++i) ksum[mn[i]] += h.w[i] * h.k / node_k(mn[i], w2);
@@ -563,8 +618,8 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       const double fd_old = h.master == INT_MIN ? 0.0 : dot(F, h.n) - fn;  // damping force of the previous increment
       F = Vec3();
       if (h.master == INT_MIN) { pp = -1; fn = 0; continue; }
-      int nm = h.master >= 0 ? 3 : 2;
-      const int* mn = h.master >= 0 ? &P.tri[3 * h.master] : &P.seg[2 * (-1 - h.master)];
+      int nm;
+      const int* mn = P.stiff_nodes(h, nm);
       // smallest pair stiffness since the contact started (the penalty never stiffens during a contact), 9/11 of
       // it, reduced by the sharing of the nodes
       const double w2 = (pass ? P.cw2_s : P.cw2_t)[si];
@@ -578,7 +633,9 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       const double mdamp = (pass ? P.md_s : P.md_t)[si];
       w2mx = std::max(w2mx, w2);
       Vec3 dum;
-      for (int i = 0; i < nm; ++i) dum += load3(&A.du[6 * mn[i]]) * h.w[i];
+      int nf;
+      const int* mf = P.master_nodes(h, nf);
+      for (int i = 0; i < nf; ++i) dum += load3(&A.du[6 * mf[i]]) * h.wf[i];
       double Fn;
       const double appr = std::max(0.0, -dot(dus - dum, h.n));  // relative approach in this increment
       if (pp >= 0) {
@@ -633,9 +690,9 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       if (h.master == INT_MIN) continue;
       const Vec3& F = pass ? P.force_s[si] : P.force_t[si];
       add3(&f[6 * n], F);
-      int nm = h.master >= 0 ? 3 : 2;
-      const int* mn = h.master >= 0 ? &P.tri[3 * h.master] : &P.seg[2 * (-1 - h.master)];
-      for (int i = 0; i < nm; ++i) add3(&f[6 * mn[i]], F * (-h.w[i]));
+      int nm;
+      const int* mn = P.master_nodes(h, nm);
+      for (int i = 0; i < nm; ++i) add3(&f[6 * mn[i]], F * (-h.wf[i]));
     }
   }
   en.friction += efric;
@@ -657,7 +714,7 @@ double GeneralContact::dt_limit() const {
 }
 
 void GeneralContact::save(BinOut& o) const {
-  o.tag("contact.v3");
+  o.tag("contact.v4");
   bool has = p_ != nullptr;
   o.pod(has);
   if (!has) return;
@@ -670,16 +727,37 @@ void GeneralContact::save(BinOut& o) const {
 
 void GeneralContact::load(BinIn& in) {
   std::string tg = in.read_tag();
-  if (tg != "contact.v3" && tg != "contact.v2" && tg != "contact") throw std::runtime_error("restart file: contact section expected");
+  if (tg != "contact.v4" && tg != "contact.v3" && tg != "contact.v2" && tg != "contact")
+    throw std::runtime_error("restart file: contact section expected");
   bool has;
   in.pod(has);
   if (!has) return;
   if (!p_) throw std::runtime_error("restart: contact state without a contact definition");
   Impl& P = *p_;
-  in.vec(P.last_master); in.vec(P.last_side); in.vec(P.ft); in.vec(P.hit_t); in.vec(P.hit_s); in.vec(P.force_t); in.vec(P.force_s);
+  in.vec(P.last_master); in.vec(P.last_side); in.vec(P.ft);
+  if (tg == "contact.v4") {
+    in.vec(P.hit_t); in.vec(P.hit_s);
+  } else {  // three master weights (triangle facets): bilinear quadrilateral weights from the same point
+    for (auto* hv : {&P.hit_t, &P.hit_s}) {
+      std::vector<HitV3> old;
+      in.vec(old);
+      hv->assign(old.size(), Hit());
+      for (size_t i = 0; i < old.size(); ++i) {
+        Hit& h = (*hv)[i];
+        h.master = old[i].master; h.pen = old[i].pen; h.k = old[i].k; h.n = old[i].n; h.side = old[i].side;
+        for (int k = 0; k < 3; ++k) h.w[k] = h.wf[k] = old[i].w[k];
+        if (h.master >= 0 && P.fac[4 * h.master + 3] >= 0) {
+          const bool half = P.fac_half[h.master];
+          const double xi = half ? h.w[1] : h.w[1] + h.w[2], eta = half ? h.w[1] + h.w[2] : h.w[2];
+          h.wf[0] = (1 - xi) * (1 - eta); h.wf[1] = xi * (1 - eta); h.wf[2] = xi * eta; h.wf[3] = (1 - xi) * eta;
+        }
+      }
+    }
+  }
+  in.vec(P.force_t); in.vec(P.force_s);
   if (tg != "contact") {
     in.vec(P.fn_t); in.vec(P.pen_t); in.vec(P.fn_s); in.vec(P.pen_s); in.vec(P.last_n);
-    if (tg == "contact.v3") { in.vec(P.kmin_t); in.vec(P.kmin_s); }
+    if (tg != "contact.v2") { in.vec(P.kmin_t); in.vec(P.kmin_s); }
   } else {  // first format (total penalty with offsets per slave/master pair): convert
     struct KV { int64_t k; double v; };
     std::vector<KV> ip;

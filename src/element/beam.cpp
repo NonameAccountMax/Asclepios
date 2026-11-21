@@ -270,22 +270,31 @@ class BeamGroup : public ElementGroup {
     store3(out.f + 6, F);
     store3(out.f + 3, -Mm + Ms);
     store3(out.f + 9, Mm + Ms);
-    // stable increment: axial wave and rotational (bending + coupled shear) bound
-    double xi = in.dynamic ? in.bv1 : 0.0;
-    double dt_ax = L1 / c * (std::sqrt(1 + xi * xi) - xi);
-    const double mt = rho * P.A * L0[e] / 2;
-    // rotational modes, each bending plane with its coupled shear: bending about n1 (I11) with the shear along n2,
-    // about n2 (I22) with the shear along n1; torsion
-    const double cI = rho * L0[e] / 2;
-    const bool iso = sec[e]->rotary_isotropic;
-    const double In = irot[e] * msf[e];
-    auto bend = [&](double I, double Ks) {
-      const double Ir = iso ? In : cI * I;
-      return 2 * E * I / (L1 * Ir) + Ks * L1 * (2.0 / (L1 * L1 * mt) + 1.0 / (2 * Ir));
-    };
-    const double om_t = 2 * G * P.J / (L1 * (iso ? In : cI * (P.I11 + P.I22)));
-    const double om_r2 = std::max({bend(P.I11, Ks2), bend(P.I22, Ks1), om_t});
-    out.dt_stable = std::min(dt_ax, 2.0 / std::sqrt(om_r2));
+    // stable increment, as estimated by Abaqus/Explicit (free single elements: CIRC, PIPE, RECT, L / r from 0.5 to
+    // 50, two Poisson ratios, prescribed transverse shear stiffness, with and without bulk viscosity: 2e-3 on the
+    // increment). For the rotary inertia Ir = rho L / 2 Ib about each bending axis, the larger of two modes, scaled
+    // by 1.118:
+    //  - opposite nodal rotations: bending stiffness of the OTHER axis plus the shear energy of the linear rotation
+    //    field (integrated exactly) with the shear stiffness compensated for axis b, (2 E Ia / L + Ks(Ib) L / 6) / Ir;
+    //  - equal rotations with opposite deflections, shear stiffness compensated for the other axis,
+    //    Ks(Ia) L (2 / (L^2 m) + 1 / (2 Ir)), m the half element mass.
+    // The cross pairing (not the coupling of the element's own modes) is what the estimate does: RECT sections with
+    // the physical pairing predict increments up to 7 times too large. The axial wave (0.99 L / c) only governs with
+    // ISOTROPIC rotary inertia, where the rotations never limit. The bulk viscosity factor applies to every mode.
+    const double xi = in.dynamic ? in.bv1 : 0.0;
+    double dt_el = 0.99 * L1 / c;
+    if (!sec[e]->rotary_isotropic) {
+      const double mt = rho * P.A * L0[e] / 2, cI = rho * L0[e] / 2;
+      auto rot_mode = [&](double Ia, double Ib, double Ksa, double Ksb) {
+        const double Ir = cI * Ib;
+        return std::max((2 * E * Ia / L1 + Ksb * L1 / 6) / Ir, Ksa * L1 * (2.0 / (L1 * L1 * mt) + 1.0 / (2 * Ir)));
+      };
+      const double om_t = 2 * G * P.J / (L1 * cI * (P.I11 + P.I22));  // torsion (never governs for these sections)
+      // Ks1 is compensated with I22, Ks2 with I11
+      const double om2 = 1.118 * std::max({rot_mode(P.I22, P.I11, Ks1, Ks2), rot_mode(P.I11, P.I22, Ks2, Ks1), om_t});
+      dt_el = std::min(dt_el, 2.0 / std::sqrt(om2));
+    }
+    out.dt_stable = dt_el * (std::sqrt(1 + xi * xi) - xi);
     if (commit) {
       store3(S.n1, n11);
       store3(S.ax, ax1);

@@ -141,6 +141,72 @@ def shell_stable_increment():
     return ok
 
 @case
+def contact_facet_weights():
+    # general contact on one clamped S4R plate facet 1 x 1 (t = 0.1), small S4R sheet 0.3 x 0.3 (t = 0.1) dropped
+    # flat at 1000 off-centre: the reactions of the four plate nodes follow the bilinear weights of the contact
+    # points (Abaqus/Explicit: 0.188 0.063 0.188 0.562 of the impulse, peak reaction 0.5111); light plate (density
+    # / 10, the master side limits the penalty, stiffness and sharing from the triangles of the facet): Abaqus
+    # peak 0.7013
+    def drop(name, rp):
+        deck = ['*Heading', '*Node', '1, 0., 0., 0.', '2, 1., 0., 0.', '3, 1., 1., 0.', '4, 0., 1., 0.',
+                '11, 0.1, 0.6, 0.12', '12, 0.4, 0.6, 0.12', '13, 0.4, 0.9, 0.12', '14, 0.1, 0.9, 0.12',
+                '*Element, type=S4R, elset=PLATE', '1, 1, 2, 3, 4', '*Element, type=S4R, elset=SHEET', '2, 11, 12, 13, 14',
+                '*Shell Section, elset=PLATE, material=PM', '0.1, 5', '*Shell Section, elset=SHEET, material=SM', '0.1, 5',
+                '*Nset, nset=PN', '1, 2, 3, 4', '*Nset, nset=SN', '11, 12, 13, 14',
+                '*Material, name=PM', '*Density', '%g' % rp, '*Elastic', '210000., 0.3',
+                '*Material, name=SM', '*Density', '7.85e-09', '*Elastic', '70000., 0.33',
+                '*Initial Conditions, type=VELOCITY', 'SN, 3, -1000.', '*Surface Interaction, name=NOFRIC',
+                '*Step, name=Drop, nlgeom=YES', '*Dynamic, Explicit', ', 4e-05', '*Boundary', 'PN, ENCASTRE',
+                '*Contact', '*Contact Inclusions, ALL EXTERIOR', '*Contact Property Assignment', ' , , NOFRIC',
+                '*Output, field, time interval=1e-8', '*Node Output', 'U, RF', '*End Step']
+        open(os.path.join(OUT, name + '.inp'), 'w').write('\n'.join(deck) + '\n')
+        run(name)
+        imp, peak = [0.0] * 4, 0.0
+        for f in sorted(glob.glob(os.path.join(OUT, name + '_vtk', '*.vtu'))):
+            s = open(f).read()
+            def arr(field, fmt):
+                m = re.search(r'Name="%s"[^>]*>\n(.*?)\n</DataArray>' % field, s, re.S)
+                b = base64.b64decode(m.group(1)); n = struct.unpack('<I', b[:4])[0]
+                return struct.unpack('<%d%s' % (n // 4, fmt), b[4:4 + n])
+            lab, rf = arr('NodeLabel', 'i'), arr('RF', 'f')
+            rz = [rf[3 * lab.index(k) + 2] for k in (1, 2, 3, 4)]
+            imp = [a + b for a, b in zip(imp, rz)]
+            peak = max(peak, abs(sum(rz)))
+        return [a / sum(imp) for a in imp], peak
+    w, pk = drop('cfacet', 7.85e-9)
+    ok = True
+    for k, ref in enumerate((0.1875, 0.0625, 0.1875, 0.5625)):
+        ok &= check('plate node %d: share of the impulse' % (k + 1), w[k], ref, 0.03)
+    ok &= check('peak reaction (Abaqus 0.5111)', pk, 0.5111, 0.01)
+    _, pkl = drop('cfacet_light', 7.85e-10)
+    ok &= check('light plate: peak reaction (Abaqus 0.7013)', pkl, 0.7013, 0.03)
+    return ok
+
+@case
+def beam_stable_increment():
+    # free single B31 elements (E = 210000, nu = 0.3, default bulk viscosity): element estimate of Abaqus/Explicit,
+    # larger of the opposite-rotation and coupled-shear modes with the cross pairing of the bending axes (RECT
+    # sections), axial wave with ISOTROPIC rotary inertia
+    cases = [('CIRC', '1.', 0.5, '', 8.491654e-08), ('CIRC', '1.', 10.0, '', 8.939024e-07),
+             ('PIPE', '3., 0.5', 10.0, '', 1.516126e-06), ('RECT', '4., 0.5', 0.5, '', 1.073992e-08),
+             ('RECT', '4., 0.5', 50.0, '', 5.497078e-07), ('RECT', '2., 1.', 1.0, ', rotary inertia=ISOTROPIC', 1.802679e-07)]
+    ok = True
+    for k, (sec, dims, L, opt, ref) in enumerate(cases):
+        name = 'beamdt_%d' % k
+        deck = ['*Heading', '*Node', '1, 0., 0., 0.', '2, %g, 0., 0.' % L, '*Element, type=B31, elset=B', '1, 1, 2',
+                '*Nset, nset=NALL, elset=B', '*Beam Section, elset=B, material=M, section=%s%s' % (sec, opt), dims,
+                '0., 0., -1.', '*Material, name=M', '*Density', '7.85e-09', '*Elastic', '210000., 0.3',
+                '*Initial Conditions, type=VELOCITY', 'NALL, 2, 1.',
+                '*Step, nlgeom=YES', '*Dynamic, Explicit', ', 1e-4', '*Output, field, number interval=1', '*Node Output',
+                'U', '*Output, history, time interval=5e-5', '*Energy Output', 'ALLKE', '*End Step']
+        open(os.path.join(OUT, name + '.inp'), 'w').write('\n'.join(deck) + '\n')
+        run(name)
+        rows = open(os.path.join(OUT, name + '_history.csv')).read().strip().splitlines()
+        dt = float(rows[1].split(',')[rows[0].split(',').index('dt')])
+        ok &= check('B31 %s L = %g%s: increment' % (sec + ' ' + dims.replace(' ', ''), L, ' iso' if opt else ''), dt, ref, 3e-3)
+    return ok
+
+@case
 def output_frequency_and_paths():
     # *OUTPUT, FIELD, FREQUENCY=n in a static step (a frame every n increments and at the end of the step; ignored
     # in explicit steps, as Abaqus/Explicit does), job written through an absolute -o path in another directory:
