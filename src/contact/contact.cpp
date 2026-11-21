@@ -2,6 +2,8 @@
 //  - contact entities: shell facets (triangles, two-sided, offset by a reduced half thickness),
 //    beam segments (radius), slave nodes (all nodes of the included elements); beyond a facet
 //    boundary the contact is with the rounded edge (closest point), so no gap between facets;
+//    beam nodes contact facets and segments, shell nodes only facets; the free shell edges contact
+//    the beam segments (edge to segment, closest points of the two segments);
 //  - free shell edges are rounded within the shell: the nodes of a free edge are moved back into the
 //    shell plane by the half thickness (perpendicular to the edge, along the bisector at a corner;
 //    at most half the facet size and 0.6 x facet size x sine of the angle to each edge), so that
@@ -47,6 +49,7 @@ struct Hit {
   double w[3] = {0, 0, 0};       // contact point on the master triangle or segment (stiffness, sharing)
   double wf[4] = {0, 0, 0, 0};   // weights of the nodes carrying the force (bilinear on quadrilaterals)
   int side = 0;
+  double ws = 0;                 // edge contacts: contact point along the slave edge (0 at its first node)
 };
 struct HitV3 {  // restart files before contact.v4
   int master = INT_MIN;
@@ -65,6 +68,21 @@ void plane_coords(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c, do
   w[1] = (d22 * p1 - d12 * p2) / det;
   w[2] = (d11 * p2 - d12 * p1) / det;
   w[0] = 1 - w[1] - w[2];
+}
+
+// closest points of the segments p1-q1 and p2-q2 (Ericson): parameters s on the first, t on the second
+void closest_seg_seg(const Vec3& p1, const Vec3& q1, const Vec3& p2, const Vec3& q2, double& s, double& t) {
+  const Vec3 d1 = q1 - p1, d2 = q2 - p2, r = p1 - p2;
+  const double a = dot(d1, d1), e = dot(d2, d2), f = dot(d2, r);
+  if (a <= 1e-300 && e <= 1e-300) { s = t = 0; return; }
+  if (a <= 1e-300) { s = 0; t = std::clamp(f / e, 0.0, 1.0); return; }
+  const double c = dot(d1, r);
+  if (e <= 1e-300) { t = 0; s = std::clamp(-c / a, 0.0, 1.0); return; }
+  const double b = dot(d1, d2), den = a * e - b * b;
+  s = den > 1e-14 * a * e ? std::clamp((b * f - c * e) / den, 0.0, 1.0) : 0.0;
+  t = (b * s + f) / e;
+  if (t < 0) { t = 0; s = std::clamp(-c / a, 0.0, 1.0); }
+  else if (t > 1) { t = 1; s = std::clamp((b - c) / a, 0.0, 1.0); }
 }
 
 // closest point on a triangle (Ericson), barycentric weights; interior = projection inside
@@ -128,6 +146,29 @@ struct GeneralContact::Impl {
   std::vector<int> fnode, fn_off, fn_edge;
   std::vector<Vec3> shift;
   std::vector<int> slave_of;  // node -> slave index or -1
+  std::vector<char> beam_node;  // node of a beam element (only these contact beam segments node-to-segment)
+  // contact entities: the slave nodes (0 .. ns - 1), then, when there are beam segments, the free shell edges
+  // (edge-to-segment contact: the shell perimeter against the beams, Abaqus/Explicit general contact)
+  int nent = 0;
+  std::vector<int> efedge;  // edges of the edge entities (two nodes and the element of fe_elem)
+  std::vector<int> vowner;  // per node: the edge entity that owns its vertex contacts (lowest index)
+  int slave_nodes(int ei, const Hit& h, int sn[2], double sw[2]) const {
+    if (ei < (int)slaves.size()) { sn[0] = slaves[ei]; sw[0] = 1; return 1; }
+    const int* ed = &efedge[3 * (ei - (int)slaves.size())];
+    sn[0] = ed[0]; sn[1] = ed[1]; sw[0] = 1 - h.ws; sw[1] = h.ws;
+    return 2;
+  }
+  double ent_h(int ei) const {  // half thickness of a contact entity
+    if (ei < (int)slaves.size()) return slave_h[ei];
+    const int* ed = &efedge[3 * (ei - (int)slaves.size())];
+    return std::min(slave_h[slave_of[ed[0]]], slave_h[slave_of[ed[1]]]);
+  }
+  void resize_state(int n) {
+    last_master.resize(n, INT_MIN); last_side.resize(n, 0); ft.resize(n, Vec3());
+    fn_t.resize(n, 0.0); fn_s.resize(n, 0.0); pen_t.resize(n, -1.0); pen_s.resize(n, -1.0); last_n.resize(n, Vec3());
+    for (auto* v : {&cw2_t, &cw2_s, &md_t, &md_s, &kmin_t, &kmin_s}) v->resize(n, 0.0);
+    hit_t.resize(n); hit_s.resize(n); force_t.resize(n); force_s.resize(n);
+  }
   std::vector<int> nb_off, nb;  // per slave: sorted nodes of its elements (facets touching them are excluded)
   std::vector<int> cand_off, cand;
   std::vector<double> xref;   // node positions at the last candidate search
@@ -169,6 +210,7 @@ bool GeneralContact::define(const Step& st) {
   }
   int nsolid = 0;
   std::vector<double> node_h(m.nn(), 1e30);
+  P.beam_node.assign(m.nn(), 0);
   std::vector<std::array<int, 4>> shells;  // included shell elements (nodes, -1 padded)
   for (auto& gp : A_.groups) {
     ElementGroup& G = *gp;
@@ -202,7 +244,7 @@ bool GeneralContact::define(const Step& st) {
         double r = std::min(0.5 * G.contact_thickness(e), 0.3 * L);
         P.seg.insert(P.seg.end(), {cn[0], cn[1]});
         P.seg_r.push_back(r);
-        for (int I = 0; I < 2; ++I) node_h[cn[I]] = std::min(node_h[cn[I]], r);
+        for (int I = 0; I < 2; ++I) { node_h[cn[I]] = std::min(node_h[cn[I]], r); P.beam_node[cn[I]] = 1; }
       } else if (G.type != ElType::CONN3D2) {
         ++nsolid;
       }
@@ -276,13 +318,19 @@ bool GeneralContact::define(const Step& st) {
     P.nb.resize(P.nb_off[ns]);
     for (int si = 0; si < ns; ++si) std::copy(nbs[si].begin(), nbs[si].end(), P.nb.begin() + P.nb_off[si]);
   }
-  P.last_master.assign(ns, INT_MIN);
-  P.last_side.assign(ns, 0);
-  P.ft.assign(ns, Vec3());
-  P.fn_t.assign(ns, 0.0); P.fn_s.assign(ns, 0.0); P.pen_t.assign(ns, -1.0); P.pen_s.assign(ns, -1.0);
-  P.last_n.assign(ns, Vec3());
-  for (auto* v : {&P.cw2_t, &P.cw2_s, &P.md_t, &P.md_s, &P.kmin_t, &P.kmin_s}) v->assign(ns, 0.0);
-  P.hit_t.resize(ns); P.hit_s.resize(ns); P.force_t.resize(ns); P.force_s.resize(ns);
+  int nedge = 0;  // free shell edges whose nodes are all slaves (edge-to-segment contacts)
+  if (!P.seg.empty()) {
+    std::vector<int> fe;
+    for (size_t i = 0; i < P.fedge.size(); i += 3)
+      if (P.slave_of[P.fedge[i]] >= 0 && P.slave_of[P.fedge[i + 1]] >= 0) fe.insert(fe.end(), {P.fedge[i], P.fedge[i + 1], P.fedge[i + 2]});
+    nedge = (int)fe.size() / 3;
+    P.efedge = fe;
+    P.vowner.assign(m.nn(), INT_MAX);
+    for (int k = 0; k < nedge; ++k)
+      for (int j = 0; j < 2; ++j) P.vowner[fe[3 * k + j]] = std::min(P.vowner[fe[3 * k + j]], ns + k);
+  }
+  P.nent = ns + nedge;
+  P.resize_state(P.nent);
   P.mu = st.contact_property >= 0 ? m.interactions[st.contact_property].friction : 0.0;
   double lsum = 0, hmax = 0;
   int cnt = 0;
@@ -295,7 +343,8 @@ bool GeneralContact::define(const Step& st) {
   P.margin = std::max(0.25 * lavg, hmax);
   P.cell = 2 * lavg + 2 * hmax + P.margin;
   active_ = !P.slaves.empty() && (!P.tri.empty() || !P.seg.empty());
-  info("  general contact: %zu facets, %zu segments, %d nodes, friction %.3g", P.tri_h.size(), P.seg_r.size(), ns, P.mu);
+  info("  general contact: %zu facets, %zu segments, %d nodes, %d shell edges against segments, friction %.3g",
+       P.tri_h.size(), P.seg_r.size(), ns, nedge, P.mu);
   return active_;
 }
 
@@ -310,7 +359,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     return Vec3(A.X[3 * n] + A.u[6 * n] + A.du[6 * n], A.X[3 * n + 1] + A.u[6 * n + 1] + A.du[6 * n + 1],
                 A.X[3 * n + 2] + A.u[6 * n + 2] + A.du[6 * n + 2]);
   };
-  const int ns = (int)P.slaves.size();
+  const int ns = (int)P.slaves.size(), nent = P.nent;
   const int ntri = (int)P.tri_h.size(), nseg = (int)P.seg_r.size();
   // free shell edges moved back into the shell by the half thickness (current configuration)
   const int nfn = (int)P.fnode.size();
@@ -423,14 +472,45 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         } else {
           int s = -1 - id;
           if (near(P.seg[2 * s]) || near(P.seg[2 * s + 1])) continue;
+          // shell nodes do not contact beam segments (the shell perimeter does, edge to segment; free S4R sheet
+          // dropped on a clamped B31 rod in Abaqus/Explicit: only the edges crossing the rod are stopped)
+          if (!P.beam_node[n]) continue;
         }
         lists[si].push_back(id);
       }
     }
-    P.cand_off.assign(ns + 1, 0);
-    for (int si = 0; si < ns; ++si) P.cand_off[si + 1] = P.cand_off[si] + (int)lists[si].size();
-    P.cand.resize(P.cand_off[ns]);
-    for (int si = 0; si < ns; ++si) std::copy(lists[si].begin(), lists[si].end(), P.cand.begin() + P.cand_off[si]);
+    lists.resize(nent);
+#pragma omp parallel for num_threads(A.nthreads) schedule(dynamic, 64)
+    for (int ei = ns; ei < nent; ++ei) {  // free shell edges: segments in the cells crossed by the edge
+      const int* ed = &P.efedge[3 * (ei - ns)];
+      const int* q = &P.fe_elem[4 * ed[2]];
+      const Vec3 a = Xs(ed[0]), b = Xs(ed[1]);
+      const int64_t i0 = (int64_t)std::floor(std::min(a.x, b.x) / cs), i1 = (int64_t)std::floor(std::max(a.x, b.x) / cs);
+      const int64_t j0 = (int64_t)std::floor(std::min(a.y, b.y) / cs), j1 = (int64_t)std::floor(std::max(a.y, b.y) / cs);
+      const int64_t k0 = (int64_t)std::floor(std::min(a.z, b.z) / cs), k1 = (int64_t)std::floor(std::max(a.z, b.z) / cs);
+      if (double(i1 - i0 + 1) * double(j1 - j0 + 1) * double(k1 - k0 + 1) > 1e4) continue;
+      auto& L = lists[ei];
+      for (int64_t i = i0; i <= i1; ++i)
+        for (int64_t j = j0; j <= j1; ++j)
+          for (int64_t k = k0; k <= k1; ++k) {
+            const int64_t kk = key(i, j, k);
+            for (auto it = std::lower_bound(cells.begin(), cells.end(), std::make_pair(kk, INT_MIN));
+                 it != cells.end() && it->first == kk; ++it) {
+              const int id = it->second;
+              if (id >= 0) continue;
+              const int sg = -1 - id;
+              bool adj = false;  // segment attached to the element of the edge
+              for (int v = 0; v < 4 && q[v] >= 0; ++v) adj |= q[v] == P.seg[2 * sg] || q[v] == P.seg[2 * sg + 1];
+              if (!adj) L.push_back(id);
+            }
+          }
+      std::sort(L.begin(), L.end());
+      L.erase(std::unique(L.begin(), L.end()), L.end());
+    }
+    P.cand_off.assign(nent + 1, 0);
+    for (int si = 0; si < nent; ++si) P.cand_off[si + 1] = P.cand_off[si] + (int)lists[si].size();
+    P.cand.resize(P.cand_off[nent]);
+    for (int si = 0; si < nent; ++si) std::copy(lists[si].begin(), lists[si].end(), P.cand.begin() + P.cand_off[si]);
   }
 
   // ---- penalty stiffness of a pair, from the frequency bound w_i^2 = 1/dt_e^2 of each node (stable increment
@@ -464,12 +544,37 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   P.first_eval = false;
   int ninit = 0;
 #pragma omp parallel for num_threads(A.nthreads) reduction(+ : ninit) schedule(dynamic, 64)
-  for (int si = 0; si < ns; ++si) {
-    int n = P.slaves[si];
-    Vec3 x = Xs(n);
-    double hs = P.slave_h[si];
+  for (int si = 0; si < nent; ++si) {
     Hit bt, bs;
-    for (int c = P.cand_off[si]; c < P.cand_off[si + 1]; ++c) {
+    if (si >= ns) {  // free shell edge against beam segments: closest points of the two segments
+      const int* ed = &P.efedge[3 * (si - ns)];
+      const Vec3 p1 = Xs(ed[0]), q1 = Xs(ed[1]);
+      const double he = P.ent_h(si);
+      for (int c = P.cand_off[si]; c < P.cand_off[si + 1]; ++c) {
+        const int id = P.cand[c], sg = -1 - id;
+        const Vec3 a = X(P.seg[2 * sg]), b = X(P.seg[2 * sg + 1]);
+        double se, te;
+        closest_seg_seg(p1, q1, a, b, se, te);
+        // closest point at a vertex: one contact, held by one of the edges meeting there
+        if ((se <= 0 && P.vowner[ed[0]] != si) || (se >= 1 && P.vowner[ed[1]] != si)) continue;
+        const Vec3 d = (p1 + (q1 - p1) * se) - (a + (b - a) * te);
+        const double dist = norm(d);
+        if (dist < 1e-14) continue;
+        const double pen = he + P.seg_r[sg] - dist;
+        if (pen <= 0 || pen <= bs.pen) continue;
+        Hit h;
+        h.master = id;
+        h.w[0] = h.wf[0] = 1 - te; h.w[1] = h.wf[1] = te;
+        h.ws = se;
+        h.pen = pen;
+        h.n = d / dist;
+        bs = h;
+      }
+    }
+    const int n0 = si < ns ? P.slaves[si] : 0;
+    const Vec3 x = Xs(n0);
+    const double hs = si < ns ? P.slave_h[si] : 0.0;
+    for (int c = P.cand_off[si]; si < ns && c < P.cand_off[si + 1]; ++c) {
       int id = P.cand[c];
       Hit h;
       h.master = id;
@@ -535,16 +640,21 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       if (h.master == INT_MIN) continue;
       int nm;
       const int* mn = P.stiff_nodes(h, nm);
-      double mm = 0;
+      int sn[2];
+      double sw[2];
+      const int nsn = P.slave_nodes(si, h, sn, sw);
+      double mm = 0, msl = 0;
       for (int i = 0; i < nm; ++i) mm += h.w[i] * A.mt[mn[i]];
-      double msl = A.mt[n];
+      for (int i = 0; i < nsn; ++i) msl += sw[i] * A.mt[sn[i]];
       double meff = std::min(msl > 0 ? msl : 1e300, mm > 0 ? mm : 1e300);
       if (meff >= 1e299) { h = Hit(); continue; }
       // contact frequency: the stiffest node of the pair, at least a third of the increment frequency
       double w2 = wref2 / 3;
-      w2 = std::max(w2, 1.1 * P.node_w2[n]);
+      for (int i = 0; i < nsn; ++i) w2 = std::max(w2, 1.1 * P.node_w2[sn[i]]);
       for (int i = 0; i < nm; ++i) w2 = std::max(w2, 1.1 * P.node_w2[mn[i]]);
-      const double ks = node_k(n, w2);
+      double sflex = 0;  // slave side: a node, or the two nodes of an edge weighted by the contact point
+      for (int i = 0; i < nsn; ++i) if (sw[i] > 0) sflex += sw[i] / node_k(sn[i], w2);
+      const double ks = sflex > 0 ? 1.0 / sflex : 1e300;
       double flex = 0;
       for (int i = 0; i < nm; ++i) if (h.w[i] > 0) flex += h.w[i] / node_k(mn[i], w2);
       const double kc = std::min(ks, flex > 0 ? 1.0 / flex : 1e300);
@@ -577,7 +687,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
          nadj);
   }
   if (dt <= 1e-20) {  // initial pass: no forces (all hits are cleared for the first real increment)
-    for (int si = 0; si < ns; ++si) { P.hit_t[si] = Hit(); P.hit_s[si] = Hit(); }
+    for (int si = 0; si < nent; ++si) { P.hit_t[si] = Hit(); P.hit_s[si] = Hit(); }
     return;
   }
 
@@ -585,15 +695,17 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   // k_pair / k_node (weighted by the contact point coordinates on the master side); a node used beyond 1 has its
   // nodal stiffness divided by u in the pair stiffness
   std::vector<double> ksum(nn, 0.0);
-  for (int si = 0; si < ns; ++si) {
-    int n = P.slaves[si];
+  for (int si = 0; si < nent; ++si) {
     for (int pass = 0; pass < 2; ++pass) {
       const Hit& h = pass ? P.hit_s[si] : P.hit_t[si];
       if (h.master == INT_MIN) continue;
       int nm;
       const int* mn = P.stiff_nodes(h, nm);
+      int sn[2];
+      double sw[2];
+      const int nsn = P.slave_nodes(si, h, sn, sw);
       const double w2 = (pass ? P.cw2_s : P.cw2_t)[si];
-      ksum[n] += h.k / node_k(n, w2);
+      for (int i = 0; i < nsn; ++i) ksum[sn[i]] += sw[i] * h.k / node_k(sn[i], w2);
       for (int i = 0; i < nm; ++i) ksum[mn[i]] += h.w[i] * h.k / node_k(mn[i], w2);
     }
   }
@@ -607,9 +719,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   long ndeep = 0;
 #pragma omp parallel for num_threads(A.nthreads) reduction(+ : efric, edamp, ncont, ndeep) reduction(max : w2mx) \
     schedule(dynamic, 64)
-  for (int si = 0; si < ns; ++si) {
-    int n = P.slaves[si];
-    const Vec3 dus = load3(&A.du[6 * n]);
+  for (int si = 0; si < nent; ++si) {
     for (int pass = 0; pass < 2; ++pass) {
       Hit& h = pass ? P.hit_s[si] : P.hit_t[si];
       double& fn = pass ? P.fn_s[si] : P.fn_t[si];
@@ -620,6 +730,11 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       if (h.master == INT_MIN) { pp = -1; fn = 0; continue; }
       int nm;
       const int* mn = P.stiff_nodes(h, nm);
+      int sn[2];
+      double sw[2];
+      const int nsn = P.slave_nodes(si, h, sn, sw);
+      Vec3 dus;
+      for (int i = 0; i < nsn; ++i) dus += load3(&A.du[6 * sn[i]]) * sw[i];
       // smallest pair stiffness since the contact started (the penalty never stiffens during a contact), 9/11 of
       // it, reduced by the sharing of the nodes
       const double w2 = (pass ? P.cw2_s : P.cw2_t)[si];
@@ -628,7 +743,10 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       double flex = 0;
       for (int i = 0; i < nm; ++i)
         if (h.w[i] > 0) flex += h.w[i] * std::max(1.0, ksum[mn[i]]) / node_k(mn[i], w2);
-      const double kshared = std::min(node_k(n, w2) / std::max(1.0, ksum[n]), flex > 0 ? 1.0 / flex : 1e300);
+      double sflex = 0;
+      for (int i = 0; i < nsn; ++i)
+        if (sw[i] > 0) sflex += sw[i] * std::max(1.0, ksum[sn[i]]) / node_k(sn[i], w2);
+      const double kshared = std::min(sflex > 0 ? 1.0 / sflex : 1e300, flex > 0 ? 1.0 / flex : 1e300);
       const double k = 9.0 / 11.0 * kmin * std::min(1.0, kshared / h.k);
       const double mdamp = (pass ? P.md_s : P.md_t)[si];
       w2mx = std::max(w2mx, w2);
@@ -645,7 +763,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       } else {
         Fn = k * std::min(h.pen, appr);
         double hm = h.master >= 0 ? P.tri_h[h.master] : P.seg_r[-1 - h.master];
-        if (!first && h.pen > 0.3 * (P.slave_h[si] + hm)) ++ndeep;
+        if (!first && h.pen > 0.3 * (P.ent_h(si) + hm)) ++ndeep;
       }
       Fn = std::max(Fn, 0.0);
       fn = Fn;
@@ -683,13 +801,15 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     else if (bs.master != INT_MIN) { P.last_master[si] = bs.master; P.last_side[si] = 0; P.last_n[si] = bs.n; }
     else { P.last_master[si] = INT_MIN; P.last_side[si] = 0; P.ft[si] = Vec3(); }
   }
-  for (int si = 0; si < ns; ++si) {  // serial scatter
-    int n = P.slaves[si];
+  for (int si = 0; si < nent; ++si) {  // serial scatter
     for (int pass = 0; pass < 2; ++pass) {
       const Hit& h = pass ? P.hit_s[si] : P.hit_t[si];
       if (h.master == INT_MIN) continue;
       const Vec3& F = pass ? P.force_s[si] : P.force_t[si];
-      add3(&f[6 * n], F);
+      int sn[2];
+      double sw[2];
+      const int nsn = P.slave_nodes(si, h, sn, sw);
+      for (int i = 0; i < nsn; ++i) add3(&f[6 * sn[i]], F * sw[i]);
       int nm;
       const int* mn = P.master_nodes(h, nm);
       for (int i = 0; i < nm; ++i) add3(&f[6 * mn[i]], F * (-h.wf[i]));
@@ -779,6 +899,7 @@ void GeneralContact::load(BinIn& in) {
       }
   }
   in.pod(P.first_eval);
+  P.resize_state(P.nent);  // files without the edge entities
   P.xref.clear();  // candidate search redone at the first evaluation
 }
 

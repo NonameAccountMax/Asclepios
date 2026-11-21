@@ -183,6 +183,44 @@ def contact_facet_weights():
     return ok
 
 @case
+def contact_shell_beam():
+    # general contact between B31 rods and S4R shells (t = 0.5), against Abaqus/Explicit:
+    #  - rod (CIRC r = 0.4, L = 1.6) dropped flat at 1000 on a clamped facet 2.5 x 2.5: peak reaction 18.504;
+    #  - free 2 x 2 sheet dropped on a clamped rod (CIRC r = 0.4) lying under its middle node line, or under the
+    #    middle of two perimeter edges (no node above it): the shell nodes do not contact the rod, the perimeter
+    #    edges do (edge to segment, on the edges moved back by the rounding of free edges); force of the first
+    #    contact increment 6.191 and 3.810
+    def rf_hist(name, deck):
+        open(os.path.join(OUT, name + '.inp'), 'w').write('\n'.join(deck) + '\n')
+        run(name)
+        rows = open(os.path.join(OUT, name + '_rf.csv')).read().strip().splitlines()[1:]
+        return [float(r.split(',')[3]) for r in rows]
+    def common(fixed, moving):
+        return ['*Element, type=B31, elset=ROD', '10, 11, 12', '*Shell Section, elset=PLATE, material=M', '0.5, 5',
+                '*Beam Section, elset=ROD, material=M, section=CIRC', '0.4', '0., 0., -1.',
+                '*Nset, nset=FIXED', fixed, '*Nset, nset=MOVING', moving,
+                '*Material, name=M', '*Density', '7.85e-09', '*Elastic', '210000., 0.3',
+                '*Initial Conditions, type=VELOCITY', 'MOVING, 3, -1000.', '*Surface Interaction, name=NOFRIC',
+                '*Step, name=Drop, nlgeom=YES', '*Dynamic, Explicit', ', 4e-05', '*Boundary', 'FIXED, ENCASTRE',
+                '*Contact', '*Contact Inclusions, ALL EXTERIOR', '*Contact Property Assignment', ' , , NOFRIC',
+                '*Output, field, number interval=1', '*Node Output', 'U', '*Output, history, frequency=1',
+                '*Node Output, nset=FIXED', 'RF1, RF2, RF3', '*End Step']
+    rod = ['*Heading', '*Node', '1, 0., 0., 0.', '2, 2.5, 0., 0.', '3, 2.5, 2.5, 0.', '4, 0., 2.5, 0.',
+           '11, 0.45, 1.25, 0.67', '12, 2.05, 1.25, 0.67', '*Element, type=S4R, elset=PLATE', '1, 1, 2, 3, 4']
+    rf = rf_hist('cshb_rod', rod + common('1, 2, 3, 4', '11, 12'))
+    ok = check('rod on a facet: peak reaction (Abaqus 18.504)', max(abs(x) for x in rf), 18.504, 0.01)
+    for name, y, ref in (('cshb_node', 1.25, 6.191), ('cshb_edge', 0.625, 3.810)):
+        deck = ['*Heading', '*Node', '11, -0.8, %g, 0.' % y, '12, 3.3, %g, 0.' % y]
+        deck += ['%d, %g, %g, 0.67' % (1 + i + 3 * j, 1.25 * i, 1.25 * j) for j in range(3) for i in range(3)]
+        deck += ['*Element, type=S4R, elset=PLATE'] + ['%d, %d, %d, %d, %d' % (1 + i + 2 * j, 1 + i + 3 * j, 2 + i + 3 * j,
+                                                                            5 + i + 3 * j, 4 + i + 3 * j)
+                                                     for j in range(2) for i in range(2)]
+        rf = rf_hist(name, deck + common('11, 12', '1, 2, 3, 4, 5, 6, 7, 8, 9'))
+        first = next((abs(x) for x in rf if abs(x) > 1e-9), 0.0)
+        ok &= check('sheet on a rod, rod at y = %g: first force' % y, first, ref, 0.02)
+    return ok
+
+@case
 def beam_stable_increment():
     # free single B31 elements (E = 210000, nu = 0.3, default bulk viscosity): element estimate of Abaqus/Explicit,
     # larger of the opposite-rotation and coupled-shear modes with the cross pairing of the bending axes (RECT

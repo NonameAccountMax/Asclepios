@@ -146,7 +146,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   a node; the increment is bounded by 1/Ω of the active contacts. The master stiffness and its sharing use the
   triangle of the facet under the contact point; the force goes to the four nodes of a quadrilateral facet with
   the bilinear weights of the point (coordinates taken on the facet of the nodes, not the one drawn in by the
-  rounding of free edges). Normal viscous damping of 3 % of critical
+  rounding of free edges). Beam nodes contact shell facets and beam segments; shell nodes do not contact beam
+  segments, the free shell edges do (edge to segment: closest points of the two segments, edge stiffness from its
+  two nodes weighted by the contact point, a vertex held by one of its edges). Normal viscous damping of 3 % of critical
   (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL),
   shell half thickness limited to 0.3 times the smallest triangular facet height; free shell edges rounded within
   the shell (their nodes moved back into the shell plane by the half thickness, along the bisector at corners, at
@@ -240,7 +242,8 @@ Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: beam-to-shell impact (reactions within 14 %, energy 8 %, beam end rotations 15 %) and self-contact of a coiled strip (first contact within 7 %; the later chatter of the coil on the clamped edge, which
+- Dynamics: beam-to-shell impact (reactions within 14 %, energy 6 %, beam end rotations 13 %); a shell sheet dropped
+  on a beam stops like the reference at the first contact increment, then its contact force stays up to 25 % lower; self-contact of a coiled strip (first contact within 7 %; the later chatter of the coil on the clamped edge, which
   goes straight into the reactions, is not compared); viscous dissipation of
   shell bulk viscosity on strongly tapered quadrilaterals (up to 15 % high); stability of thin Fung shells closing with contact (valve model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).
