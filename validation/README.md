@@ -108,7 +108,11 @@ FORCE=1 bash validation/abaqus/run_references.sh         # rerun cases that alre
 Each case writes `validation/reference/<case>.json` (frames, histories, numbers of increments and iterations, solver
 version and precision) and `<case>.time` (wall time); cases named `par_*` also run on 4 cpus, cases marked
 `** validation: single` also in single precision, and a case marked `** validation: oldjob=<case>` is run with the
-results of that case (`*IMPORT`). The `reference/` folder, `RESULTS.md` and `PARALLEL.md` stay local (ignored by git):
+results of that case (`*IMPORT`). Static cases of elements that Abaqus/Standard does not have (S3RS, S4RS), marked
+`** validation: explicit_static`, are run as an Abaqus/Explicit quasi-static analysis (`abaqus/static_to_explicit.py`:
+smooth load ramp of 4 ms, 4 ms hold, mass-proportional damping; the final frame and the final strain and kinetic
+energies become the reference at the end of the static step). Checked on two S3R and S4R plates against their
+Abaqus/Standard results: final displacements within 0.03 %, stresses 0.06 %, reactions 0.005 %. The `reference/` folder, `RESULTS.md` and `PARALLEL.md` stay local (ignored by git):
 check the licence terms of the reference solver before sharing any of them. The extraction script
 (`abaqus/extract_odb.py`) runs with `abaqus python`.
 

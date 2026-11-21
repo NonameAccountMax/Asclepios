@@ -1,5 +1,6 @@
 *Heading
 S4RS clamped square plate under pressure
+** validation: explicit_static
 *Node
 1, 0., 0., 0.
 2, 2.5, 0., 0.

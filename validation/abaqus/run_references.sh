@@ -3,7 +3,9 @@
 # Abaqus and extracts validation/reference/<case>.json (and <case>.time, wall time of the job in seconds).
 # Cases whose name starts with par_ are also run on 4 cpus (<case>__cpus4.json / .time); decks containing the
 # comment '** validation: single' also in single precision (<case>__single.json); a deck containing
-# '** validation: oldjob=<case>' is run with oldjob=<case> (transfer of results, *IMPORT), after that case.
+# '** validation: oldjob=<case>' is run with oldjob=<case> (transfer of results, *IMPORT), after that case; a static
+# deck containing '** validation: explicit_static' (elements absent from Abaqus/Standard) is run as an Abaqus/Explicit
+# quasi-static analysis converted by static_to_explicit.py, whose final state becomes the reference.
 # Run on a machine with an Abaqus licence, then bring validation/reference/ back into the repository.
 #
 # usage: bash validation/abaqus/run_references.sh [case ...]        (all cases by default)
@@ -26,17 +28,25 @@ failed=""
 i=0
 
 run_one() {  # case, job name, cpus [precision]
-  local n=$1 job=$2 cpus=$3 extra=""
-  grep -qi "dynamic, explicit" "$HERE/cases/$n.inp" && extra="double=${4:-both}"
+  local n=$1 job=$2 cpus=$3 extra="" input="$HERE/cases/$n.inp" qs=""
+  : > "$job.run.log"
+  if grep -q '^\*\* validation: explicit_static' "$input"; then
+    qs=1
+    $ABQ python "$HERE/abaqus/static_to_explicit.py" "$input" "$PWD/$job.qs.inp" >> "$job.run.log" 2>&1 || return 1
+    input="$PWD/$job.qs.inp"
+  fi
+  grep -qi "dynamic, explicit" "$input" && extra="double=${4:-both}"
   local old=$(sed -n 's/^\*\* validation: oldjob=//p' "$HERE/cases/$n.inp")
   [ -n "$old" ] && extra="$extra oldjob=$old"
   rm -f "$job.lck"
   local t0=$(date +%s)
-  $ABQ job="$job" input="$HERE/cases/$n.inp" cpus=$cpus $extra interactive ask_delete=OFF > "$job.run.log" 2>&1
+  $ABQ job="$job" input="$input" cpus=$cpus $extra interactive ask_delete=OFF >> "$job.run.log" 2>&1
   local rc=$?
   local t1=$(date +%s)
   if [ $rc -eq 0 ] && $ABQ python "$HERE/abaqus/extract_odb.py" "$job.odb" "$HERE/reference/$job.json" \
-       "$HERE/cases/manifest.json" "$n" >> "$job.run.log" 2>&1; then
+       "$HERE/cases/manifest.json" "$n" >> "$job.run.log" 2>&1 && { [ -z "$qs" ] || \
+       $ABQ python "$HERE/abaqus/static_to_explicit.py" --reduce "$HERE/reference/$job.json" "$HERE/cases/$n.inp" \
+       >> "$job.run.log" 2>&1; }; then
     echo "$((t1 - t0))" > "$HERE/reference/$job.time"
     return 0
   fi
@@ -47,7 +57,12 @@ if [ -n "${DATACHECK:-}" ]; then  # syntax check of every deck with the Abaqus p
   for n in $cases; do
     i=$((i + 1)); rm -f "dc_$n.lck"
     if grep -q '^\*\* validation: oldjob=' "$HERE/cases/$n.inp"; then ok=$((ok + 1)); continue; fi
-    if $ABQ job="dc_$n" input="$HERE/cases/$n.inp" datacheck interactive ask_delete=OFF > "dc_$n.run.log" 2>&1; then
+    input="$HERE/cases/$n.inp"
+    if grep -q '^\*\* validation: explicit_static' "$input"; then
+      $ABQ python "$HERE/abaqus/static_to_explicit.py" "$input" "$PWD/dc_$n.qs.inp" > /dev/null 2>&1
+      input="$PWD/dc_$n.qs.inp"
+    fi
+    if $ABQ job="dc_$n" input="$input" datacheck interactive ask_delete=OFF > "dc_$n.run.log" 2>&1; then
       ok=$((ok + 1))
     else
       echo "[$i/$total] ERROR  $n: $(cat "dc_$n.dat" "dc_$n.sta" 2>/dev/null | grep -m1 -A2 '[*][*][*]ERROR' | tr -s ' ' | tr '\n' ' ')"

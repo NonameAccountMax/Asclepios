@@ -5,7 +5,7 @@ results otherwise.
 """
 import math
 
-from deck import (CURRENT, MATERIALS, QS_DURATION, Deck, beam_line, edge_shares, explicit_step, faces_on, fmt,
+from deck import (CURRENT, MATERIALS, MODE, QS_DURATION, Deck, beam_line, edge_shares, explicit_step, faces_on, fmt,
                   hex_block, near, output_block, quad_plate, register, static_step, tris_from_quads)
 
 NS = 'not supported by asclepios yet: '
@@ -1173,6 +1173,8 @@ def coverage_features():
         quads, ids = quad_plate(d, 8, 8, 20.0, 20.0)
         conns = tris_from_quads(quads) if etype.startswith('S3') else quads
         d.elements(etype, 'EALL', conns)
+        if etype in ('S3RS', 'S4RS') and not MODE['twin']:  # Abaqus/Explicit elements: quasi-static explicit reference
+            d.title += '\n** validation: explicit_static'
         d.materials.add('STEEL')
         d.model += ['*Shell Section, elset=EALL, material=STEEL', '0.2, 5', '*Surface, type=ELEMENT, name=STOP',
                     'EALL, SPOS']
@@ -1186,6 +1188,8 @@ def coverage_features():
 
     # S3RS on thick elements (t > L / 5): full transverse shear stiffness
     d = Deck('elem_s3rs_thick', 'S3RS thick clamped square plate under pressure')
+    if not MODE['twin']:
+        d.title += '\n** validation: explicit_static'
     quads, ids = quad_plate(d, 8, 8, 20.0, 20.0)
     d.elements('S3RS', 'EALL', tris_from_quads(quads))
     d.materials.add('STEEL')
