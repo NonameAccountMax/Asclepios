@@ -233,14 +233,14 @@ S4R strip coiled by an end moment until it touches itself (self-contact) [implic
 210000., 0.
 *Step, name=Coil, nlgeom=YES, inc=1000000
 *Dynamic, application=MODERATE DISSIPATION
-1e-05, 0.01, 1e-11, 0.0001
+5.8e-06, 0.0058, 5.8e-12, 5.8e-05
 *Boundary
 FIX, ENCASTRE
 *Cload, amplitude=COIL
 41, 5, -89.06415173
 82, 5, -178.1283035
 123, 5, -89.06415173
-*Output, field, number interval=20, time marks=YES
+*Output, field, number interval=58, time marks=YES
 *Node Output
 U, RF, UR, RM
 *Element Output, elset=MONE

@@ -2757,7 +2757,7 @@
   "procedure": "explicit",
   "element": "S4R",
   "mode": "self-contact",
-  "description": "Strip coiled by an end moment (1.2 turns if free): the tip comes into contact with the strip itself (self-contact in general contact).",
+  "description": "Strip coiled by an end moment (1.2 turns if free): the coil comes into contact with the clamped end of the strip (self-contact in general contact), up to the end of the first contact.",
   "mon": [
    41,
    62,
@@ -14333,7 +14333,7 @@
   "procedure": "implicit dynamic",
   "element": "S4R",
   "mode": "self-contact",
-  "description": "Strip coiled by an end moment (1.2 turns if free): the tip comes into contact with the strip itself (self-contact in general contact).",
+  "description": "Strip coiled by an end moment (1.2 turns if free): the coil comes into contact with the clamped end of the strip (self-contact in general contact), up to the end of the first contact.",
   "mon": [
    41,
    62,

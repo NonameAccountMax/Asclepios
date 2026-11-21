@@ -105,12 +105,14 @@ def contact_features():
     ei = 210000.0 * 4.0 * 0.3 ** 3 / 12
     m = 2.4 * math.pi * ei / 40.0  # 1.2 turns if free
     d.model += ['*Amplitude, name=COIL, definition=SMOOTH STEP', '0., 0., 0.008, 1.']
-    d.steps += explicit_step('Coil', 0.01, ['*Boundary', 'FIX, ENCASTRE', '*Cload, amplitude=COIL'] +
+    # up to the end of the first contact (two presses, 5.74 to 5.79 ms): the later chatter of the coil on the
+    # clamped edge goes straight into the reaction and Abaqus itself loses the symmetry of the strip
+    d.steps += explicit_step('Coil', 0.0058, ['*Boundary', 'FIX, ENCASTRE', '*Cload, amplitude=COIL'] +
                              ['%d, 5, %s' % (n, fmt(-m * w)) for n, w in zip(tip, (0.25, 0.5, 0.25))] +
-                             general_contact(d), rot=True, time_marks=True)
-    register(d, 'explicit', 'S4R', 'self-contact', 'Strip coiled by an end moment (1.2 turns if free): the tip comes '
-             'into contact with the strip itself (self-contact in general contact).', tip + [ids[20, 1]], fix, True,
-             'contact', category='feature', group='contact')
+                             general_contact(d), rot=True, nframes=58, time_marks=True)
+    register(d, 'explicit', 'S4R', 'self-contact', 'Strip coiled by an end moment (1.2 turns if free): the coil comes '
+             'into contact with the clamped end of the strip (self-contact in general contact), up to the end of the '
+             'first contact.', tip + [ids[20, 1]], fix, True, 'contact', category='feature', group='contact')
 
     d = Deck('contact_shell_edge', 'S4R strip dropped on its free edge onto a clamped S4R plate (general contact)')
     ids, edge = clamped_plate(d)

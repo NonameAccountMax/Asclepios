@@ -229,7 +229,7 @@ S4R strip coiled by an end moment until it touches itself (self-contact)
 210000., 0.
 *Step, name=Coil, nlgeom=YES
 *Dynamic, Explicit
-, 0.01
+, 0.0058
 *Boundary
 FIX, ENCASTRE
 *Cload, amplitude=COIL
@@ -240,13 +240,13 @@ FIX, ENCASTRE
 *Contact Inclusions, ALL EXTERIOR
 *Contact Property Assignment
  , , IP
-*Output, field, number interval=20, time marks=YES
+*Output, field, number interval=58, time marks=YES
 *Node Output
 U, RF, UR, RM, V
 *Element Output, elset=MONE
 S, SF
-*Output, history, variable=PRESELECT, time interval=5e-05
-*Output, history, time interval=5e-05
+*Output, history, variable=PRESELECT, time interval=2.9e-05
+*Output, history, time interval=2.9e-05
 *Incrementation Output
 DT, DMASS
 *Output, history, frequency=1

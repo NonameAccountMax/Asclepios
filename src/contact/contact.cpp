@@ -646,8 +646,8 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   en.contact -= edamp;
   ncontacts_ = ncont;
   P.d_deep_n += ndeep;
-  if (P.diag < 0) P.diag = std::getenv("ABQ_CONTACT_DIAG") ? 1 : 0;
-  if (P.diag > 0 && increment % 500 == 0)
+  if (P.diag < 0) P.diag = std::getenv("ABQ_CONTACT_DIAG") ? std::max(1, std::atoi(std::getenv("ABQ_CONTACT_DIAG"))) : 0;
+  if (P.diag > 0 && increment % P.diag == 0)  // ABQ_CONTACT_DIAG = interval in increments
     std::fprintf(stderr, "CDIAG inc %d contacts %d deep_new %ld  Wcontact %.4e fric %.4e\n", increment, ncont, P.d_deep_n, en.contact, en.friction);
   (void)increment;
 }

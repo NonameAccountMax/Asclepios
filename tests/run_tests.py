@@ -113,6 +113,34 @@ def contact_impact():
     return ok
 
 @case
+def shell_stable_increment():
+    # S4R strip of 1 x 2 elements (E = 210000, nu = 0, bulk viscosity 0.06): thin shells, the membrane sets the
+    # stable increment whatever the thickness (bending and transverse shear never control: the uniform transverse
+    # shear and the curvature / hourglass modes are orthogonal, the bound takes the larger of the two groups), with
+    # the element estimate of Abaqus/Explicit L_m / c (sqrt(1 + 0.06^2) - 0.06), L_m^2 = 0.92 L_e^2; Abaqus/Explicit
+    # increment for the strip of the self-contact case (same elements, t = 0.3): 1.7462e-7
+    def dt_of(t):
+        name = 'shelldt_%g' % t
+        nodes = ['%d, %g, %g, 0.' % (1 + i + 9 * j, float(i), 2.0 * j) for j in range(3) for i in range(9)]
+        els = ['%d, %d, %d, %d, %d' % (1 + i + 8 * j, 1 + i + 9 * j, 2 + i + 9 * j, 11 + i + 9 * j, 10 + i + 9 * j)
+               for j in range(2) for i in range(8)]
+        deck = ['*Heading', '*Node'] + nodes + ['*Element, type=S4R, elset=ALL'] + els + [
+            '*Nset, nset=NALL, elset=ALL', '*Shell Section, elset=ALL, material=STEEL', '%g, 5' % t,
+            '*Material, name=STEEL', '*Elastic', '210000., 0.', '*Density', '7.85e-9',
+            '*Initial Conditions, type=VELOCITY', 'NALL, 3, 100.',
+            '*Step, nlgeom=YES', '*Dynamic, Explicit', ', 4e-6', '*Output, field, number interval=1', '*Node Output', 'U',
+            '*Output, history, time interval=1e-6', '*Energy Output', 'ALLKE', '*End Step']
+        open(os.path.join(OUT, name + '.inp'), 'w').write('\n'.join(deck) + '\n')
+        run(name)
+        rows = open(os.path.join(OUT, name + '_history.csv')).read().strip().splitlines()
+        keys = rows[0].split(',')
+        return float(rows[1].split(',')[keys.index('dt')])  # first increment (later ones cut at the output times)
+    d3, d03 = dt_of(0.3), dt_of(0.03)
+    ok = check('S4R t = 0.3: increment (Abaqus 1.7462e-7)', d3, 1.7462e-7, 3e-3)
+    ok &= check('S4R t = 0.03 / t = 0.3: same increment', d03, d3, 5e-3)
+    return ok
+
+@case
 def output_frequency_and_paths():
     # *OUTPUT, FIELD, FREQUENCY=n in a static step (a frame every n increments and at the end of the step; ignored
     # in explicit steps, as Abaqus/Explicit does), job written through an absolute -o path in another directory:

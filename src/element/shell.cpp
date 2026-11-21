@@ -854,7 +854,7 @@ class ShellGroup : public ElementGroup {
     double kxx = 0, kyy = 0, kxy = 0, klam = 0, kbx = 0, kby = 0, kbxy = 0, kblam = 0, gg = 0;
     // transverse shear of quads (edge strains): kv = stiffness of the two variations, hv = sum over the dofs of
     // (derivative^2 / nodal mass), hq = the same for the uniform shear (bounds on the element frequency)
-    double kv[2] = {0, 0}, hv[2] = {0, 0}, hq = 0;
+    double kv[2] = {0, 0}, hv[2] = {0, 0}, hq = 0, hqab[3] = {0, 0, 0};
     const double Eh = Me * (1 - nu * nu), Em = Eh * tcur, Db = Eh * tcur * tcur * tcur / 12.0;
     if (n == 4) {
       const double r = sc.hg_scale;
@@ -894,6 +894,9 @@ class ShellGroup : public ElementGroup {
       }
       double hrot[2] = {0, 0};
       for (int I = 0; I < n; ++I) {
+        for (int a = 0; a < 2; ++a)
+          for (int b = a; b < 2; ++b)
+            hqab[a + b] += Gm[a][I][0] * Gm[b][I][0] / mtr + (Gm[a][I][1] * Gm[b][I][1] + Gm[a][I][2] * Gm[b][I][2]) / Imin;
         for (int c = 0; c < 2; ++c) {
           hq += Gm[c][I][0] * Gm[c][I][0] / mtr;
           hrot[c] += (Gm[c][I][1] * Gm[c][I][1] + Gm[c][I][2] * Gm[c][I][2]) / Imin;
@@ -917,11 +920,20 @@ class ShellGroup : public ElementGroup {
     // membrane frequency is the larger of the two families, not their sum
     // (drilling: its coupling to the in-plane displacements, corner gradients at most twice the mean ones)
     double om_m2 = std::max(n * lam / rho, Em * klam * gg / mtr) + (n == 3 ? 4.2 : 1.0) * kd * BB / mtr;
-    // bending side kept additive (conservative): with the max of the shear families the increment grows and
-    // the margin left for penalty contact is too small (energy created in the plate impact test)
-    double om_b2 = g1.A * tcur * tcur * tcur * lam / (12.0 * Imin) +
-                   kts * g1.A * hq +
-                   Db * kblam * gg / Imin + 2.0 * std::max(kv[0] * hv[0], kv[1] * hv[1]) + (n == 3 ? 4.2 : 2.0) * kd / Imin;
+    // bending side. Quadrilaterals: the uniform transverse shear acts on the constant w gradients and the mean
+    // rotations, orthogonal (lumped masses, exactly for parallelograms) to the curvature, rotation hourglass and
+    // shear variation modes (zero-mean rotations, w hourglass): the largest frequency is the larger of the two
+    // groups; uniform shear from the exact eigenvalue of its 2 x 2 mass-normalised matrix. Triangles: the
+    // constant shear also involves the rotation gradients (side interpolation), all terms added.
+    const double om_bend2 = g1.A * tcur * tcur * tcur * lam / (12.0 * Imin) + Db * kblam * gg / Imin +
+                            2.0 * std::max(kv[0] * hv[0], kv[1] * hv[1]);
+    double om_ts2 = kts * g1.A * hq;
+    if (n == 4) {
+      const double k0 = ts_stiff(e, 0), k1 = ts_stiff(e, 1);
+      const double h00 = k0 * g1.A * hqab[0], h11 = k1 * g1.A * hqab[2], h01 = std::sqrt(k0 * k1) * g1.A * hqab[1];
+      om_ts2 = 0.5 * (h00 + h11) + std::sqrt(0.25 * (h00 - h11) * (h00 - h11) + h01 * h01);
+    }
+    double om_b2 = (n == 4 ? std::max(om_ts2, om_bend2) : om_ts2 + om_bend2) + (n == 3 ? 4.2 : 2.0) * kd / Imin;
     // Linear bulk viscosity of shells: membrane pressure p = b1 rho c L_m eps_vol_dot (in-plane dilatation rate)
     // and "pressure moment" m = b1 rho c L_b h0^2/12 (k11_dot + k22_dot), as in Abaqus/Explicit:
     //  - c: plate wave speed sqrt(M / rho), M the effective in-plane modulus; for nearly incompressible materials
@@ -935,8 +947,8 @@ class ShellGroup : public ElementGroup {
     double dtm, dtb;
     {
       double om_m = std::sqrt(std::max(om_m2, 1e-300)), om_b = std::sqrt(std::max(om_b2, 1e-300));
-      double xim = 0, xib = 0;
-      if (in.dynamic && in.bv1 > 0) {
+      double xim = 0, xib = 0, c = 0, Lm = 0;
+      if (in.dynamic) {
         // plate modulus E/(1 - nu^2): Me itself for elastic materials; for hyperelastic ones Me is the largest
         // eigenvalue of the tangent, E/(1 - nu) at rest (dilatation mode)
         const double Kb = m.bulk_modulus(), Gs = m.shear_modulus();
@@ -947,12 +959,14 @@ class ShellGroup : public ElementGroup {
         }
         if (Kb > 0 && std::isfinite(Kb)) Mw = std::max(Mw, 3.0 * Kb * (1 - 2 * 0.49) / (1 - 0.49 * 0.49));
         nu_m = std::min(nu_m, 0.49);
-        const double c = std::sqrt(Mw / rho);
+        c = std::sqrt(Mw / rho);
         double Dn[3][3];
         iso_plane_stress_D(1.0, nu_m, Dn);
         const double Le2 = 4.0 / std::max(n * max_eig_DG(Dn, g1, n), 1e-300);
-        const double Lm = std::sqrt(n == 4 ? std::max(1.0 / std::max(BB, 1e-300), 0.92 * Le2)
-                                           : std::max(4.0 / 3.0 / std::max(BB, 1e-300), 0.97 * Le2));
+        Lm = std::sqrt(n == 4 ? std::max(1.0 / std::max(BB, 1e-300), 0.92 * Le2)
+                              : std::max(4.0 / 3.0 / std::max(BB, 1e-300), 0.97 * Le2));
+      }
+      if (in.dynamic && in.bv1 > 0) {
         double Lb;
         if (n == 4) {
           auto mid = [&](int a, int b, int k) { return 0.5 * (g1.xl[a][k] + g1.xl[b][k]); };
@@ -983,6 +997,10 @@ class ShellGroup : public ElementGroup {
         xib = 0.5 * nu_b / om_b;
       }
       dtm = 2.0 / om_m * (std::sqrt(1 + xim * xim) - xim);
+      // Abaqus/Explicit element estimate L_m / c (sqrt(1 + b1^2) - b1), L_m as for the bulk viscosity (it ignores
+      // the hourglass and drilling stiffnesses but takes 0.92 / 0.97 of the exact length): the smaller of the two
+      // (contact stiffness from the stable increments of the nodes)
+      if (in.dynamic && c > 0) dtm = std::min(dtm, Lm / c * (std::sqrt(1 + in.bv1 * in.bv1) - in.bv1));
       dtb = 2.0 / om_b * (std::sqrt(1 + xib * xib) - xib);
       static int trace_dt = std::getenv("ABQ_TRACE_DT") ? std::atoi(std::getenv("ABQ_TRACE_DT")) : -1;
       if (commit && model->elems[ids[e]].label == trace_dt)

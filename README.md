@@ -59,8 +59,8 @@ Output files:
 - `<job>.sta` (progress) and `<job>.dat` (messages).
 
 Diagnostics on stderr: `ABQ_TRACE_NODE=Inst.123` (node state at each increment), `ABQ_TRACE_ELEM=<id>`
-(shell state), `ABQ_TRACE_DT=<id>` (components of a shell's stable increment), `ABQ_CONTACT_DIAG=1`
-(contact pairs and contact work). `ABQ_HISTORY_EVERY_INCREMENT=1` writes the energy history at every increment of
+(shell state), `ABQ_TRACE_DT=<id>` (components of a shell's stable increment), `ABQ_CONTACT_DIAG=<n>`
+(contact pairs and contact work every n increments). `ABQ_HISTORY_EVERY_INCREMENT=1` writes the energy history at every increment of
 an explicit step (the `.sta` keeps the requested interval). `make elemtest` builds `bin/elemtest`; `bin/elemtest deck.inp [nl]` checks the first element of a deck: finite
 difference stiffness, symmetry, eigenvalues, exact critical increment against the estimated one.
 `tools/cmp_vtk.py` compares a result frame with a reference surface (legacy VTK).
@@ -102,7 +102,11 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   incompatible-mode element with `HOURGLASS=ENHANCED`; drilling stiffness G t A t²/(24 (t² + 0.1 A)) on the rotation
   of each corner against the spin of the bilinear field there (static) or against the mean spin of the element
   (explicit), with a warping correction. The stable increment uses the element's membrane and bending frequencies, with the tangent modulus of the outer
-  section points for hyperelastic materials. S3R: constant membrane strain and curvature; transverse shear of the
+  section points for hyperelastic materials: membrane, the smaller of the element eigenvalue bound and
+  L_m/c·(√(1 + b1²) − b1), L_m² = max(1/ΣB², 0.92·L_e²) (S3R: max(4/3/ΣB², 0.97·L_e²)), L_e from the exact one-point
+  membrane eigenvalue; bending side of quadrilaterals, the larger of the uniform transverse shear (exact eigenvalue
+  of its 2 × 2 mass-normalised matrix) and of the curvature, rotation hourglass and shear variation modes, which are
+  orthogonal to it (thin shells: the increment does not depend on the thickness). S3R: constant membrane strain and curvature; transverse shear of the
   triangle seen as a degenerate quadrilateral whose two merged corners sit at its most isosceles vertex (homogeneous part from the covariant edge
   strains plus a shape-dependent share of their circulation, weak stiffness 0.001 on the circulation, same thin-shell
   factor as S4R), drilling on the corner rotations (explicit: against the element spin, the first node counted twice).
@@ -229,8 +233,8 @@ Accuracy and performance:
   formulation.
 - Dynamics: beam-to-shell impact (energy and reactions within 20 %, beam end rotations 16 %: the B31 stable
   increment, which sets the contact stiffness of the beam nodes, is 15 % below the reference one for this section)
-  and self-contact of a coiled strip (first impact at the same instant and with the same impulse, reactions of the
-  later rebounds); viscous dissipation of
+  and self-contact of a coiled strip (first contact within 8 %; the later chatter of the coil on the clamped edge, which
+  goes straight into the reactions, is not compared); viscous dissipation of
   shell bulk viscosity on strongly tapered quadrilaterals (up to 15 % high); stability of thin Fung shells closing with contact (valve model).
 - Static: predictor from the previous increment and line search (plastic shells need many small increments).
 - Energies: ALLIE from material-point quantities (strain energy plus plastic dissipation) instead of the work of nodal
