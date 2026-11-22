@@ -1,6 +1,8 @@
 // General contact for explicit dynamics.
 //  - contact entities: shell facets (triangles, two-sided, offset by a reduced half thickness),
-//    beam segments (radius), slave nodes (all nodes of the included elements); beyond a facet
+//    exterior faces of solid elements (one-sided, outward normal, no thickness), beam segments
+//    (radius), slave nodes (all nodes of the included shells and beams, the nodes on the exterior
+//    faces of the included solids); beyond a facet
 //    boundary the contact is with the rounded edge (closest point), so no gap between facets;
 //    beam nodes contact facets and segments, shell nodes only facets; the free shell edges contact
 //    the beam segments (edge to segment, closest points of the two segments);
@@ -123,6 +125,8 @@ struct GeneralContact::Impl {
   // half 0 = nodes 0-1-2, half 1 = nodes 0-2-3) or its own three nodes (4th = -1)
   std::vector<int> fac;
   std::vector<signed char> fac_half;
+  std::vector<char> tri_solid;  // exterior face of a solid: one-sided (outward normal), no thickness
+  std::vector<double> tri_depth;  // solid faces: deepest penetration still detected (beyond: other side of the solid)
   // nodes of the master triangle or segment of a hit (weights w) and their number
   const int* stiff_nodes(const Hit& h, int& nm) const {
     nm = h.master >= 0 ? 3 : 2;
@@ -208,8 +212,9 @@ bool GeneralContact::define(const Step& st) {
     const Surface& s = m.surfaces.at(sn);
     for (auto& f : s.faces) incl[f.elem] = 1;
   }
-  int nsolid = 0;
   std::vector<double> node_h(m.nn(), 1e30);
+  std::vector<std::array<int, 4>> sfaces;  // faces of the included solids, oriented outward (4th node -1: triangle)
+  std::vector<std::vector<int>> solid_elems;  // nodes of the included solid elements
   P.beam_node.assign(m.nn(), 0);
   std::vector<std::array<int, 4>> shells;  // included shell elements (nodes, -1 padded)
   for (auto& gp : A_.groups) {
@@ -234,6 +239,8 @@ bool GeneralContact::define(const Step& st) {
           P.tri_h.push_back(h);
           P.fac.insert(P.fac.end(), {cn[0], cn[1], cn[2], G.nen == 4 ? cn[3] : -1});
           P.fac_half.push_back((signed char)half);
+          P.tri_solid.push_back(0);
+          P.tri_depth.push_back(0.0);
         };
         if (G.nen == 4) { add(cn[0], cn[1], cn[2], 0); add(cn[0], cn[2], cn[3], 1); }
         else add(cn[0], cn[1], cn[2], 0);
@@ -245,8 +252,24 @@ bool GeneralContact::define(const Step& st) {
         P.seg.insert(P.seg.end(), {cn[0], cn[1]});
         P.seg_r.push_back(r);
         for (int I = 0; I < 2; ++I) { node_h[cn[I]] = std::min(node_h[cn[I]], r); P.beam_node[cn[I]] = 1; }
-      } else if (G.type != ElType::CONN3D2) {
-        ++nsolid;
+      } else if (G.type == ElType::C3D8R || G.type == ElType::C3D8 || G.type == ElType::C3D8I ||
+                 G.type == ElType::C3D4) {
+        // faces in local node numbers, oriented by the element centroid below
+        static const int hexf[6][4] = {{0, 1, 2, 3}, {4, 5, 6, 7}, {0, 1, 5, 4}, {1, 2, 6, 5}, {2, 3, 7, 6}, {3, 0, 4, 7}};
+        static const int tetf[4][4] = {{0, 1, 2, -1}, {0, 1, 3, -1}, {1, 2, 3, -1}, {2, 0, 3, -1}};
+        const bool hex = G.nen == 8;
+        Vec3 ctr;
+        for (int I = 0; I < G.nen; ++I) ctr += m.X[cn[I]] * (1.0 / G.nen);
+        for (int f = 0; f < (hex ? 6 : 4); ++f) {
+          const int* lf = hex ? hexf[f] : tetf[f];
+          std::array<int, 4> q = {cn[lf[0]], cn[lf[1]], cn[lf[2]], lf[3] >= 0 ? cn[lf[3]] : -1};
+          const Vec3 a = m.X[q[0]], b = m.X[q[1]], c = m.X[q[2]];
+          const Vec3 nrm = q[3] >= 0 ? cross(c - a, m.X[q[3]] - b) : cross(b - a, c - a);
+          const Vec3 fc = q[3] >= 0 ? (a + b + c + m.X[q[3]]) * 0.25 : (a + b + c) * (1.0 / 3);
+          if (dot(nrm, fc - ctr) < 0) std::swap(q[1], q[q[3] >= 0 ? 3 : 2]);
+          sfaces.push_back(q);
+        }
+        solid_elems.emplace_back(cn, cn + G.nen);
       }
     }
   }
@@ -291,7 +314,37 @@ bool GeneralContact::define(const Step& st) {
     }
     P.shift.assign(m.nn(), Vec3());
   }
-  if (nsolid) warn("general contact: %d solid elements included; solid faces are not supported yet and are ignored", nsolid);
+  {  // exterior faces of the solids: faces used by a single included solid element
+    std::vector<std::pair<std::array<int, 4>, int>> keyed;
+    for (int k = 0; k < (int)sfaces.size(); ++k) {
+      std::array<int, 4> key = sfaces[k];
+      std::sort(key.begin(), key.end());
+      keyed.push_back({key, k});
+    }
+    std::sort(keyed.begin(), keyed.end());
+    for (size_t i = 0; i < keyed.size(); ++i) {
+      if ((i > 0 && keyed[i - 1].first == keyed[i].first) || (i + 1 < keyed.size() && keyed[i + 1].first == keyed[i].first))
+        continue;
+      const auto& q = sfaces[keyed[i].second];
+      const int nv = q[3] >= 0 ? 4 : 3;
+      // depth limit: half the smallest height of the face (a node further behind is on another side of the solid)
+      double hmin = 1e300;
+      for (int I = 0; I < nv; ++I) {
+        const Vec3 a = m.X[q[I]], b = m.X[q[(I + 1) % nv]], c = m.X[q[(I + 2) % nv]];
+        const double l = norm(b - a);
+        if (l > 0) hmin = std::min(hmin, norm(cross(b - a, c - a)) / l);
+      }
+      for (int half = 0; half < nv - 2; ++half) {
+        P.tri_depth.push_back(0.5 * hmin);
+        P.tri.insert(P.tri.end(), {q[0], q[half + 1], q[half + 2]});
+        P.tri_h.push_back(0.0);
+        P.fac.insert(P.fac.end(), {q[0], q[1], q[2], q[3]});
+        P.fac_half.push_back((signed char)half);
+        P.tri_solid.push_back(1);
+      }
+      for (int I = 0; I < nv; ++I) node_h[q[I]] = 0.0;
+    }
+  }
   P.slave_of.assign(m.nn(), -1);
   for (int n = 0; n < m.nn(); ++n)
     if (node_h[n] < 1e29) { P.slave_of[n] = (int)P.slaves.size(); P.slaves.push_back(n); P.slave_h.push_back(node_h[n]); }
@@ -307,6 +360,7 @@ bool GeneralContact::define(const Step& st) {
     };
     for (size_t t = 0; t < P.tri_h.size(); ++t) link(&P.tri[3 * t], 3);
     for (size_t sg = 0; sg < P.seg_r.size(); ++sg) link(&P.seg[2 * sg], 2);
+    for (const auto& el : solid_elems) link(el.data(), (int)el.size());
     P.nb_off.assign(ns + 1, 0);
     for (int si = 0; si < ns; ++si) {
       auto& v = nbs[si];
@@ -523,8 +577,11 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   P.node_w2.assign(nn, 0.0);
   for (auto& gp : A.groups) {
     const ElementGroup& G = *gp;
+    // solid elements under the global estimate of the increment: their frequency bound is scaled with it (the
+    // contact of a C3D8R block with an S4R plate does not shorten the global increment of Abaqus/Explicit)
+    const double gs = is_solid_type(G.type) ? A.solid_dt_scale : 1.0;
     for (int e = 0; e < G.size(); ++e) {
-      const double d = G.dt_last[e] * std::sqrt(G.msf[e]);
+      const double d = G.dt_last[e] * std::sqrt(G.msf[e]) * gs;
       if (!(d > 0 && d < 1e29)) continue;
       for (int I = 0; I < G.nen; ++I) {
         const int nd = G.conn[e * G.nen + I];
@@ -573,6 +630,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     }
     const int n0 = si < ns ? P.slaves[si] : 0;
     const Vec3 x = Xs(n0);
+    Hit bsol;
     const double hs = si < ns ? P.slave_h[si] : 0.0;
     for (int c = P.cand_off[si]; si < ns && c < P.cand_off[si + 1]; ++c) {
       int id = P.cand[c];
@@ -604,7 +662,24 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         double s = dot(d, nrm);
         double lat = in ? 0.0 : norm(d - nrm * s);  // distance beyond the facet boundary, in its plane
         const double hsum = hs + P.tri_h[id];
-        if (lat <= 0.1 * hsum) {  // above the facet (or its edge): two-sided normal contact
+        if (P.tri_solid[id]) {  // solid face: one-sided, outward normal
+          // no thickness: within the facet up to round-off (a node on the diagonal between the two triangles of a
+          // quadrilateral face is otherwise outside both)
+          double wp[3];
+          plane_coords(x, a, b, cc, wp);
+          if (lat <= 0.1 * hsum || std::min({wp[0], wp[1], wp[2]}) >= -1e-9) {
+            if (s < -P.tri_depth[id]) continue;
+            h.side = 1;
+            h.pen = hsum - s;
+            h.n = nrm;
+          } else {  // beyond an edge: rounded only outside the face plane
+            if (s < 0) continue;
+            const double dist = norm(d);
+            h.side = 0;
+            h.pen = hsum - dist;
+            h.n = d / dist;
+          }
+        } else if (lat <= 0.1 * hsum) {  // above the facet (or its edge): two-sided normal contact
           int side = s >= 0 ? 1 : -1;
           if (P.pen_t[si] >= 0) {  // in contact at the previous increment: keep the side of the surface
             double dn = dot(nrm, P.last_n[si]);
@@ -632,9 +707,13 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         h.n = d / dist;
       }
       if (h.pen <= 0) continue;
-      if (id >= 0) { if (h.pen > bt.pen) bt = h; }
+      if (id >= 0 && P.tri_solid[id]) { if (bsol.master == INT_MIN || h.pen < bsol.pen) bsol = h; }
+      else if (id >= 0) { if (h.pen > bt.pen) bt = h; }
       else if (h.pen > bs.pen) bs = h;
     }
+    // inside a solid, the face crossed is the nearest one (a node just below a top face is also within the
+    // projection of the side faces, deeper): the shallowest solid face hit
+    if (bsol.master != INT_MIN && (bt.master == INT_MIN || bsol.pen > bt.pen)) bt = bsol;
     for (int pass = 0; pass < 2; ++pass) {
       Hit& h = pass ? bs : bt;
       if (h.master == INT_MIN) continue;

@@ -18,7 +18,7 @@ replacement for a commercial package.
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
 | Loads | `*BOUNDARY` (displacement, velocity, ENCASTRE…, OP=NEW), `*CLOAD`, `*DSLOAD` / `*DLOAD` P (follower pressure), `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, step or total time); loads propagate between steps |
-| Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`; node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), node-to-beam segment |
+| Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`; node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), node-to-beam segment |
 | Output | `*OUTPUT, FIELD` (NUMBER INTERVAL / TIME INTERVAL; FREQUENCY in static steps, ignored in explicit ones as Abaqus/Explicit does), `*OUTPUT, HISTORY` (number of intervals) |
 
 Unknown keywords produce a single warning and are ignored.
@@ -71,8 +71,10 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   increment is computed element by element, damping included: Δt = (2/ω)(√(1+ξ²) − ξ). Every stiffness
   (hourglass, drilling, connectors, contact) and every damping term enters this estimate. For models without
   rotational degrees of freedom, a global estimate (power iteration on M⁻¹K, K from directional derivatives of the
-  internal forces) replaces it once converged: 0.917 times the converged estimate, kept only when at least 5 %
-  above the element bound; `ELEMENT BY ELEMENT` turns it off.
+  internal forces, boundary conditions ignored) replaces it once converged: 0.917 times the converged estimate, kept
+  only when at least 5 % above the element bound; `ELEMENT BY ELEMENT` turns it off. In models with solids and
+  shells or beams, the global estimate is made on the solids alone and scales their element bound only (the shells
+  and beams keep theirs); the contact frequencies of the solid nodes follow the same scaling.
   C3D8R element length: the larger of the uniform-gradient bound and a length built on the largest face
   (`*SECTION CONTROLS, IMPROVED DT METHOD`, YES by default); the initial estimate includes the linear bulk
   viscosity damping, and with initial velocities the quadratic damping at the initial compression rate; the
@@ -146,7 +148,8 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   a node; the increment is bounded by 1/Ω of the active contacts. The master stiffness and its sharing use the
   triangle of the facet under the contact point; the force goes to the four nodes of a quadrilateral facet with
   the bilinear weights of the point (coordinates taken on the facet of the nodes, not the one drawn in by the
-  rounding of free edges). Beam nodes contact shell facets and beam segments; shell nodes do not contact beam
+  rounding of free edges). Exterior faces of solids are one-sided facets without thickness (outward normal, a node
+  inside a solid contacts the nearest face). Beam nodes contact shell facets and beam segments; shell nodes do not contact beam
   segments, the free shell edges do (edge to segment: closest points of the two segments, edge stiffness from its
   two nodes weighted by the contact point, a vertex held by one of its edges). Normal viscous damping of 3 % of critical
   (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL),
@@ -226,7 +229,7 @@ Mesh-convergence curves and deformed shapes of every benchmark: [validation/LITE
 
 Features exercised by the validation suite and not supported yet:
 
-- Contact: solid element faces and nodes in general contact, beam-to-beam edge contact, contact pairs
+- Contact: beam-to-beam edge contact, contact pairs
   (`*CONTACT PAIR`), rigid surfaces (R3D4, `*RIGID BODY`), contact in implicit procedures, one-sided SPOS/SNEG
   contact.
 - Constraints: `*TIE`, `*COUPLING` (kinematic and distributing), `*MPC`, `*EQUATION`, `*RIGID BODY`, connector types
@@ -242,7 +245,9 @@ Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: beam-to-shell impact (reactions within 14 %, energy 6 %, beam end rotations 13 %); a shell sheet dropped
+- Dynamics: solid-to-solid impact (reactions 40 % below the reference at the first impact when nodes of both bodies
+  lie in the contact area); beam-to-solid impact (displacements within 11 %, stresses 15 %); beam-to-shell impact
+  (reactions within 14 %, energy 6 %, beam end rotations 13 %); a shell sheet dropped
   on a beam stops like the reference at the first contact increment, then its contact force stays up to 25 % lower; self-contact of a coiled strip (first contact within 7 %; the later chatter of the coil on the clamped edge, which
   goes straight into the reactions, is not compared); viscous dissipation of
   shell bulk viscosity on strongly tapered quadrilaterals (up to 15 % high); stability of thin Fung shells closing with contact (valve model).

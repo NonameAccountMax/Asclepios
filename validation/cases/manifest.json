@@ -1173,8 +1173,8 @@
    "E": 0.001
   },
   "analysis": "linear",
-  "known": "the closed form is the Kirchhoff plate: with transverse shear deformation (Reissner-Mindlin shell) the corner point loads add a local deflection, 0.5 % of the twist",
-  "reference": "analytic",
+  "known": null,
+  "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,
   "supported": true,
@@ -2320,10 +2320,12 @@
    "E": 0.15
   },
   "analysis": "nonlinear",
-  "known": "general contact does not include solid element faces and nodes yet",
+  "known": null,
   "reference": "abaqus",
-  "known_quantities": [],
-  "known_quantities_note": null,
+  "known_quantities": [
+   "RM"
+  ],
+  "known_quantities_note": "Total reaction moment of the clamped edges zero by symmetry (peak 1.3e-3 N mm against reactions of 129 N): numerical noise",
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -2634,12 +2636,12 @@
    "E": 0.15
   },
   "analysis": "nonlinear",
-  "known": null,
+  "known": "solid-to-solid impact: reactions 40 % below the reference at the first impact (the base nodes under the block also contact its bottom face, contact in both directions); a single brick dropped on a base face agrees with Abaqus/Explicit increment by increment",
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,
-  "supported": false,
-  "unsupported_reason": "not supported by asclepios yet: solid element faces in general contact",
+  "supported": true,
+  "unsupported_reason": null,
   "twin_of": null,
   "literature": null,
   "energies": null,
@@ -2702,8 +2704,8 @@
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,
-  "supported": false,
-  "unsupported_reason": "not supported by asclepios yet: solid element faces in general contact",
+  "supported": true,
+  "unsupported_reason": null,
   "twin_of": null,
   "literature": null,
   "energies": null,
@@ -13321,6 +13323,50 @@
   "deferred": false
  },
  {
+  "name": "s4r_twist_xpl",
+  "category": "element",
+  "group": "S4R",
+  "procedure": "explicit",
+  "element": "S4R",
+  "mode": "twisting",
+  "description": "Square plate on three corner supports, transverse load on the fourth (uniform twisting moment, w = c x y, linear).",
+  "mon": [
+   25,
+   28,
+   46,
+   49
+  ],
+  "fix": [
+   1,
+   7,
+   43
+  ],
+  "mone": [
+   1,
+   19,
+   36
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.06,
+   "RF": 0.1,
+   "S": 0.12,
+   "E": 0.06
+  },
+  "analysis": "quasi-static explicit",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": "s4r_twist",
+  "literature": null,
+  "energies": null,
+  "deferred": false
+ },
+ {
   "name": "s4r_pressure_xpl",
   "category": "element",
   "group": "S4R",
@@ -15214,7 +15260,7 @@
    "E": 0.06
   },
   "analysis": "quasi-static explicit",
-  "known": "OP=NEW removes the tip load at once in explicit dynamics: free vibration of period 0.9 ms sampled every 7.5 ms, phase not comparable (the kinetic energy agrees within 2 % over the first periods)",
+  "known": null,
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,

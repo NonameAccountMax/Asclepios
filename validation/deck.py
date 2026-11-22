@@ -52,6 +52,7 @@ TOL = {  # relative to the peak reference value (U also for rotations, RF also f
 MODE = {'twin': False}
 CURRENT = {'deck': None}
 QS_DURATION = {}     # case name -> duration of its quasi-static explicit twin (s)
+QS_DAMPING = {}      # case name -> mass-proportional damping of every material in its quasi-static explicit twin
 CASES = []
 KNOWN = {}           # case name -> documented limitation (KNOWN FAIL)
 KNOWN_QUANTITIES = {}  # case name -> (quantities, note): documented difference on some quantities only
@@ -123,6 +124,8 @@ class Deck:
         out += self.model
         for m in sorted(self.materials):
             out.append(MATERIALS[m].rstrip('\n'))
+            if MODE['twin'] and self.name in QS_DAMPING:
+                out.append('*Damping, alpha=%s' % fmt(QS_DAMPING[self.name]))
         out += self.initial
         out += self.steps
         return '\n'.join(out) + '\n'

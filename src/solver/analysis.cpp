@@ -272,6 +272,7 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
     for (size_t g = 0; g < groups.size(); ++g) spring_k[g].assign(groups[g]->size(), 0.0);
   }
   for (size_t g = 0; g < groups.size(); ++g) {
+    if (!group_mask.empty() && !group_mask[g]) continue;
     ElementGroup& G = *groups[g];
     const int nen = G.nen;
     double* EF = efor[g].data();
@@ -328,6 +329,8 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
     }
     S.e_visc += ev; S.e_plastic += ep; S.e_art += ea; S.failed += nfail;
     if (dtmin < S.dt_min) { S.dt_min = dtmin; S.dt_elem = dte >= 0 ? G.ids[dte] : -1; }
+    double& dcl = is_solid_type(G.type) ? S.dt_solid : S.dt_other;
+    dcl = std::min(dcl, dtmin);
   }
   // springs / connectors: their stiffness adds to the frequency of the nodes they load
   bool any_spring = false;
@@ -361,6 +364,7 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
       double om2 = node_om2[n] + node_ks[n] / mt[n];
       double d = 2.0 / std::sqrt(om2);
       if (d < S.dt_min) { S.dt_min = d; S.dt_elem = node_el[n]; }
+      S.dt_other = std::min(S.dt_other, d);
     }
   }
   return S;

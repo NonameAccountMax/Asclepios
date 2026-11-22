@@ -17,18 +17,17 @@ import gen_more
 import gen_literature
 
 KNOWN.update({
-    'contact_block_on_plate': 'general contact does not include solid element faces and nodes yet',
-    'multistep_opnew_xpl': 'OP=NEW removes the tip load at once in explicit dynamics: free vibration of period 0.9 ms '
-                           'sampled every 7.5 ms, phase not comparable (the kinetic energy agrees within 2 % over the '
-                           'first periods)',
-    's4r_twist': 'the closed form is the Kirchhoff plate: with transverse shear deformation (Reissner-Mindlin shell) '
-                 'the corner point loads add a local deflection, 0.5 % of the twist',
+    'contact_solid_on_solid': 'solid-to-solid impact: reactions 40 % below the reference at the first impact (the base '
+                              'nodes under the block also contact its bottom face, contact in both directions); a '
+                              'single brick dropped on a base face agrees with Abaqus/Explicit increment by increment',
 })
 ENERGY_NOTE = ('ALLIE and ALLWK are the work of the nodal forces integrated with the trapezoidal rule (thermal strain '
                'work included, increment-size error across the elastic-plastic transition); the reference is the '
                'strain energy plus the plastic dissipation, as Abaqus computes it')
 KNOWN_QUANTITIES.update({name: (['E'], ENERGY_NOTE) for name in ('c3d8r_thermal', 'b31_thermal', 'c3d8r_plastic',
                                                                   'c3d8_plastic')})
+KNOWN_QUANTITIES['contact_block_on_plate'] = (['RM'], 'Total reaction moment of the clamped edges zero by symmetry '
+                                              '(peak 1.3e-3 N mm against reactions of 129 N): numerical noise')
 KNOWN_QUANTITIES['symmetry_bcs_xpl'] = (['RM'], 'Reaction moments not compared: the corner nodes carry both the clamping '
                                         'and the symmetry conditions')
 S3R_XPL_RM = ('Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit '
@@ -223,9 +222,11 @@ def shell_cases(etype, modes):
         c00, c10, c01, c11 = ids[0, 0], ids[6, 0], ids[0, 6], ids[6, 6]
         d.steps += static_step('Load', ['*Boundary', '%d, 1, 3' % c00, '%d, 2, 3' % c10, '%d, 3, 3' % c01,
                                         '*Cload', '%d, 3, -2.' % c11], False, rot=True, nframes=1)
+        # Abaqus reference: the closed form w = c x y is the Kirchhoff plate; the transverse shear of the shell adds a
+        # local deflection under the corner point loads (0.9 % of the twist), so the closed form is not the target
         register(d, 'static', etype, 'twisting', 'Square plate on three corner supports, transverse load on the fourth '
                  '(uniform twisting moment, w = c x y, linear).', [c11, ids[3, 3], ids[6, 3], ids[3, 6]], [c00, c10, c01],
-                 True, 'exact', 'linear', reference='analytic')
+                 True, 'exact', 'linear')
     if 'pressure' in modes:
         d, ids = plate('%s_pressure' % tag, etype, '%s clamped square plate under pressure (NLGEOM)' % etype,
                        8, 8, 20.0, 20.0, 0.2)

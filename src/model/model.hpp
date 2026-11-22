@@ -11,6 +11,7 @@ namespace abq {
 
 enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, UNKNOWN };
 const char* eltype_name(ElType t);
+inline bool is_solid_type(ElType t) { return t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4; }
 ElType eltype_from(const std::string& abaqus_name, int& nnodes);
 
 struct Orientation {

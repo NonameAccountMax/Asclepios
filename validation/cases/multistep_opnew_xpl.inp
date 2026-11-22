@@ -47,6 +47,7 @@ B31 cantilever: load, added support, then loads replaced (OP=NEW) [quasi-static 
 210000., 0.3
 *Expansion
 1.2e-05
+*Damping, alpha=2000
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.03

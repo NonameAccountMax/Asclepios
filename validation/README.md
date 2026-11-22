@@ -22,7 +22,9 @@ small decks (224 cases and 56 twins), each running in seconds:
   materials (Mooney-Rivlin, Ogden, Yeoh, orthotropic, Holzapfel-Gasser-Ogden, superelastic nitinol, kinematic
   hardening, rate dependence, damage and element deletion, viscoelasticity);
 - **procedures**: every case compared with Abaqus exists in its native procedure and as a twin in the other one
-  (static as quasi-static explicit, `_xpl`; explicit as implicit dynamic, `_std`), options specific to the explicit
+  (static as quasi-static explicit, `_xpl`; explicit as implicit dynamic, `_std`; a twin whose static loads change
+  abruptly, such as a load removed by `OP=NEW`, gets mass-proportional damping so that its frames are static
+  states), options specific to the explicit
   procedure (mass scaling, bulk viscosity, fixed increment, damping, adaptive meshing), implicit procedures (arc
   length, frequencies, buckling, stabilization, linear perturbation, `*VISCO`, modal and steady-state dynamics, heat
   transfer, coupled temperature-displacement), transfer between procedures (`*IMPORT`);

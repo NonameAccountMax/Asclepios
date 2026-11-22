@@ -221,6 +221,90 @@ def contact_shell_beam():
     return ok
 
 @case
+def contact_solid_faces():
+    # general contact with the exterior faces of C3D8R solids, against Abaqus/Explicit: free alu cube 2 x 2 x 2
+    # dropped at 1000 on the top face (4 x 4) of a steel C3D8R base,
+    #  - base fully clamped: contact force of the first increments 11.43, 22.19, 29.65, peak 32.97;
+    #  - base clamped at its bottom only, cube nodes on the diagonal of the base face (two triangles): no contact
+    #    lost at the third increment (28.84), peak 32.00;
+    #  - global estimate of the increment with the boundary conditions ignored (fully clamped base, heavy cube):
+    #    2.728e-7 before contact
+    def deck(name, fixb, rho):
+        nodes = ['1, 0., 0., 0.', '2, 4., 0., 0.', '3, 4., 4., 0.', '4, 0., 4., 0.', '5, 0., 0., 2.', '6, 4., 0., 2.',
+                 '7, 4., 4., 2.', '8, 0., 4., 2.']
+        nodes += ['%d, %g, %g, %g' % (11 + i + 4 * k, x, y, 2.01 + 2 * k) for k in range(2)
+                  for i, (x, y) in enumerate(((1, 1), (3, 1), (3, 3), (1, 3)))]
+        d = ['*Heading', '*Node'] + nodes + [
+            '*Element, type=C3D8R, elset=BASE', '1, 1, 2, 3, 4, 5, 6, 7, 8',
+            '*Element, type=C3D8R, elset=CUBE', '2, 11, 12, 13, 14, 15, 16, 17, 18',
+            '*Solid Section, elset=BASE, material=BM', ',', '*Solid Section, elset=CUBE, material=CM', ',',
+            '*Nset, nset=BN', '1, 2, 3, 4, 5, 6, 7, 8' if fixb else '1, 2, 3, 4', '*Nset, nset=CN',
+            '11, 12, 13, 14, 15, 16, 17, 18', '*Material, name=BM', '*Density', '7.85e-09', '*Elastic', '210000., 0.3',
+            '*Material, name=CM', '*Density', '%g' % rho, '*Elastic', '70000., 0.33',
+            '*Initial Conditions, type=VELOCITY', 'CN, 3, -1000.', '*Surface Interaction, name=NOFRIC',
+            '*Step, name=Drop, nlgeom=YES', '*Dynamic, Explicit', ', 1.4e-05', '*Boundary', 'BN, ENCASTRE',
+            '*Contact', '*Contact Inclusions, ALL EXTERIOR', '*Contact Property Assignment', ' , , NOFRIC',
+            '*Output, field, number interval=1', '*Node Output', 'U', '*Output, history, frequency=1',
+            '*Node Output, nset=CN', 'U1, U2, U3', '*End Step']
+        open(os.path.join(OUT, name + '.inp'), 'w').write('\n'.join(d) + '\n')
+        run(name)
+        by = {}
+        for r in open(os.path.join(OUT, name + '_mon.csv')).read().strip().splitlines()[1:]:
+            f = r.split(','); by.setdefault(float(f[0]), {})[int(f[1])] = float(f[4])
+        t = sorted(by)
+        m = rho * 8 / 8
+        F = []  # contact force on the cube: momentum change, central differences of the displacements
+        for i in range(1, len(t) - 1):
+            a = sum((by[t[i + 1]][n] - by[t[i]][n]) / (t[i + 1] - t[i]) - (by[t[i]][n] - by[t[i - 1]][n]) / (t[i] - t[i - 1])
+                    for n in range(11, 19)) / (0.5 * (t[i + 1] - t[i - 1]))
+            F.append(m * a)
+        rows = open(os.path.join(OUT, name + '_history.csv')).read().strip().splitlines()
+        dt = float(rows[5].split(',')[rows[0].split(',').index('dt')])
+        i0 = next(i for i, x in enumerate(F) if x > 1e-3)
+        return F[i0:i0 + 10], dt
+    F, _ = deck('csol_fixed', 1, 2.7e-9)
+    ok = check('cube on a clamped base: 1st increment force', F[0], 11.43, 0.01)
+    ok &= check('cube on a clamped base: 3rd increment force', F[2], 29.65, 0.01)
+    ok &= check('cube on a clamped base: peak force', max(F), 32.97, 0.01)
+    F, _ = deck('csol_diag', 0, 2.7e-9)
+    ok &= check('cube on the base diagonal: 3rd increment force', F[2], 28.84, 0.01)
+    ok &= check('cube on the base diagonal: peak force', max(F), 32.00, 0.01)
+    _, dt = deck('csol_heavy', 1, 2.7e-8)
+    ok &= check('global increment, clamped base ignored (Abaqus)', dt, 2.728e-7, 0.01)
+    return ok
+
+@case
+def global_increment_mixed():
+    # global estimate of the increment in a model with solids and shells: made on the solids alone, applied to their
+    # element bound (alu C3D8R block 6 x 6 x 4 of 2 mm bricks, element bound 2.158e-7, next to a steel S4R plate:
+    # Abaqus/Explicit 2.585e-7)
+    nodes, ids = [], {}
+    for k in range(3):
+        for j in range(4):
+            for i in range(4):
+                ids[i, j, k] = 1 + len(nodes); nodes.append('%d, %g, %g, %g' % (ids[i, j, k], 2. * i, 2. * j, 1. + 2. * k))
+    els = []
+    for k in range(2):
+        for j in range(3):
+            for i in range(3):
+                c = [ids[i, j, k], ids[i + 1, j, k], ids[i + 1, j + 1, k], ids[i, j + 1, k], ids[i, j, k + 1],
+                     ids[i + 1, j, k + 1], ids[i + 1, j + 1, k + 1], ids[i, j + 1, k + 1]]
+                els.append('%d, %s' % (1 + len(els), ', '.join(map(str, c))))
+    d = ['*Heading', '*Node'] + nodes + ['101, 20., 0., 0.', '102, 40., 0., 0.', '103, 40., 20., 0.', '104, 20., 20., 0.',
+         '*Element, type=C3D8R, elset=BLOCK'] + els + ['*Element, type=S4R, elset=PLATE', '100, 101, 102, 103, 104',
+         '*Solid Section, elset=BLOCK, material=ALU', ',', '*Shell Section, elset=PLATE, material=ST', '0.5, 5',
+         '*Nset, nset=BN, elset=BLOCK', '*Material, name=ALU', '*Density', '2.7e-09', '*Elastic', '70000., 0.33',
+         '*Material, name=ST', '*Density', '7.85e-09', '*Elastic', '210000., 0.3',
+         '*Initial Conditions, type=VELOCITY', 'BN, 3, -1000.', '*Step, nlgeom=YES', '*Dynamic, Explicit', ', 5e-06',
+         '*Output, field, number interval=1', '*Node Output', 'U', '*Output, history, frequency=1', '*Energy Output',
+         'ALLKE', '*End Step']
+    open(os.path.join(OUT, 'gdt_mixed.inp'), 'w').write('\n'.join(d) + '\n')
+    run('gdt_mixed')
+    rows = open(os.path.join(OUT, 'gdt_mixed_history.csv')).read().strip().splitlines()
+    dt = float(rows[10].split(',')[rows[0].split(',').index('dt')])
+    return check('C3D8R block next to an S4R plate: increment', dt, 2.585e-7, 0.01)
+
+@case
 def beam_stable_increment():
     # free single B31 elements (E = 210000, nu = 0.3, default bulk viscosity): element estimate of Abaqus/Explicit,
     # larger of the opposite-rotation and coupled-shear modes with the cross pairing of the bending axes (RECT

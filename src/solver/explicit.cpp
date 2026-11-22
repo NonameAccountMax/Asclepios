@@ -58,7 +58,8 @@ struct Cursor {
 };
 
 // Global estimate of the stable increment: largest eigenvalue of M^-1 K by power iteration, K x from central
-// differences of the internal forces at the current state (no viscous terms). The element-by-element bound is
+// differences of the internal forces at the current state (no viscous terms), boundary conditions ignored as in
+// Abaqus/Explicit (fully clamped C3D8R base element: global increment 2.728e-7, that of the free element). The element-by-element bound is
 // conservative; the global value (with the Abaqus safety factor, see global_update) is used once two successive
 // estimates agree within 0.5 %, as a ratio to the element bound so that later changes of the element bound are
 // followed.
@@ -68,7 +69,8 @@ struct GlobalDt {
   int ok = 0, countdown = 0;
 };
 
-double power_iterations(Analysis& A, std::vector<double>& x, int iters, double dt) {
+// dof_on (6 nn, optional): the dofs iterated (the others held at zero)
+double power_iterations(Analysis& A, std::vector<double>& x, int iters, double dt, const std::vector<char>& dof_on) {
   const int nd = 6 * A.nn;
   std::vector<double> fp(nd), fm(nd), du_save = A.du;
   double lam = 0, h = 0;
@@ -79,7 +81,7 @@ double power_iterations(Analysis& A, std::vector<double>& x, int iters, double d
     for (int i = 0; i < nd; ++i) {
       const int n = i / 6, k = i % 6;
       const double mm = k < 3 ? A.mt[n] : A.mr[n];
-      if (A.fixed[i] || !(mm > 0)) x[i] = 0;
+      if (!(mm > 0) || (!dof_on.empty() && !dof_on[i])) x[i] = 0;
       xmax = std::max(xmax, std::fabs(x[i]));
     }
     if (!(xmax > 0)) return 0;
@@ -92,7 +94,7 @@ double power_iterations(Analysis& A, std::vector<double>& x, int iters, double d
     for (int i = 0; i < nd; ++i) {
       const int n = i / 6, k = i % 6;
       const double mm = k < 3 ? A.mt[n] : A.mr[n];
-      if (A.fixed[i] || !(mm > 0)) { fp[i] = 0; continue; }
+      if (!(mm > 0) || (!dof_on.empty() && !dof_on[i])) { fp[i] = 0; continue; }
       const double kx = (fp[i] - fm[i]) / (2 * h);
       xkx += x[i] * kx;
       xmx += x[i] * mm * x[i];
@@ -163,10 +165,31 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
   double ke_rot_last = 0;
   GlobalDt gdt;
   // models with rotational dofs (shells, beams) keep the element bound: their rotational modes are limited by the
-  // damping of the bulk viscosity on curvature rates, which the element bound includes and the global one does not
+  // damping of the bulk viscosity on curvature rates, which the element bound includes and the global one does not.
+  // With solid elements too, the global estimate is made on the solids alone (their translations, the other
+  // elements left out) and scales their element bound only (C3D8R block dropped on an S4R plate: Abaqus/Explicit
+  // increment 2.585e-7 = global estimate of the block, element bound 2.158e-7)
   bool has_rot = false;
   for (int n = 0; n < nn; ++n) has_rot = has_rot || A.node_rot[n];
-  const bool use_global = !st.element_by_element && !(st.fixed_dt && st.user_dt > 0) && !has_rot;
+  std::vector<char> solid_dof, solid_group(A.groups.size(), 0);
+  bool has_solid = false;
+  for (size_t g = 0; g < A.groups.size(); ++g) {
+    solid_group[g] = is_solid_type(A.groups[g]->type) && A.groups[g]->size() > 0;
+    has_solid = has_solid || solid_group[g];
+  }
+  const bool mixed = has_rot && has_solid;
+  if (mixed) {
+    solid_dof.assign(6 * nn, 0);
+    for (size_t g = 0; g < A.groups.size(); ++g) {
+      if (!solid_group[g]) continue;
+      const ElementGroup& G = *A.groups[g];
+      for (int e = 0; e < G.size(); ++e)
+        for (int I = 0; I < G.nen; ++I)
+          for (int k = 0; k < 3; ++k) solid_dof[6 * G.conn[e * G.nen + I] + k] = 1;
+    }
+  }
+  const bool use_global = !st.element_by_element && !(st.fixed_dt && st.user_dt > 0) && (!has_rot || mixed);
+  double dt_solid = 1e30, dt_other = 1e30;  // element bounds of the solids and of the other elements (mixed models)
   // damping of the highest mode by the linear bulk viscosity, as in the element bound
   const double gdamp = std::sqrt(1 + st.bv1 * st.bv1) - st.bv1;
   auto global_update = [&](int iters) {
@@ -175,16 +198,20 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       unsigned s0 = 4096;
       for (int i = 0; i < 6 * nn; ++i) { s0 = (s0 * 150889u + 1u) % 714025u; gdt.x[i] = (s0 % 2 ? 1.0 : -1.0) * (0.5 + s0 / 1428050.0); }
     }
-    double lam = power_iterations(A, gdt.x, iters, dt);
+    if (mixed) A.group_mask = solid_group;
+    double lam = power_iterations(A, gdt.x, iters, dt, solid_dof);
+    A.group_mask.clear();
+    const double dref = mixed ? dt_solid : dt_el;
     bool agree = gdt.lam > 0 && lam > 0 && std::fabs(lam - gdt.lam) <= 0.005 * lam;
     gdt.lam = lam;
-    if (agree && lam > 0 && dt_el > 0) {
+    if (agree && lam > 0 && dref > 0 && dref < 1e29) {
       // 0.917 of the converged estimate, and the element bound unless the global one is at least 5 % larger:
       // the global increments of Abaqus/Explicit (exact largest eigenvalue of clamped C3D8R blocks computed
       // separately: ratios 0.914 to 0.919; global estimate dropped below 1.05 times the element bound)
-      const double r = 0.917 * 2.0 / std::sqrt(lam) * gdamp / dt_el;
+      const double r = 0.917 * 2.0 / std::sqrt(lam) * gdamp / dref;
       gdt.ratio = r < 1.05 ? 1.0 : std::min(1.5, r);
       gdt.ok = 1;
+      A.solid_dt_scale = gdt.ratio;
     }
   };
 
@@ -200,6 +227,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     in.pod(c);
     in.vec(fint_old); in.vec(fext_old); in.vec(fcon_old);
     in.vec(gdt.x); in.pod(gdt.lam); in.pod(gdt.ratio); in.pod(gdt.ok); in.pod(gdt.countdown);
+    A.solid_dt_scale = gdt.ok ? gdt.ratio : 1.0;
     t = c.t; dt_prev = c.dt_prev; dt = c.dt; dt_el = c.dt_el; next_frame = c.next_frame; next_hist = c.next_hist;
     next_print = c.next_print; mass0 = c.mass0; dt_last_inc = c.dt_last_inc; inc = c.inc; ms_counter = c.ms_counter;
     nfail_tot = c.nfail_tot; nfail_inc = c.nfail_inc; crit = c.crit;
@@ -477,12 +505,15 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     // next increment
     crit = S.dt_elem;
     dt_el = S.dt_min;
+    dt_solid = S.dt_solid;
+    dt_other = S.dt_other;
     if (use_global && --gdt.countdown <= 0) {  // a few iterations at the start, then every 20 increments
       global_update(gdt.x.empty() ? 12 : 2);
       gdt.countdown = gdt.ok ? 20 : 1;
     }
+    const double gr = gdt.ok ? gdt.ratio : 1.0;
     double dt_next = st.fixed_dt && st.user_dt > 0 ? st.user_dt
-                                                   : dt_el * (gdt.ok ? gdt.ratio : 1.0) * std::min(1.0, st.dt_scale);
+                     : (mixed ? std::min(dt_solid * gr, dt_other) : dt_el * gr) * std::min(1.0, st.dt_scale);
     // limit the growth of the increment (a sudden x10 jump after a stiff transient destabilises the
     // viscous terms, which are evaluated with the rate du/dt of the new increment)
     if (!(st.fixed_dt && st.user_dt > 0)) {

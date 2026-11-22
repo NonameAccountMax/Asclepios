@@ -7,7 +7,7 @@ explicit cases an implicit dynamic twin (see deck.py), except the procedure-spec
 """
 import math
 
-from deck import (QS_DURATION, Deck, _smooth_amplitude, beam_line, edge_shares, explicit_step, faces_on, fmt, hex_block, near, output_block,
+from deck import (QS_DAMPING, QS_DURATION, Deck, _smooth_amplitude, beam_line, edge_shares, explicit_step, faces_on, fmt, hex_block, near, output_block,
                   quad_plate, register, static_step, tets_from_hexes)
 
 NS = 'not supported by asclepios yet: '
@@ -69,7 +69,7 @@ def contact_features():
     d.steps += explicit_step('Impact', 1e-3, ['*Boundary', 'FIX, ENCASTRE'] + general_contact(d))
     register(d, 'explicit', 'C3D8R', 'contact solid-solid', 'Aluminium block dropped at 2 m/s on a steel base: '
              'solid-to-solid impact (general contact).', moving[:3], fix, False, 'contact', category='feature',
-             group='contact', supported=False, reason=NS + 'solid element faces in general contact')
+             group='contact', supported=True)
 
     d = Deck('contact_beam_on_solid', 'B31 rod dropped on a fixed C3D8R base (explicit general contact)')
     base = hex_block(d, 4, 4, 1, 12.0, 12.0, 2.0)
@@ -82,7 +82,7 @@ def contact_features():
     d.steps += explicit_step('Impact', 1e-3, ['*Boundary', 'FIX, ENCASTRE'] + general_contact(d), rot=True)
     register(d, 'explicit', 'B31 + C3D8R', 'contact beam-solid', 'Steel rod dropped at 2 m/s on a steel block '
              '(general contact).', [rod[0], rod[4]], fix, True, 'contact', category='feature', group='contact',
-             supported=False, reason=NS + 'solid element faces in general contact')
+             supported=True)
 
     d = Deck('contact_beam_beam', 'B31 rod dropped across a fixed B31 rod (explicit general contact, edge to edge)')
     segs, low = beam_line(d, 9, 18.0, x0=(-9.0, 0.0, 0.0))
@@ -799,6 +799,9 @@ def load_features():
 
     d, ids = cantilever_beam('multistep_opnew', 'B31 cantilever: load, added support, then loads replaced (OP=NEW)')
     QS_DURATION['multistep_opnew'] = 0.03
+    # the tip load removed by OP=NEW drops at once in explicit dynamics: damping (time constant 1 ms, first mode period
+    # 0.9 ms) brings the twin to rest before the next frame, so its frames are static states
+    QS_DAMPING['multistep_opnew'] = 2000.0
     d.steps += static_step('Load', ['*Boundary', '%d, ENCASTRE' % ids[0], '*Cload', '%d, 3, -1.' % ids[-1]], False,
                            rot=True, nframes=2)
     d.steps += static_step('Support', ['*Boundary', '%d, 3, 3' % ids[5]], False, rot=True, nframes=2)
