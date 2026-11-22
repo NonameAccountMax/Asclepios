@@ -16,6 +16,8 @@ struct Prescribed {
   double v0, v1;  // value at step start / given value
   int amp;        // amplitude index, -1 default, -2 constant (propagated)
   bool velocity = false;
+  bool acceleration = false;  // *BOUNDARY, TYPE=ACCELERATION (explicit)
+  bool follower = false;      // concentrated load rotating with its node
 };
 struct FaceLoad {
   FaceRef face;
@@ -63,6 +65,11 @@ struct Analysis {
   void rotary_accelerations(int n, const double* r, const double* w, double* acc, double* react) const;
   double rotary_energy(int n, const double* w) const;  // 0.5 w.(mr + J) w
   std::vector<char> fixed;                        // 6nn prescribed dof (current step)
+  // boundary conditions in the local axes of a transformed node (*TRANSFORM): node, local dof, value; enforced
+  // as linear dependencies, reactions reported on report_rf dofs
+  struct LocalBC { int node, dof; double value; };
+  std::vector<LocalBC> local_bcs;
+  std::vector<char> report_rf;
   // linear dependencies between dofs (links.cpp): u[dof] = sum c u[term], from surface ties and JOIN connectors
   struct LinkTerm { int dof; double c, mc; };    // coefficient, mass share (c^2 / interpolation weight)
   struct NodeTie {                                // slave node following master facet nodes
@@ -129,6 +136,12 @@ struct Analysis {
   std::vector<char> group_mask;  // eval_elements: groups evaluated (empty: all)
   double solid_dt_scale = 1.0;   // global estimate of the increment: ratio applied to the solid elements
   void external_forces(double st, double tt, std::vector<double>& f);  // at configuration X+u+du
+  // nodes carrying follower loads: rotation since the start (composition of the increments), updated at commit
+  std::vector<int> rot_track;                     // per node: index in node_R or -1
+  std::vector<Mat3> node_R;
+  void commit_rotations();                        // after u += du
+  std::vector<int> elem_mass_off;                 // per model element: offset of its lumped nodal masses (GRAV)
+  std::vector<double> elem_mass;
   void temperatures(double st, double tt);
 };
 

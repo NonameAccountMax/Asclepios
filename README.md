@@ -13,11 +13,11 @@ replacement for a commercial package.
 | Area | Supported |
 |---|---|
 | Input | `*INCLUDE`, `*PARAMETER` (expressions), `*PART` / `*ASSEMBLY` / `*INSTANCE` (translation, rotation), `Assembly.Instance.set` names, `*NODE`, `*ELEMENT`, `*NSET` / `*ELSET` (GENERATE, INSTANCE, `*NSET, ELSET=`), `*SURFACE` (ELEMENT SPOS/SNEG/S1…S6, NODE, CYLINDER), `*ORIENTATION` (rectangular, LOCAL DIRECTIONS) |
-| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN, JOIN), R3D4 / R3D3 (rigid) |
-| Materials | isotropic `*ELASTIC`, tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL (solids; fibre directions from `*ORIENTATION, LOCAL DIRECTIONS`), `*HYPERELASTIC` NEO HOOKE, linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
+| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN, JOIN), T3D2 (truss), R3D4 / R3D3 (rigid) |
+| Materials | isotropic `*ELASTIC` (temperature-dependent rows), `*ELASTIC, TYPE=ENGINEERING CONSTANTS` (orthotropic, solids), tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), linear `HARDENING=KINEMATIC` (solids), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL (solids; fibre directions from `*ORIENTATION, LOCAL DIRECTIONS`), `*HYPERELASTIC` NEO HOOKE / MOONEY-RIVLIN / YEOH / OGDEN (Ogden: solids), superelastic shape memory alloys (material named `ABQ_SUPER_ELASTIC…` with its `*USER MATERIAL` constants; solids), linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
-| Loads | `*BOUNDARY` (displacement, velocity, ENCASTRE…, OP=NEW), `*CLOAD`, `*DSLOAD` / `*DLOAD` P (follower pressure), `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, step or total time); loads propagate between steps |
+| Loads | `*BOUNDARY` (displacement, velocity, acceleration, ENCASTRE…, OP=NEW), `*CLOAD` (FOLLOWER), `*DSLOAD` / `*DLOAD` P (follower pressure), `*DLOAD` GRAV, `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, EQUALLY SPACED, PERIODIC, DECAY, step or total time), `*INITIAL CONDITIONS` (VELOCITY, TEMPERATURE, STRESS), `*TRANSFORM` (rectangular: loads and zero conditions in local axes); loads propagate between steps |
 | Constraints | `*TIE` (surface ties of solid faces and shells, non-matching meshes; ADJUST, POSITION TOLERANCE, NO ROTATION), `*COUPLING` (`*KINEMATIC`, `*DISTRIBUTING` with UNIFORM / LINEAR / QUADRATIC / CUBIC weighting, constrained degrees of freedom), `*RIGID BODY` (REF NODE, ELSET, PIN / TIE NSET, ANALYTICAL SURFACE), `*EQUATION`, `*MPC` (BEAM, TIE, PIN), CONN3D2 JOIN |
 | Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`; node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), rigid surfaces (R3D4 / R3D3 elements, analytical `*SURFACE, TYPE=CYLINDER`), node-to-beam segment |
 | Output | `*OUTPUT, FIELD` (NUMBER INTERVAL / TIME INTERVAL; FREQUENCY in static steps, ignored in explicit ones as Abaqus/Explicit does), `*OUTPUT, HISTORY` (number of intervals) |
@@ -170,6 +170,14 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   and rigid bodies: the coupling nodes follow the rigid motion of the reference node (the elements of a rigid body only
   carry mass). Distributing couplings: the reference node follows the translation of the weighted centroid and the
   least-squares rotation of the coupling nodes (weights: tributary areas).
+- **Loads**: gravity from the lumped nodal masses; follower concentrated loads rotated with the node (rotation
+  composed increment by increment); prescribed accelerations integrated into the velocities, their reactions include
+  the inertia of the node; temperature-dependent linear elasticity in total form, σ = C(T) (ε − α (T − T_initial)),
+  so that a loaded bar lengthens when its modulus drops; initial stresses of solids released by the first step.
+- **Superelasticity** (Auricchio-Taylor): one martensite fraction, elastic moduli mixed linearly between austenite and
+  martensite, Drucker-Prager loading function (tension-compression asymmetry from the start stresses), transformation
+  strain along its gradient scaled to the uniaxial transformation strain, linear kinetics integrated in closed form over
+  each increment, thresholds shifted with temperature.
 - **Rigid surfaces** (explicit general contact): R3D4 / R3D3 elements of a rigid body are two-sided contact facets
   without thickness; analytical surfaces (`TYPE=CYLINDER`) are cut into one-sided rigid facets (2° arcs, normal to the
   left of the profile direction) and a node coming from behind never contacts them. Rigid facet nodes carry no mass
@@ -180,7 +188,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-200 small decks, run after every change of the solver:
+219 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
@@ -243,6 +251,7 @@ Mesh-convergence curves and deformed shapes of every benchmark: [validation/LITE
 | C3D8 bar loaded through a distributing coupling / moving with a massless kinematic reference node | S11 = 10 MPa in every element, reference node u1 exact; ALLKE kept, ALLIE = 0 | uniform traction; momentum |
 | S4R sheet dropped on a rigid R3D4 plane / on a one-sided analytical cylinder from behind and from the front | ETOTAL kept, bounce; free fall through from behind, bounce from the front | energy balance; one-sided surface |
 | Holzapfel-Gasser-Ogden C3D8R cube, prescribed homogeneous stretch and shear, fibres at ±30° | σ11, σ22, σ33, σ12 within 1e-6 | numerical derivative of the strain energy |
+| Superelastic NiTi cube stretched to 7 % and unloaded (uniaxial stress) | plateaux and lateral strain within 1e-6 | closed-form uniaxial law |
 | Fung anisotropic shell, biaxial stretch 1.15 × 1.10, S4R and S3R, material axes at 0° and 30° | σ_xx, σ_yy within 1e-6 | Fung energy differentiated with 40-digit arithmetic (mpmath) |
 
 ## Roadmap
@@ -253,11 +262,11 @@ Features exercised by the validation suite and not supported yet:
   SPOS/SNEG contact, analytical surfaces other than CYLINDER (REVOLUTION, SEGMENTS).
 - Constraints: connector types other than AXIAL, CARTESIAN and JOIN (HINGE, ...); rigid links that follow large
   rotations exactly (the dependencies are linear in the rotations).
-- Elements: C3D10M, C3D6, S4, M3D4R, T3D2, B32, SPRINGA, DASHPOTA, MASS.
-- Loads and conditions: gravity (`GRAV`), follower forces, nodal transformations (`*TRANSFORM`), periodic amplitudes,
-  initial stresses, temperature-dependent elastic properties.
-- Materials: Mooney-Rivlin, kinematic hardening, viscoelasticity, superelastic Nitinol, user materials (UMAT/VUMAT),
-  Holzapfel-Gasser-Ogden in shells.
+- Elements: C3D10M, C3D6, M3D4R, B32, SPRINGA, DASHPOTA, MASS.
+- Loads and conditions: initial stresses in shells and beams; non-zero boundary conditions in transformed axes;
+  output in transformed axes; follower loads in restart files.
+- Materials: viscoelasticity, rate dependence, damage, user materials (UMAT/VUMAT), Holzapfel-Gasser-Ogden
+  and superelasticity in shells and beams; transformation kinetics of the superelastic reference (plateau ends).
 - Procedures: implicit dynamics (`*DYNAMIC`), arc length (`*STATIC, RIKS`), natural frequencies (`*FREQUENCY`), linear
   buckling (`*BUCKLE`).
 

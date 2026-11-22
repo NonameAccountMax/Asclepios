@@ -591,6 +591,68 @@ def hgo_homogeneous():
         ok &= check('HGO homogeneous deformation: ' + lab, last('hgo_hom', lab)[0], sig[i][j], 2e-4)
     return ok
 
+def sma_uniaxial_ref(eps_path, EA=60000., EM=30000., eL=0.05, Rs=520., Rf=600., RsR=300., RfR=200.):
+    # uniaxial response of the superelastic model with linear kinetics, integrated in closed form (log strains)
+    xi, sig, out = 0.0, 0.0, []
+    E = lambda x: EA + x * (EM - EA)
+    def bis(g, lo, hi):
+        glo = g(lo)
+        for _ in range(200):
+            m = 0.5 * (lo + hi); gm = g(m)
+            if (gm > 0) == (glo > 0): lo, glo = m, gm
+            else: hi = m
+        return 0.5 * (lo + hi)
+    for e in eps_path:
+        S = lambda x: E(x) * (e - eL * x)
+        st = S(xi)
+        if st > sig and st > Rs and xi < 1:
+            s0, xn = max(sig, Rs), xi
+            g = lambda x: (1 - x) * (Rf - s0) - (1 - xn) * (Rf - min(S(x), Rf))
+            xi = bis(g, xn, 1.0) if g(1.0) < 0 else 1.0
+        elif st < sig and st < RsR and xi > 0:
+            s0, xn = min(sig, RsR), xi
+            g = lambda x: x * (s0 - RfR) - xn * (max(S(x), RfR) - RfR)
+            xi = bis(g, 0.0, xn) if g(0.0) < 0 else 0.0
+        sig = S(xi)
+        out.append((sig, xi))
+    return out
+
+@case
+def superelastic_uniaxial():
+    # superelastic NiTi cube (ABQ_SUPER_ELASTIC constants) stretched to 7 % and unloaded with homogeneous uniaxial
+    # stress: transformation plateaux of the closed-form uniaxial law, lateral contraction of the Drucker-Prager flow
+    X = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)]
+    d = ['*Heading', '*Node'] + ['%d, %g, %g, %g' % (i + 1, *x) for i, x in enumerate(X)]
+    d += ['*Element, type=C3D8R, elset=E', '1, 1, 2, 3, 4, 5, 6, 7, 8', '*Nset, nset=ALL, elset=E',
+          '*Solid Section, elset=E, material=ABQ_SUPER_ELASTIC_N3D', ',', '*Material, name=ABQ_SUPER_ELASTIC_N3D',
+          '*Density', '6.5e-09', '*Depvar', '31', '*User Material, constants=15',
+          '60000., 0.3, 30000., 0.3, 0.05, 6.7, 520., 600.', '37., 6.7, 300., 200., 600., 0.05, 0.',
+          '*Initial Conditions, type=TEMPERATURE', 'ALL, 37.']
+    fixb = ['*Boundary', '1, 1, 3', '4, 1, 1', '4, 3, 3', '5, 1, 2', '8, 1, 1', '2, 2, 3', '3, 3, 3', '6, 2, 2']
+    out = ['*Output, field, number interval=10', '*Node Output', 'U', '*Element Output', 'S', '*End Step']
+    for name, target in (('Load', 0.07), ('Unload', 0.0)):
+        d += ['*Step, name=%s, nlgeom=YES, inc=1000' % name, '*Static', '0.01, 1., 1e-05, 0.01']
+        d += (fixb if name == 'Load' else ['*Boundary'])
+        d += ['%d, 1, 1, %g' % (n, target) for n in (2, 3, 6, 7)] + out
+    open(os.path.join(OUT, 'sma_uni.inp'), 'w').write('\n'.join(d) + '\n')
+    run('sma_uni')
+    frames = sorted(glob.glob(os.path.join(OUT, 'sma_uni_vtk', '*.vtu')))
+    def frame(f, field):
+        s_ = open(f).read()
+        m = re.search(r'Name="%s"[^>]*>\n(.*?)\n</DataArray>' % field, s_, re.S)
+        b = base64.b64decode(m.group(1)); n = struct.unpack('<I', b[:4])[0]
+        return struct.unpack('<%df' % (n // 4), b[4:4 + n])
+    path = [math.log(1 + 0.07 * k / 10) for k in range(11)] + [math.log(1 + 0.07 * (10 - k) / 10) for k in range(1, 11)]
+    ref = sma_uniaxial_ref(path)
+    ok = True
+    for k in (3, 10, 13, 17, 19):  # plateau, end of loading, elastic unloading, reverse plateau
+        ok &= check('superelastic uniaxial: S11 at frame %d' % k, frame(frames[k], 'S11')[0], ref[k][0], 2e-3)
+    tb = 3 * (600 - 520) / (600 + 520)
+    sig, xi = ref[10]
+    lat = -0.3 * sig / (60000 + xi * (30000 - 60000)) + (-0.5 + tb / 3) / (1 + tb / 3) * 0.05 * xi
+    ok &= check('superelastic uniaxial: lateral strain at 7 %', math.log(1 + frame(frames[10], 'U')[3 * 6 + 1]), lat, 2e-3)
+    return ok
+
 if __name__ == '__main__':
     allok = True
     for c in cases:

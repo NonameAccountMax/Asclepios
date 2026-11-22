@@ -23,9 +23,13 @@ struct Orientation {
 
 struct Amplitude {
   std::string name;
-  enum Kind { TABULAR, SMOOTH_STEP } kind = TABULAR;
+  enum Kind { TABULAR, SMOOTH_STEP, PERIODIC, DECAY } kind = TABULAR;
   bool total_time = false;
   std::vector<double> t, v;
+  // PERIODIC: a = A0 + sum_n A_n cos(n w (t - t0)) + B_n sin(n w (t - t0)) for t >= t0 (A0 before);
+  // DECAY: a = A0 + A exp(-(t - t0) / td) for t >= t0 (A0 before)
+  double w = 0, t0 = 0, a0 = 0, ad = 0, td = 1;
+  std::vector<double> an, bn;
   double eval(double step_time, double total_time) const;
 };
 
@@ -36,17 +40,36 @@ struct Material {
   double E = 0, nu = 0;
   std::vector<double> plastic_sy, plastic_ep;  // isotropic hardening table
   double alpha = 0;                            // isotropic thermal expansion
+  std::vector<double> el_T, el_E, el_nu;       // temperature-dependent elasticity (rows E, nu, T), empty otherwise
+  void elastic_at(double T, double& E, double& nu) const;
   double damp_alpha = 0, damp_beta = 0;        // Rayleigh
   bool fung = false;                           // generalized Fung, fully anisotropic
   double fung_b[6][6] = {};                    // Voigt (11,22,33,12,13,23), tensor components
   double fung_c = 0, fung_D = 0;
   bool neohooke = false;
   double C10 = 0, D1 = 0;
+  // other isotropic hyperelastic forms: Mooney-Rivlin (C10, C01, D1), Yeoh (C10, C20, C30, D1, D2, D3), Ogden
+  // (mu_i, alpha_i, D_i)
+  bool mooney = false, yeoh = false, ogden = false;
+  double C01 = 0, C20 = 0, C30 = 0, D2 = 0, D3 = 0;
+  std::vector<double> og_mu, og_alpha, og_D;
+  // orthotropic linear elasticity (*ELASTIC, TYPE=ENGINEERING CONSTANTS): stiffness in the material axes, tensor
+  // strains (11 22 33 12 13 23; shear terms already doubled)
+  bool ortho = false;
+  double Cortho[6][6] = {};
+  // linear kinematic hardening (*PLASTIC, HARDENING=KINEMATIC): yield stress and slope of the backstress
+  bool kinematic = false;
+  double kin_C = 0;
   // Holzapfel-Gasser-Ogden (*ANISOTROPIC HYPERELASTIC, HOLZAPFEL): C10, D, k1, k2, kappa, fibre families
   bool hgo = false;
   double hgo_C10 = 0, hgo_D = 0, hgo_k1 = 0, hgo_k2 = 0, hgo_kappa = 0;
   int hgo_nfib = 0;
-  bool hyper() const { return fung || neohooke || hgo; }
+  bool hyper() const { return fung || neohooke || hgo || mooney || yeoh || ogden; }
+  // superelastic shape memory alloy (material named ABQ_SUPER_ELASTIC..., *USER MATERIAL constants): austenite and
+  // martensite moduli, transformation strain, stress-temperature slopes, transformation stresses at T0
+  bool sma = false;
+  double sma_EA = 0, sma_nuA = 0, sma_EM = 0, sma_nuM = 0, sma_epsL = 0, sma_CL = 0, sma_sLs = 0, sma_sLe = 0,
+         sma_T0 = 0, sma_CU = 0, sma_sUs = 0, sma_sUe = 0, sma_sCLs = 0, sma_epsV = 0;
   bool plastic() const { return !plastic_sy.empty(); }
   double yield(double ep, double* H = nullptr) const;  // flow stress and hardening slope
   // small-strain moduli used for stable time / hourglass / transverse shear defaults
@@ -75,6 +98,8 @@ struct Section {
   std::string elset;
   int material = -1;
   int orientation = -1;
+  // solid section of trusses: cross-sectional area (first data value, default 1)
+  double area = 1;
   // shell
   double thickness = 0;
   int nip = 5;
@@ -175,10 +200,11 @@ struct FaceValue {
 };
 
 struct LoadBlock {  // one keyword occurrence inside a step
-  enum Kind { BOUNDARY, CLOAD, DSLOAD, TEMPERATURE, FIELD, VELOCITY_BC } kind;
+  enum Kind { BOUNDARY, CLOAD, DSLOAD, TEMPERATURE, FIELD, VELOCITY_BC, ACCELERATION_BC } kind;
   bool op_new = false;
   int amplitude = -1;
   int field_var = 1;
+  bool follower = false;  // *CLOAD, FOLLOWER: the force rotates with the node
   std::vector<NodalValue> nodal;
   std::vector<FaceValue> faces;
 };
@@ -267,7 +293,10 @@ struct Model {
   // initial / model-level data
   std::vector<NodalValue> init_temperature;
   std::vector<NodalValue> init_velocity;
+  struct ElemStress { int elem; double s[6]; };
+  std::vector<ElemStress> init_stress;  // *INITIAL CONDITIONS, TYPE=STRESS (global components 11 22 33 12 13 23)
   std::vector<NodalValue> model_bcs;  // model-level *BOUNDARY (always active)
+  std::map<int, Mat3> transforms;      // *TRANSFORM (rectangular): node -> local axes (rows) of its dofs
   std::vector<Step> steps;
 
   int nn() const { return (int)X.size(); }

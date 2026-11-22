@@ -646,15 +646,14 @@ def more_features():
                                 ('mat_yeoh', 'YEOH', 'Yeoh block, uniaxial stretch 1.5', 2.0)):
         d, fx, tip = uniaxial_block(name, mat, title, u)
         register(d, 'static', 'C3D8R', title.split(' block')[0], 'Homogeneous uniaxial stretch to 1.5.', tip[:3], fx,
-                 False, 'exact', reference='analytic', category='feature', group='material', supported=False,
-                 reason=NS + '%s hyperelasticity' % mat.capitalize())
+                 False, 'exact', reference='analytic', category='feature', group='material', supported=True)
     d, fx, tip = uniaxial_block('mat_orthotropic', 'ORTHO', 'Orthotropic block (engineering constants), tension 0.1 %',
                                 0.004, nlgeom=False, nframes=1)
     d.model = ['*Orientation, name=OR', '1., 0., 0., 0., 1., 0.'] + [
         l + ', orientation=OR' if l.startswith('*Solid Section') else l for l in d.model]
     register(d, 'static', 'C3D8R', 'orthotropic elasticity', 'Homogeneous tension along the stiff direction of an '
              'orthotropic material.', tip[:3], fx, False, 'exact', 'linear', reference='analytic', category='feature',
-             group='material', supported=False, reason=NS + 'orthotropic elasticity')
+             group='material', supported=True)
 
     d = Deck('mat_hgo', 'Holzapfel-Gasser-Ogden block with two fibre families at +/- 30 degrees, uniaxial stretch')
     hexes = hex_block(d, 2, 2, 2, 4.0, 4.0, 4.0)
@@ -688,8 +687,7 @@ def more_features():
     d.steps += static_step('Unload', ['*Boundary', 'TIP, 1, 1, 0.'], True, inc=0.02, maxinc=0.02)
     register(d, 'static', 'C3D8', 'superelastic nitinol', 'NiTi bar stretched to 7 % (austenite to martensite '
              'transformation) and unloaded (reverse transformation, hysteresis).', tip[:3], fx, False, 'nonlinear',
-             category='feature', group='material', supported=False, reason=NS + 'superelastic nitinol '
-             '(ABQ_SUPER_ELASTIC user material)')
+             category='feature', group='material', supported=True)
 
     for name, mat, title, reason in (('mat_rate_dependent', 'STEEL_RATE', 'rate-dependent plasticity (power law)',
                                       'rate-dependent plasticity'),
@@ -919,7 +917,7 @@ def more_features():
                                nframes=8)
         register(d, 'static', 'S4R', '%s amplitude' % title.lower(), 'Homogeneous membrane strain following a %s '
                  'amplitude.' % title, tip, fix, True, 'exact', 'linear', reference='analytic', category='feature',
-                 group='load', supported=False, reason=NS + '%s amplitudes' % title, twin=False)
+                 group='load', supported=True, twin=False)
 
     d = Deck('bc_acceleration', 'Free C3D8R block driven by a prescribed acceleration (explicit)')
     hexes = hex_block(d, 2, 2, 2, 4.0, 4.0, 4.0)
@@ -928,8 +926,7 @@ def more_features():
     d.steps += explicit_step('Accelerate', 0.001, ['*Boundary, type=ACCELERATION', 'NALL, 1, 1, 100000.'])
     register(d, 'explicit', 'C3D8R', 'prescribed acceleration', 'Block uniformly accelerated at 100 m/s^2 along x: '
              'u = a t^2 / 2, reaction m a.', list(d.nodes)[:2], list(d.nodes), False, 'exact', reference='analytic',
-             category='feature', group='load', supported=False, reason=NS + 'acceleration boundary conditions',
-             twin=False)
+             category='feature', group='load', supported=True, twin=False)
 
     # procedures
     d, fix, tip = cantilever_solid('static_stabilize', 'C3D8R', 'C3D8R cantilever, static step with automatic '

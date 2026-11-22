@@ -492,6 +492,36 @@ void Analysis::activate_links(bool implicit) {
   }
   for (const auto& [dof, terms] : constraint_links)
     if (!fixed[dof]) add(dof, terms);
+  // boundary conditions in the local axes of transformed nodes (zero values): the motion is kept in the plane
+  // (one condition), along the free axis (two) or fixed (three)
+  {
+    std::map<std::pair<int, int>, std::vector<int>> by;  // (node, translations 0 / rotations 3) -> local axes held
+    for (const LocalBC& b : local_bcs) {
+      if (b.value != 0) warn_once_flag("LOCALBCVAL", "non-zero boundary condition in transformed axes: held at zero");
+      by[{b.node, b.dof < 3 ? 0 : 3}].push_back(b.dof % 3);
+    }
+    for (auto& [key, ax] : by) {
+      std::sort(ax.begin(), ax.end());
+      ax.erase(std::unique(ax.begin(), ax.end()), ax.end());
+      const Mat3& R = m.transforms.at(key.first);
+      const int d0 = 6 * key.first + key.second;
+      auto argmax = [](const Vec3& v) { int k = 0; for (int i = 1; i < 3; ++i) if (std::fabs(v[i]) > std::fabs(v[k])) k = i; return k; };
+      if (ax.size() == 1) {  // e.u = 0: the largest component depends on the others
+        const Vec3 e = R.row(ax[0]);
+        const int k = argmax(e);
+        std::vector<LinkTerm> t;
+        for (int l = 0; l < 3; ++l) if (l != k && e[l] != 0) t.push_back({d0 + l, -e[l] / e[k], std::fabs(e[l] / e[k])});
+        if (t.empty()) fixed[d0 + k] = 1; else add(d0 + k, t);
+      } else if (ax.size() == 2) {  // u = s f along the free axis f
+        const Vec3 f = R.row(3 - ax[0] - ax[1]);
+        const int k = argmax(f);
+        for (int l = 0; l < 3; ++l)
+          if (l != k) { if (f[l] == 0) fixed[d0 + l] = 1; else add(d0 + l, {{d0 + k, f[l] / f[k], std::fabs(f[l] / f[k])}}); }
+      } else {
+        for (int l = 0; l < 3; ++l) fixed[d0 + l] = 1;
+      }
+    }
+  }
   for (auto [na, nb] : joins)
     for (int k = 0; k < 3; ++k) {
       const int ia = 6 * na + k, ib = 6 * nb + k;

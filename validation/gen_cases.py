@@ -16,6 +16,10 @@ import gen_features
 import gen_more
 import gen_literature
 
+SMA_NOTE = ('superelastic model of Auricchio and Taylor with linear kinetics: elasticity (moduli mixed linearly), '
+            'transformation strain, lateral contraction and the start of both transformations agree, but the reference '
+            'transforms faster in the middle of the loading plateau and much faster at the end of the reverse one '
+            '(martensite fraction 0.06 against 0.30 at 231 MPa): reactions within 5.5 %, its kinetic law is to be identified')
 KNOWN.update({
     'contact_solid_on_solid': 'solid-to-solid impact: reactions 40 % below the reference at the first impact (the base '
                               'nodes under the block also contact its bottom face, contact in both directions); a '
@@ -25,6 +29,8 @@ KNOWN.update({
                                    'it without contact in the reference (reproduced: U 0.2 %); the free bending '
                                    'vibration of the strip that remains differs by 19 % on the rotations. The deck is '
                                    'to be reversed so that the strip wraps around the cylinder',
+    'mat_superelastic': SMA_NOTE,
+    'mat_superelastic_xpl': SMA_NOTE,
     'crimp_rigid_plates': 'the eight 4 mm plates overlap below a radius of 4.83 mm: the reference jams the tube between '
                           'them (work of the plates 6.4e6 against an internal energy of 8.5e3, mostly penalty energy), '
                           'the tube escapes in asclepios; energies agree within 2 % up to the overlap. The deck is to '

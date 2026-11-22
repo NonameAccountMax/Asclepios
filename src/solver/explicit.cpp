@@ -159,7 +159,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
   };
   const int nhist = std::max(1, st.output.history_intervals);
   const double hist_dt = st.period / nhist;
-  std::vector<double> fint_old, fext_old, fcon_old, fd(6 * nn, 0.0);
+  std::vector<double> fint_old, fext_old, fcon_old, fd(6 * nn, 0.0), presc_acc(6 * nn, 0.0);
   double next_frame, next_hist, next_print, dt_prev, t, dt_el, dt;
   int crit = -1, inc, ms_counter = 0, nfail_tot = 0, nfail_inc = 0;
   double ke_rot_last = 0;
@@ -289,6 +289,11 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
           // applied load carried by the prescribed nodes)
           A.rf[i] = A.fixed[i] ? -(A.fext[i] + A.fcon[i] - A.fint[i] - fvis[i]) : 0.0;
         }
+      for (auto& b : A.loads.bcs)  // reactions of prescribed accelerations at increment 0: the inertia of the node
+        if (b.acceleration) {
+          const int i = 6 * b.node + b.dof;
+          A.rf[i] += (b.dof < 3 ? A.mt[b.node] : A.mr[b.node]) * A.loads.value(b, 0.0, A.total_time, A.m);
+        }
       if (!A.links.empty()) {
         for (int i = 0; i < 6 * nn; ++i) A.res[i] = A.fext[i] + A.fcon[i] - A.fint[i];
         A.link_accelerations(A.res);
@@ -373,10 +378,12 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
     for (int i = 0; i < 6 * nn; ++i) A.v[i] += hdt * A.a[i];
     // prescribed motion
+    std::fill(presc_acc.begin(), presc_acc.end(), 0.0);
     for (auto& b : A.loads.bcs) {
       int i = 6 * b.node + b.dof;
       double target = A.loads.value(b, tn, ttn, A.m);
-      if (b.velocity) A.v[i] = target;
+      if (b.acceleration) { A.v[i] += hdt * target; presc_acc[i] = target; }  // fixed dof: own acceleration zero
+      else if (b.velocity) A.v[i] = target;
       // with an amplitude, the velocity follows the amplitude (magnitude x rate of the amplitude): a node whose
       // condition is redefined keeps its current position as the reference, as in Abaqus/Explicit
       else if (b.amp >= 0) A.v[i] = (target - A.loads.value(b, t, A.total_time, A.m)) / dt;
@@ -449,8 +456,8 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
         double r = A.fext[i] + A.fcon[i] - A.fint[i] - fd[i];
         double mm = k < 3 ? A.mt[n] : A.mr[n];
         if (has_links) A.res[i] = r;
-        if (A.fixed[i]) { A.rf[i] = -r; A.a[i] = 0; }
-        else { A.rf[i] = 0; A.a[i] = mm > 0 ? r / mm : 0.0; }
+        if (A.fixed[i]) { A.rf[i] = -r + mm * presc_acc[i]; A.a[i] = 0; }  // reaction includes the prescribed inertia
+        else { A.rf[i] = A.report_rf[i] ? -r : 0.0; A.a[i] = mm > 0 ? r / mm : 0.0; }
         if (std::isnan(A.a[i])) A.a[i] = 0;
       }
     if (A.any_aniso) {  // anisotropic rotary inertia: tensor of the current beam frames, gyroscopic moment
@@ -489,6 +496,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       }
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
     for (int i = 0; i < 6 * nn; ++i) A.u[i] += A.du[i];
+    if (!A.rot_track.empty()) A.commit_rotations();
     fint_old = A.fint;
     fext_old = A.fext;
     fcon_old = A.fcon;

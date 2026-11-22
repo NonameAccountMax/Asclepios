@@ -10,6 +10,9 @@ namespace abq {
 // Returns plastic dissipation increment per unit volume.
 double j2_update_3d(const Material& m, const Sym6& deps, Sym6& sig, double& ep);
 
+// Linear kinematic hardening (Prager), backstress alpha (deviatoric tensor components).
+double j2_kinematic_3d(const Material& m, const Sym6& deps, Sym6& sig, Sym6& alpha, double& ep);
+
 // Plane stress (sigma33 = sigma13 = sigma23 = 0), in-plane increments d11, d22, d12 (tensor shear).
 // Returns plastic dissipation; deps33 receives the thickness strain increment.
 double j2_update_ps(const Material& m, double d11, double d22, double d12, double sig[3], double& ep, double& deps33);
@@ -17,6 +20,11 @@ double j2_update_ps(const Material& m, double d11, double d22, double d12, doubl
 // Beam stress state (sigma11, tau12, tau13), engineering shear increments.
 double j2_update_beam(const Material& m, double G, double d11, double dg12, double dg13, double& s11, double& t12,
                       double& t13, double& ep);
+
+// ---- superelastic shape memory alloy (Auricchio-Taylor, single martensite fraction xi, linear kinetics)
+// eps: total strain (corotational, tensor components), etr: transformation strain, xi: martensite fraction (both
+// updated), T: temperature, sig_old: stress at the start of the increment, sig: new stress.
+void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, double T, const Sym6& sig_old, Sym6& sig);
 
 // ---- hyperelasticity, total formulation
 // Fung (generalized, anisotropic) and neo-Hooke. C in the material (orientation) basis.

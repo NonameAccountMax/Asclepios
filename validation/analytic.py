@@ -515,14 +515,17 @@ def load_gravity(case, nodes):
 
 
 def bc_transform(case, nodes):
+    # tip node in the axes e1 = (c, 0, s), e2 = y, e3 = (-s, 0, c): its load (-2 along local 3) and its condition
+    # (no motion along e1) are both given in these axes; reaction R along e1
     EI, kGA, EA = beam_props()
     L, c, s_ = 100.0, math.cos(math.radians(30)), math.sin(math.radians(30))
     fw, ka = L ** 3 / (3 * EI) + L / kGA, EA / L
-    R = 2 * s_ * fw / (c * c / ka + s_ * s_ * fw)
-    V, N = -2.0 + R * s_, R * c
+    Px, Pz = 2.0 * s_, -2.0 * c
+    R = -(c * Px / ka + s_ * Pz * fw) / (c * c / ka + s_ * s_ * fw)
+    V, N = Pz + R * s_, Px + R * c
     return frames_of(case, nodes, [1.0],
                      lambda t, x, y, z: (N * x / EA, 0.0, V / EI * (L * x * x / 2 - x ** 3 / 6) + V * x / kGA),
-                     lambda t, x, y, z: (0.0, -V / EI * (L * x - x * x / 2), 0.0), lambda t: (0.0, 0.0, 2.0)), {}
+                     lambda t, x, y, z: (0.0, -V / EI * (L * x - x * x / 2), 0.0), lambda t: (-Px, 0.0, -Pz)), {}
 
 
 def rigid_body(case, nodes):

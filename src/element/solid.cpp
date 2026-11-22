@@ -243,6 +243,9 @@ struct PointState {  // per integration point
   double ep = 0;
   double F[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
   double sdv = 0;
+  Sym6 etr;       // superelastic: transformation strain (corotational)
+  double xi = 0;  // superelastic: martensite fraction
+  Sym6 back;      // kinematic hardening: backstress (corotational)
 };
 
 class SolidGroup : public ElementGroup {
@@ -262,6 +265,7 @@ class SolidGroup : public ElementGroup {
   std::vector<const Material*> mat;
   std::vector<int> orient;
   std::vector<double> fib;       // Holzapfel-Gasser-Ogden: 3 fibre directions per element (global, reference)
+  std::vector<double> t_init;    // initial temperature of each element (temperature-dependent elasticity)
 
   void setup(const Model& m) override {
     model = &m;
@@ -275,6 +279,22 @@ class SolidGroup : public ElementGroup {
     }
     mat.resize(size());
     orient.resize(size());
+    {  // initial temperatures (mean of the nodes) and initial stresses
+      std::vector<double> tn(m.nn(), 0.0);
+      for (const auto& t : m.init_temperature) tn[t.node] = t.value;
+      t_init.assign(size(), 0.0);
+      for (int e = 0; e < size(); ++e) {
+        for (int I = 0; I < nen; ++I) t_init[e] += tn[conn[e * nen + I]];
+        t_init[e] /= nen;
+      }
+      std::vector<int> local(m.ne(), -1);
+      for (int e = 0; e < size(); ++e) local[ids[e]] = e;
+      for (const auto& is : m.init_stress) {
+        const int e = local[is.elem];
+        if (e < 0) continue;
+        for (int g = 0; g < npt; ++g) for (int k = 0; k < 6; ++k) st[e * npt + g].sig[k] = is.s[k];
+      }
+    }
     for (int e = 0; e < size(); ++e) {
       const Section& s = m.sections[m.elems[ids[e]].section];
       mat[e] = &m.materials[s.material];
@@ -330,16 +350,52 @@ class SolidGroup : public ElementGroup {
 
   // material update at one point; returns plastic dissipation density
   double update_point(const Material& m, PointState& p, const Sym6& deps, const Vec3& w, const Mat3& dF, bool rotate,
-                      double dtemp, const double* fibres = nullptr) {
+                      double dtemp, const double* fibres = nullptr, double temp1 = 0, double tinit = 0,
+                      const Mat3* Ror = nullptr) {
     Mat3 Q = rotate ? hughes_winget(w) : Mat3::identity();
-    if (rotate) { p.sig = abq::rotate(Q, p.sig); p.eps = abq::rotate(Q, p.eps); }
+    if (rotate) {
+      p.sig = abq::rotate(Q, p.sig); p.eps = abq::rotate(Q, p.eps);
+      if (m.sma) p.etr = abq::rotate(Q, p.etr);
+      if (m.kinematic) p.back = abq::rotate(Q, p.back);
+    }
     for (int i = 0; i < 6; ++i) p.eps[i] += deps[i];
+    if (m.sma) {
+      const Sym6 s0 = p.sig;
+      sma_update(m, p.eps, p.etr, p.xi, temp1, s0, p.sig);
+      p.ep = p.xi;  // reported as PEEQ
+      return 0;
+    }
     if (m.hyper()) {
       Mat3 F;
       std::memcpy(&F.m[0][0], p.F, sizeof(p.F));
       F = dF * F;
       std::memcpy(p.F, &F.m[0][0], sizeof(p.F));
       hyper_cauchy_3d(m, F, p.sig, nullptr, fibres);
+      return 0;
+    }
+    if (m.ortho) {  // orthotropic elasticity: total small strain in the material axes (rows of R)
+      Sym6 ee = p.eps;
+      for (int i = 0; i < 3; ++i) ee[i] -= m.alpha * (temp1 - tinit);
+      const Mat3 R = Ror ? *Ror : Mat3::identity();
+      const Sym6 el = abq::rotate(R, ee);
+      Sym6 sl;
+      for (int i = 0; i < 6; ++i) { sl[i] = 0; for (int j = 0; j < 6; ++j) sl[i] += m.Cortho[i][j] * el[j]; }
+      p.sig = abq::rotate(R.T(), sl);
+      return 0;
+    }
+    if (m.kinematic && m.plastic()) {
+      Sym6 d = deps;
+      if (m.alpha != 0) for (int i = 0; i < 3; ++i) d[i] -= m.alpha * dtemp;
+      return j2_kinematic_3d(m, d, p.sig, p.back, p.ep);
+    }
+    if (!m.el_T.empty() && !m.plastic()) {  // temperature-dependent elasticity: total form C(T) (eps - eps_th)
+      double E, nu;
+      m.elastic_at(temp1, E, nu);
+      const double lam = E * nu / ((1 + nu) * (1 - 2 * nu)), mu = E / (2 * (1 + nu));
+      Sym6 ee = p.eps;
+      for (int i = 0; i < 3; ++i) ee[i] -= m.alpha * (temp1 - tinit);
+      const double tr = ee[0] + ee[1] + ee[2];
+      for (int i = 0; i < 6; ++i) p.sig[i] = 2 * mu * ee[i] + (i < 3 ? lam * tr : 0.0);
       return 0;
     }
     Sym6 d = deps;
@@ -357,8 +413,11 @@ class SolidGroup : public ElementGroup {
         xm[3 * I + k] = xref ? xref[3 * I + k] : in.xo[3 * I + k] + 0.5 * in.du[6 * I + k];
         x1[3 * I + k] = xref ? xref[3 * I + k] : in.xo[3 * I + k] + in.du[6 * I + k];
       }
-    double dtemp = 0;
-    if (in.temp0 && in.temp1) { for (int I = 0; I < n; ++I) dtemp += in.temp1[I] - in.temp0[I]; dtemp /= n; }
+    double dtemp = 0, tmean = 0;
+    if (in.temp0 && in.temp1) {
+      for (int I = 0; I < n; ++I) { dtemp += in.temp1[I] - in.temp0[I]; tmean += in.temp1[I]; }
+      dtemp /= n; tmean /= n;
+    }
     for (int i = 0; i < 6 * n; ++i) out.f[i] = 0;
     const bool rotate = in.nlgeom;
     const double rho = m.density * msf[e];
@@ -405,7 +464,8 @@ class SolidGroup : public ElementGroup {
             for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[I][j];
       }
       PointState p = st[e];
-      double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9]);
+      double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr);
       // explicit: while the point flows plastically, the increments of the applied hourglass forces are scaled by
       // max(0.1, H / (3 G + H)) (single-element Abaqus/Explicit runs: 0.1 for perfect plasticity and for a slope H
       // of 0.08 E, with HOURGLASS=STIFFNESS and RELAX STIFFNESS alike: an hourglass deformation added during the
@@ -630,7 +690,8 @@ class SolidGroup : public ElementGroup {
           for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j) dF.m[i][j] += L.m[i][j];
         PointState p = st[e * 8 + g];
-        double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9]);
+        double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr);
         out.e_plastic += wp * d1[g];
         const Sym6& s = p.sig;
         for (int I = 0; I < 8; ++I) {
@@ -703,7 +764,8 @@ class SolidGroup : public ElementGroup {
               for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[I][j];
         }
         PointState p = st[e * 8 + g];
-        double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9]);
+        double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr);
         out.e_plastic += wp * d1[g];
         const Sym6& s = p.sig;
         double trs = s.trace() / 3.0;

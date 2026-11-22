@@ -380,7 +380,7 @@ def element_features():
     d.steps += static_step('Load', ['*Boundary', 'BASE, 1, 3', '*Cload', '%d, 3, -1000.' % apex, '%d, 1, 200.' % apex],
                            False, nframes=1)
     register(d, 'static', 'T3D2', 'element T3D2', 'Three-bar truss tripod loaded at its apex.', [apex], base, False,
-             'linear', 'linear', category='feature', group='element', supported=False, reason=NS + 'T3D2 elements')
+             'linear', 'linear', category='feature', group='element', supported=True)
 
     d = Deck('elem_s4', 'S4 clamped square plate under pressure')
     quads, ids = quad_plate(d, 8, 8, 20.0, 20.0)
@@ -739,8 +739,7 @@ def load_features():
     d.steps += static_step('Weight', ['*Boundary', '%d, ENCASTRE' % ids[0], '*Dload', 'EALL, GRAV, 98100., 0., 0., -1.'],
                            False, rot=True, nframes=1)
     register(d, 'static', 'B31', 'gravity', 'Cantilever under 10 g gravity.', [ids[-1], ids[25]], [ids[0]], True,
-             'theory', 'linear', category='feature', group='load', supported=False, reason=NS + 'GRAV distributed load',
-             reference='analytic')
+             'theory', 'linear', category='feature', group='load', supported=True, reference='analytic')
 
     d, ids = cantilever_beam('load_follower', 'B31 cantilever under a follower tip force (large deflection)')
     QS_DURATION['load_follower'] = 0.03
@@ -748,7 +747,7 @@ def load_features():
                            True, rot=True)
     register(d, 'static', 'B31', 'follower force', 'Cantilever under a tip force that follows the rotation of the '
              'tip (large deflection).', [ids[-1], ids[5]], [ids[0]], True, 'nonlinear', category='feature',
-             group='load', supported=False, reason=NS + 'follower concentrated loads')
+             group='load', supported=True)
 
     d, ids = cantilever_beam('bc_transform', 'B31 cantilever, tip guided along an inclined direction (*TRANSFORM)',
                              n=50)
@@ -760,8 +759,8 @@ def load_features():
                                     '%d, 3, -2.' % ids[-1]], False, rot=True, nframes=1)
     register(d, 'static', 'B31', 'local boundary conditions', 'Cantilever whose tip is held in a direction inclined at '
              '30 degrees in the x-z plane (nodal transformation), transverse load.', [ids[-1], ids[25]],
-             [ids[0], ids[-1]], True, 'theory', 'linear', category='feature', group='load', supported=False,
-             reason=NS + '*TRANSFORM', reference='analytic')
+             [ids[0], ids[-1]], True, 'theory', 'linear', category='feature', group='load', supported=True,
+             reference='analytic')
 
     d = Deck('amplitudes', 'S4R strip, tip displacement driven by TABULAR, SMOOTH STEP and total-time amplitudes')
     quads, ids = quad_plate(d, 10, 2, 40.0, 10.0)
@@ -792,8 +791,7 @@ def load_features():
     d.steps += static_step('Periodic', ['*Boundary', 'NALL, 3, 5', 'FIX, 1, 1', '%d, 2, 2' % ids[0, 0],
                                         '*Boundary, amplitude=PER', 'TIP, 1, 1, 0.04'], False, rot=True, inc=0.05)
     register(d, 'static', 'S4R', 'periodic amplitude', 'Tip displacement following a sine (periodic amplitude).', tip,
-             fix, True, 'linear', 'linear', category='feature', group='load', supported=False,
-             reason=NS + 'PERIODIC amplitudes', twin=False)
+             fix, True, 'linear', 'linear', category='feature', group='load', supported=True, twin=False)
 
     d, ids = cantilever_beam('multistep_opnew', 'B31 cantilever: load, added support, then loads replaced (OP=NEW)')
     QS_DURATION['multistep_opnew'] = 0.03
@@ -831,8 +829,7 @@ def load_features():
     d.steps += static_step('Release', ['*Boundary', 'FIX, 1, 1', 'FY, 2, 2', 'FZ, 3, 3'], False, nframes=1)
     register(d, 'static', 'C3D8R', 'initial stress', 'Block with an initial axial stress of 100 MPa, released on '
              'symmetry supports: it shortens by the corresponding strain.', d.select(lambda x, y, z: near(x, 4.0))[:3],
-             fx, False, 'exact', 'linear', category='feature', group='load', supported=False,
-             reason=NS + 'initial stresses', reference='analytic')
+             fx, False, 'exact', 'linear', category='feature', group='load', supported=True, reference='analytic')
 
     d = Deck('temperature_dependence', 'C3D8R bar with temperature-dependent modulus, heated under load')
     hexes = hex_block(d, 4, 1, 1, 40.0, 4.0, 4.0)
@@ -848,8 +845,7 @@ def load_features():
     d.steps += static_step('Heat', ['*Temperature', 'NALL, 200.'], False, nframes=4)
     register(d, 'static', 'C3D8R', 'temperature-dependent properties', 'Bar under a 100 MPa axial stress, then heated '
              'to 200 degrees: the modulus drops from 210 to 150 GPa while the bar expands.', tip, fx, False, 'exact',
-             'linear', category='feature', group='load', supported=False,
-             reason=NS + 'temperature-dependent elastic properties', reference='analytic')
+             'linear', category='feature', group='load', supported=True, reference='analytic')
 
     d = Deck('connector_field', 'CONN3D2 AXIAL spring whose stiffness depends on a field variable')
     a, b = d.node(0, 0, 0), d.node(10, 0, 0)
@@ -882,8 +878,7 @@ def material_features():
     d.steps += static_step('Stretch', ['*Boundary', 'FIX, 1, 1', 'FY, 2, 2', 'FZ, 3, 3', '*Boundary', 'TIP, 1, 1, 2.'],
                            True, inc=0.02, maxinc=0.02)
     register(d, 'static', 'C3D8R', 'Mooney-Rivlin', 'Homogeneous uniaxial stretch to 1.5 of a Mooney-Rivlin block.',
-             tip[:3], fx, False, 'exact', category='feature', group='material', supported=False,
-             reason=NS + 'Mooney-Rivlin hyperelasticity', reference='analytic')
+             tip[:3], fx, False, 'exact', category='feature', group='material', supported=True, reference='analytic')
 
     d, fx, tip = block('mat_kinematic_hardening', 'STEEL_KIN', 'Linear kinematic hardening, tension then compression', 0)
     QS_DURATION['mat_kinematic_hardening'] = 0.001
@@ -892,7 +887,7 @@ def material_features():
     d.steps += static_step('Compression', ['*Boundary', 'TIP, 1, 1, -0.08'], True, inc=0.02, maxinc=0.02)
     register(d, 'static', 'C3D8R', 'kinematic hardening', 'Homogeneous tension to 2 % then compression to -2 % '
              '(Bauschinger effect).', tip[:3], fx, False, 'exact', category='feature', group='material',
-             supported=False, reason=NS + 'kinematic hardening', reference='analytic')
+             supported=True, reference='analytic')
 
     d, fx, tip = block('mat_viscoelastic', 'VISCO', 'Viscoelastic block (Prony series): step strain then relaxation', 0)
     d.model += ['*Amplitude, name=FAST, definition=SMOOTH STEP', '0., 0., 0.0005, 1.']

@@ -29,6 +29,10 @@ double hgo_fibre_modulus(const Material& m, const Mat3& F, const double* fib) {
 }
 
 double dilatational_modulus(const Material& m) {
+  if (m.sma) {
+    const double E = std::max(m.sma_EA, m.sma_EM), nu = m.sma_nuA;
+    return E * (1 - nu) / ((1 + nu) * (1 - 2 * nu));
+  }
   if (m.elastic) {
     double E = m.E, nu = m.nu;
     return E * (1 - nu) / ((1 + nu) * (1 - 2 * nu));
@@ -43,6 +47,32 @@ double plane_stress_modulus(const Material& m) {
   // E/(1-nu^2) from (K, G)
   double E = 9 * K * G / (3 * K + G), nu = (3 * K - 2 * G) / (2 * (3 * K + G));
   return E / (1 - nu * nu);
+}
+
+// Linear kinematic hardening (Prager): yield on the shifted deviator xi = dev(sigma) - alpha, backstress increment
+// (2/3) C deps_p, radial return with dp = f / (3 G + C).
+double j2_kinematic_3d(const Material& m, const Sym6& d, Sym6& s, Sym6& alpha, double& ep) {
+  const double E = m.E, nu = m.nu;
+  const double G = E / (2 * (1 + nu)), lam = E * nu / ((1 + nu) * (1 - 2 * nu));
+  const double tr = d[0] + d[1] + d[2];
+  Sym6 t = s;
+  for (int i = 0; i < 3; ++i) t[i] += lam * tr + 2 * G * d[i];
+  for (int i = 3; i < 6; ++i) t[i] += 2 * G * d[i];
+  const double p = (t[0] + t[1] + t[2]) / 3.0;
+  Sym6 xi = t;
+  for (int i = 0; i < 3; ++i) xi[i] -= p;
+  for (int i = 0; i < 6; ++i) xi[i] -= alpha[i];
+  const double q = std::sqrt(1.5 * ddot(xi, xi)), sy = m.plastic_sy.front();
+  if (q <= sy) { s = t; return 0; }
+  const double dp = (q - sy) / (3 * G + m.kin_C);
+  for (int i = 0; i < 6; ++i) {
+    const double n = xi[i] / q;  // 3/2 n = flow direction per unit dp
+    t[i] -= 3 * G * dp * n;
+    alpha[i] += m.kin_C * dp * n;
+  }
+  s = t;
+  ep += dp;
+  return sy * dp;
 }
 
 double j2_update_3d(const Material& m, const Sym6& d, Sym6& s, double& ep) {
@@ -153,6 +183,125 @@ double j2_update_beam(const Material& m, double G, double d11, double dg12, doub
   return 0.5 * (sy0 + sy1) * dp;
 }
 
+// ------------------------------------------------------------------ superelasticity
+// Generalized-plasticity model of the austenite-martensite transformation (Auricchio and Taylor, 1997):
+//  - elasticity with moduli mixed linearly between austenite and martensite, sigma = C(xi) (eps - etr);
+//  - loading function of Drucker-Prager type F = q + (tan b / 3) tr(sigma), tan b = 3 (s_cs - s_ls) / (s_cs + s_ls)
+//    from the start stresses in compression and tension; thresholds are the uniaxial stresses times (1 + tan b / 3)
+//    shifted by the stress-temperature slopes;
+//  - transformation strain along dF/dsigma, scaled to eps_L in uniaxial tension; the reverse transformation retraces
+//    the transformation strain;
+//  - linear kinetics integrated exactly over the increment: forward dxi / (1 - xi) = dF / (R_f - F), reverse
+//    dxi / xi = dF / (F - R_f).
+namespace {
+
+struct SmaState {
+  double lam, mu;
+};
+inline SmaState sma_moduli(const Material& m, double xi) {
+  const double E = m.sma_EA + xi * (m.sma_EM - m.sma_EA), nu = m.sma_nuA + xi * (m.sma_nuM - m.sma_nuA);
+  return {E * nu / ((1 + nu) * (1 - 2 * nu)), E / (2 * (1 + nu))};
+}
+inline void sma_stress(const Material& m, double xi, const Sym6& ee, Sym6& sig) {
+  const SmaState k = sma_moduli(m, xi);
+  const double tr = ee[0] + ee[1] + ee[2];
+  for (int i = 0; i < 6; ++i) sig[i] = 2 * k.mu * ee[i];
+  for (int i = 0; i < 3; ++i) sig[i] += k.lam * tr;
+}
+inline double sma_F(const Sym6& s, double tb) {
+  const double p = (s[0] + s[1] + s[2]) / 3;
+  double j2 = 0;
+  for (int i = 0; i < 3; ++i) j2 += (s[i] - p) * (s[i] - p);
+  for (int i = 3; i < 6; ++i) j2 += 2 * s[i] * s[i];
+  return std::sqrt(1.5 * j2) + tb * p;
+}
+
+}  // namespace
+
+void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, double T, const Sym6& sig_old, Sym6& sig) {
+  const double tb = 3 * (m.sma_sCLs - m.sma_sLs) / std::max(m.sma_sCLs + m.sma_sLs, 1e-30);
+  const double k = 1 + tb / 3;
+  const double dT = T - m.sma_T0;
+  const double RsAS = (m.sma_sLs + m.sma_CL * dT) * k, RfAS = (m.sma_sLe + m.sma_CL * dT) * k;
+  const double RsSA = (m.sma_sUs + m.sma_CU * dT) * k, RfSA = (m.sma_sUe + m.sma_CU * dT) * k;
+  const double Fn = sma_F(sig_old, tb);
+  const double xin = xi;
+  const Sym6 etr_n = etr;
+  // stress for a fraction x with the transformation strain moved along dir; returns F with the deviator projected on
+  // the unit deviatoric direction nd (signed, so that F decreases monotonically as the transformation proceeds), or
+  // the plain F when nd is null
+  auto state = [&](double x, const Sym6& dir, double scale, Sym6& e_out, Sym6& s_out, const Sym6* nd) {
+    for (int i = 0; i < 6; ++i) e_out[i] = etr_n[i] + scale * (x - xin) * dir[i];
+    Sym6 ee;
+    for (int i = 0; i < 6; ++i) ee[i] = eps[i] - e_out[i];
+    sma_stress(m, x, ee, s_out);
+    if (!nd) return sma_F(s_out, tb);
+    const double p = (s_out[0] + s_out[1] + s_out[2]) / 3;
+    double sn = 0;
+    for (int i = 0; i < 6; ++i) sn += (i < 3 ? 1.0 : 2.0) * (s_out[i] - (i < 3 ? p : 0.0)) * (*nd)[i];
+    return std::sqrt(1.5) * sn + tb * p;
+  };
+  auto unit_dev = [](const Sym6& a, Sym6& nd) {
+    const double p = (a[0] + a[1] + a[2]) / 3;
+    double n2 = 0;
+    for (int i = 0; i < 6; ++i) { nd[i] = a[i] - (i < 3 ? p : 0.0); n2 += (i < 3 ? 1.0 : 2.0) * nd[i] * nd[i]; }
+    if (!(n2 > 0)) return false;
+    for (int i = 0; i < 6; ++i) nd[i] /= std::sqrt(n2);
+    return true;
+  };
+  Sym6 e_tr, s_tr, zero;
+  const double Ftr = state(xin, zero, 0.0, e_tr, s_tr, nullptr);
+  sig = s_tr;
+  // forward transformation
+  if (Ftr > Fn && Ftr > RsAS && xin < 1) {
+    Sym6 N;  // dF/dsigma at the trial stress, scaled to eps_L in uniaxial tension
+    const double p = (s_tr[0] + s_tr[1] + s_tr[2]) / 3, q = sma_F(s_tr, 0.0);
+    if (q <= 0) return;
+    for (int i = 0; i < 6; ++i) N[i] = 1.5 * (s_tr[i] - (i < 3 ? p : 0.0)) / q / k;
+    for (int i = 0; i < 3; ++i) N[i] += tb / 3 / k;
+    Sym6 nd;
+    if (!unit_dev(s_tr, nd)) return;
+    const double F0 = std::max(Fn, RsAS);
+    auto g = [&](double x) {
+      Sym6 e, s;
+      const double F = std::min(state(x, N, m.sma_epsL, e, s, &nd), RfAS);
+      return (1 - x) * (RfAS - F0) - (1 - xin) * (RfAS - F);
+    };
+    double lo = xin, hi = 1.0;  // g decreases from g(xi_n) > 0
+    if (g(hi) >= 0) lo = hi;
+    else
+      for (int it = 0; it < 80 && hi - lo > 1e-14; ++it) {
+        const double mid = 0.5 * (lo + hi);
+        (g(mid) > 0 ? lo : hi) = mid;
+      }
+    xi = lo;
+    state(xi, N, m.sma_epsL, etr, sig, nullptr);
+    return;
+  }
+  // reverse transformation: the transformation strain shrinks in proportion to xi
+  if (Ftr < Fn && Ftr < RsSA && xin > 0) {
+    Sym6 D;
+    for (int i = 0; i < 6; ++i) D[i] = etr_n[i] / xin;
+    Sym6 nd;
+    if (!unit_dev(etr_n, nd)) return;
+    const double F0 = std::min(Fn, RsSA);
+    auto g = [&](double x) {
+      Sym6 e, s;
+      const double F = std::max(state(x, D, 1.0, e, s, &nd), RfSA);
+      return x * (F0 - RfSA) - xin * (F - RfSA);
+    };
+    double lo = 0.0, hi = xin;  // g increases with xi up to g(xi_n) > 0
+    if (g(lo) >= 0) hi = lo;
+    else
+      for (int it = 0; it < 80 && hi - lo > 1e-14; ++it) {
+        const double mid = 0.5 * (lo + hi);
+        (g(mid) > 0 ? hi : lo) = mid;
+      }
+    xi = hi;
+    state(xi, D, 1.0, etr, sig, nullptr);
+  }
+}
+
 // ------------------------------------------------------------------ hyperelasticity
 namespace {
 
@@ -216,6 +365,32 @@ void hyper_pk2(const Material& m, const Sym6& C, Sym6& S, double* energy, const 
     const double D = m.hgo_D > 0 ? m.hgo_D : 1.0 / (10.0 * std::max(m.hgo_C10, 1e-30));
     dUdJ = (J - 1.0 / J) / D;
     Uvol = ((J * J - 1) * 0.5 - std::log(J)) / D;
+  } else if (m.mooney || m.yeoh) {
+    const double I1b = Jm23 * (C[0] + C[1] + C[2]);
+    double dU1 = m.C10, dU2 = 0;
+    if (m.mooney) {
+      dU2 = m.C01;
+      for (int i = 0; i < 3; ++i) Sb[i] = 2 * (dU1 + dU2 * I1b);
+      for (int i = 0; i < 6; ++i) Sb[i] -= 2 * dU2 * Jm23 * C[i];
+      double trC2 = 0;
+      for (int i = 0; i < 3; ++i) trC2 += C[i] * C[i];
+      for (int i = 3; i < 6; ++i) trC2 += 2 * C[i] * C[i];
+      const double I2b = 0.5 * (I1b * I1b - Jm23 * Jm23 * trC2);
+      Udev = m.C10 * (I1b - 3) + m.C01 * (I2b - 3);
+    } else {
+      const double x = I1b - 3;
+      dU1 = m.C10 + 2 * m.C20 * x + 3 * m.C30 * x * x;
+      for (int i = 0; i < 3; ++i) Sb[i] = 2 * dU1;
+      Udev = m.C10 * x + m.C20 * x * x + m.C30 * x * x * x;
+    }
+    const double Ds[3] = {m.D1 > 0 ? m.D1 : 1.0 / (10.0 * std::max(m.C10, 1e-30)), m.D2, m.D3};
+    dUdJ = 0; Uvol = 0;
+    for (int i = 0; i < (m.yeoh ? 3 : 1); ++i) {
+      if (!(Ds[i] > 0)) continue;
+      const int n = 2 * (i + 1);
+      dUdJ += n * std::pow(J - 1, n - 1) / Ds[i];
+      Uvol += std::pow(J - 1, n) / Ds[i];
+    }
   } else if (m.neohooke) {
     for (int i = 0; i < 3; ++i) Sb[i] = 2 * m.C10;
     double I1b = Jm23 * (C[0] + C[1] + C[2]);
@@ -286,7 +461,72 @@ inline void fung_ps(const Material& m, const double C2[3], double x, FungPS& r, 
 
 }  // namespace
 
+// eigenvalues and eigenvectors (columns of V) of a symmetric 3 x 3 matrix (cyclic Jacobi)
+static void sym_eigen(Mat3 A, double* w, Mat3& V) {
+  V = Mat3::identity();
+  for (int sweep = 0; sweep < 50; ++sweep) {
+    double off = std::fabs(A.m[0][1]) + std::fabs(A.m[0][2]) + std::fabs(A.m[1][2]);
+    if (off < 1e-15 * (std::fabs(A.m[0][0]) + std::fabs(A.m[1][1]) + std::fabs(A.m[2][2]) + 1e-300)) break;
+    for (int p = 0; p < 2; ++p)
+      for (int q = p + 1; q < 3; ++q) {
+        if (A.m[p][q] == 0) continue;
+        const double th = 0.5 * (A.m[q][q] - A.m[p][p]) / A.m[p][q];
+        const double t = (th >= 0 ? 1.0 : -1.0) / (std::fabs(th) + std::sqrt(th * th + 1));
+        const double c = 1 / std::sqrt(t * t + 1), sn = t * c;
+        for (int k = 0; k < 3; ++k) {  // A <- A J
+          const double akp = A.m[k][p], akq = A.m[k][q];
+          A.m[k][p] = c * akp - sn * akq; A.m[k][q] = sn * akp + c * akq;
+        }
+        for (int k = 0; k < 3; ++k) {  // A <- J^T A
+          const double apk = A.m[p][k], aqk = A.m[q][k];
+          A.m[p][k] = c * apk - sn * aqk; A.m[q][k] = sn * apk + c * aqk;
+        }
+        for (int k = 0; k < 3; ++k) {
+          const double vkp = V.m[k][p], vkq = V.m[k][q];
+          V.m[k][p] = c * vkp - sn * vkq; V.m[k][q] = sn * vkp + c * vkq;
+        }
+      }
+  }
+  for (int i = 0; i < 3; ++i) w[i] = A.m[i][i];
+}
+
 void hyper_cauchy_3d(const Material& m, const Mat3& F, Sym6& sigma, double* energy, const double* fib) {
+  if (m.ogden) {  // principal stretches of b = F F^T: tau_i = sum_p 2 mu_p / alpha_p (lb_i^a_p - mean_j lb_j^a_p)
+    const Mat3 b = F * F.T();
+    double w[3];
+    Mat3 V;
+    sym_eigen(b, w, V);
+    const double J = F.det(), Jm13 = std::pow(J, -1.0 / 3.0);
+    double lb[3];
+    for (int i = 0; i < 3; ++i) lb[i] = Jm13 * std::sqrt(std::max(w[i], 1e-300));
+    double tau[3] = {0, 0, 0}, U = 0;
+    for (size_t p = 0; p < m.og_mu.size(); ++p) {
+      const double mu = m.og_mu[p], a = m.og_alpha[p];
+      double la[3], mean = 0;
+      for (int i = 0; i < 3; ++i) { la[i] = std::pow(lb[i], a); mean += la[i] / 3; }
+      for (int i = 0; i < 3; ++i) tau[i] += 2 * mu / a * (la[i] - mean);
+      U += 2 * mu / (a * a) * (3 * mean - 3);
+    }
+    double dUdJ = 0;
+    for (size_t i = 0; i < m.og_D.size(); ++i) {
+      double D = m.og_D[i];
+      if (i == 0 && !(D > 0)) D = 2.0 / (20 * m.shear_modulus());
+      if (!(D > 0)) continue;
+      const int n = 2 * (int)(i + 1);
+      dUdJ += n * std::pow(J - 1, n - 1) / D;
+      U += std::pow(J - 1, n) / D;
+    }
+    Mat3 s;
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j) {
+        double v = 0;
+        for (int k = 0; k < 3; ++k) v += tau[k] / J * V.m[i][k] * V.m[j][k];
+        s.m[i][j] = v + (i == j ? dUdJ : 0.0);
+      }
+    sigma = Sym6::from(s);
+    if (energy) *energy = U;
+    return;
+  }
   Sym6 C = Sym6::from(F.T() * F);
   Sym6 S;
   hyper_pk2(m, C, S, energy, fib);

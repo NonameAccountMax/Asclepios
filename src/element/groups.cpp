@@ -17,7 +17,6 @@ std::vector<std::unique_ptr<ElementGroup>> make_element_groups(const Model& m) {
     if (el.section < 0) continue;
     const Section& s = m.sections[el.section];
     ElType t = el.type;
-    if (t == ElType::T3D2) { warn("T3D2 elements not supported yet: ignored"); continue; }
     auto it = g.find(t);
     if (it == g.end()) {
       std::unique_ptr<ElementGroup> grp;
@@ -26,12 +25,13 @@ std::vector<std::unique_ptr<ElementGroup>> make_element_groups(const Model& m) {
         case ElType::S4R: case ElType::S4: case ElType::S3R: case ElType::S3RS: grp = make_shell_group(); break;
         case ElType::B31: grp = make_beam_group(); break;
         case ElType::CONN3D2: grp = make_connector_group(); break;
+        case ElType::T3D2: grp = make_truss_group(); break;
         default: continue;
       }
       grp->type = t;
       it = g.emplace(t, std::move(grp)).first;
     }
-    bool kind_ok = (s.kind == Section::SOLID && (t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4)) ||
+    bool kind_ok = (s.kind == Section::SOLID && (t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4 || t == ElType::T3D2)) ||
                    (s.kind == Section::SHELL && (t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS)) ||
                    (s.kind == Section::BEAM && t == ElType::B31) || (s.kind == Section::CONNECTOR && t == ElType::CONN3D2);
     if (!kind_ok) throw std::runtime_error("element " + m.elem_name(e) + ": section type does not match element type");

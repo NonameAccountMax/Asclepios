@@ -136,6 +136,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     A.temperatures(tn, ttn);
     bool converged = false;
     int it = 0;
+    double qmax_inc = 0;
     double rmax = 0, cmax = 0, dumax = 0;
     for (it = 1; it <= 16; ++it) {
       // residual
@@ -158,7 +159,11 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       }
       for (double r : req) rmax = std::max(rmax, std::fabs(r));
       double qcur = fcnt ? fsum / fcnt : 0;
+      if (it == 1) qmax_inc = qcur;
       double qt = nq ? std::max(qtilde, qcur) : qcur;
+      // a state released to zero force (e.g. initial stresses relaxed) keeps a reference: the force at the start of
+      // the increment
+      qt = std::max(qt, 1e-3 * qmax_inc);
       if (qt <= 0) qt = 1e-300;
       // a diverged iterate (a force not finite, reactions included) is never accepted: NaN would be skipped by
       // the maxima below, and an infinite reaction would make the relative criterion trivially satisfied
@@ -250,9 +255,10 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       dWi += 0.5 * (fint_c[i] + A.fint[i]) * d;
       dWe += 0.5 * (fext_c[i] + A.fext[i]) * d;
       if (A.fixed[i]) dWe += 0.5 * (fint_c[i] - fext_c[i] + A.fint[i] - A.fext[i]) * d;  // work of the reactions
-      A.rf[i] = A.fixed[i] ? fr[i] : 0.0;
+      A.rf[i] = A.fixed[i] ? fr[i] : (A.report_rf[i] ? A.fint[i] - A.fext[i] : 0.0);
       A.u[i] += A.du[i];
     }
+    A.commit_rotations();
     A.en.internal += dWi;
     A.en.external += dWe;
     fint_c = A.fint;

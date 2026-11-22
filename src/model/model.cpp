@@ -49,8 +49,25 @@ ElType eltype_from(const std::string& n0, int& nn) {
   return ElType::UNKNOWN;
 }
 
+void Material::elastic_at(double T, double& Eo, double& nuo) const {
+  if (el_T.size() < 2) { Eo = E; nuo = nu; return; }
+  if (T <= el_T.front()) { Eo = el_E.front(); nuo = el_nu.front(); return; }
+  if (T >= el_T.back()) { Eo = el_E.back(); nuo = el_nu.back(); return; }
+  size_t i = std::upper_bound(el_T.begin(), el_T.end(), T) - el_T.begin();
+  const double x = (T - el_T[i - 1]) / (el_T[i] - el_T[i - 1]);
+  Eo = el_E[i - 1] + x * (el_E[i] - el_E[i - 1]);
+  nuo = el_nu[i - 1] + x * (el_nu[i] - el_nu[i - 1]);
+}
+
 double Amplitude::eval(double st, double tt) const {
   double tm = total_time ? tt : st;
+  if (kind == PERIODIC) {
+    if (tm < t0) return a0;
+    double a = a0;
+    for (size_t n = 0; n < an.size(); ++n) a += an[n] * std::cos((n + 1) * w * (tm - t0)) + bn[n] * std::sin((n + 1) * w * (tm - t0));
+    return a;
+  }
+  if (kind == DECAY) return tm < t0 ? a0 : a0 + ad * std::exp(-(tm - t0) / td);
   if (t.empty()) return 1.0;
   const auto& T = t;
   if (tm <= T.front()) return v.front();
@@ -82,15 +99,20 @@ double Material::shear_modulus() const {
     for (int i = 3; i < 6; ++i) g = std::max(g, fung_b[i][i]);
     return fung_c * g;
   }
-  if (neohooke) return 2 * C10;
+  if (neohooke || yeoh) return 2 * C10;
+  if (mooney) return 2 * (C10 + C01);
+  if (ogden) { double g = 0; for (double x : og_mu) g += x; return g; }
   if (hgo) return 2 * hgo_C10;
+  if (sma) return sma_EA / (2 * (1 + sma_nuA));
   return 0;
 }
 double Material::bulk_modulus() const {
   if (elastic) return E / (3 * (1 - 2 * nu));
   if (fung) return fung_D > 0 ? 2.0 / fung_D : 20 * shear_modulus();
-  if (neohooke) return D1 > 0 ? 2.0 / D1 : 20 * shear_modulus();
+  if (neohooke || mooney || yeoh) return D1 > 0 ? 2.0 / D1 : 20 * shear_modulus();
+  if (ogden) return !og_D.empty() && og_D[0] > 0 ? 2.0 / og_D[0] : 20 * shear_modulus();
   if (hgo) return hgo_D > 0 ? 2.0 / hgo_D : 20 * shear_modulus();
+  if (sma) return sma_EA / (3 * (1 - 2 * sma_nuA));
   return 0;
 }
 
@@ -510,6 +532,7 @@ class Builder {
       }
     } else if (c.keyword == "SOLID SECTION") {
       s.kind = Section::SOLID;
+      if (!c.data.empty() && !c.data[0].empty() && !trim(c.data[0][0]).empty()) s.area = to_double(c.data[0][0], &c);
     } else if (c.keyword == "BEAM SECTION") {
       s.kind = Section::BEAM;
       s.shape = c.getu("SECTION");
@@ -539,20 +562,44 @@ class Builder {
     Material& mat = m.materials[cur_material];
     const std::string& k = c.keyword;
     if (k == "DENSITY") mat.density = to_double(c.data.at(0).at(0), &c);
-    else if (k == "ELASTIC") {
+    else if (k == "ELASTIC" && c.getu("TYPE", "ISOTROPIC") == "ENGINEERING CONSTANTS") {
+      std::vector<double> v;
+      for (auto& d : c.data) for (auto& t : d) if (!trim(t).empty()) v.push_back(to_double(t, &c));
+      if (v.size() < 9) throw std::runtime_error("*ELASTIC, TYPE=ENGINEERING CONSTANTS: 9 constants expected at " + c.where());
+      const double E1 = v[0], E2 = v[1], E3 = v[2], n12 = v[3], n13 = v[4], n23 = v[5], G12 = v[6], G13 = v[7], G23 = v[8];
+      // compliance of the normal block, inverted; shear: tau = 2 G eps (tensor shear strain)
+      Mat3 Sn = Mat3::rows(Vec3(1 / E1, -n12 / E1, -n13 / E1), Vec3(-n12 / E1, 1 / E2, -n23 / E2),
+                           Vec3(-n13 / E1, -n23 / E2, 1 / E3));
+      Mat3 Cn = Sn.inverse();
+      mat.ortho = true;
+      mat.elastic = true;  // isotropic estimates (stable increment, hourglass) from the largest modulus
+      mat.E = std::max({E1, E2, E3});
+      mat.nu = std::max({n12, n13, n23});
+      for (int a = 0; a < 3; ++a) for (int b = 0; b < 3; ++b) mat.Cortho[a][b] = Cn.m[a][b];
+      mat.Cortho[3][3] = 2 * G12; mat.Cortho[4][4] = 2 * G13; mat.Cortho[5][5] = 2 * G23;
+    } else if (k == "ELASTIC") {
       std::string t = c.getu("TYPE", "ISOTROPIC");
       if (t != "ISOTROPIC") throw std::runtime_error("*ELASTIC TYPE=" + t + " not supported at " + c.where());
       mat.elastic = true;
       mat.E = to_double(c.data.at(0).at(0), &c);
       mat.nu = c.data[0].size() > 1 ? to_double(c.data[0][1], &c) : 0.0;
-      if (c.data.size() > 1) warn_once("ELTEMP" + mat.name, "temperature-dependent elasticity: first row used (" + mat.name + ")");
+      if (c.data.size() > 1) {  // rows E, nu, T: linear in the temperature, constant beyond the table
+        for (auto& d : c.data) {
+          if (d.size() < 3 || trim(d[0]).empty()) continue;
+          mat.el_E.push_back(to_double(d[0], &c)); mat.el_nu.push_back(to_double(d[1], &c)); mat.el_T.push_back(to_double(d[2], &c));
+        }
+        if (mat.el_T.size() < 2) { mat.el_T.clear(); mat.el_E.clear(); mat.el_nu.clear(); }
+      }
     } else if (k == "PLASTIC") {
       std::string h = c.getu("HARDENING", "ISOTROPIC");
-      if (h != "ISOTROPIC") warn_once("HARD" + h, "*PLASTIC HARDENING=" + h + " treated as ISOTROPIC");
+      if (h == "KINEMATIC") mat.kinematic = true;
+      else if (h != "ISOTROPIC") warn_once("HARD" + h, "*PLASTIC HARDENING=" + h + " treated as ISOTROPIC");
       for (auto& d : c.data) {
         mat.plastic_sy.push_back(to_double(d.at(0), &c));
         mat.plastic_ep.push_back(d.size() > 1 ? to_double(d[1], &c) : 0.0);
       }
+      if (mat.kinematic && mat.plastic_sy.size() >= 2)  // linear: slope of the first two points
+        mat.kin_C = (mat.plastic_sy[1] - mat.plastic_sy[0]) / std::max(mat.plastic_ep[1] - mat.plastic_ep[0], 1e-30);
     } else if (k == "EXPANSION") {
       mat.alpha = to_double(c.data.at(0).at(0), &c);
       if (c.has("ZERO") && c.getd("ZERO", 0) != 0) warn_once("EXPZERO", "*EXPANSION ZERO ignored (reference 0)");
@@ -591,11 +638,34 @@ class Builder {
         mat.fung_c = v[9];
         mat.fung_D = v[10];
       }
+    } else if (k == "HYPERELASTIC" && (c.has("MOONEY-RIVLIN") || c.has("YEOH") || c.has("OGDEN"))) {
+      std::vector<double> v;
+      for (auto& d : c.data) for (auto& t : d) if (!trim(t).empty()) v.push_back(to_double(t, &c));
+      auto at = [&](size_t i) { return i < v.size() ? v[i] : 0.0; };
+      if (c.has("MOONEY-RIVLIN")) { mat.mooney = true; mat.C10 = at(0); mat.C01 = at(1); mat.D1 = at(2); }
+      else if (c.has("YEOH")) {
+        mat.yeoh = true; mat.C10 = at(0); mat.C20 = at(1); mat.C30 = at(2); mat.D1 = at(3); mat.D2 = at(4); mat.D3 = at(5);
+      } else {
+        const int n = std::max(1, c.geti("N", 1));
+        mat.ogden = true;
+        for (int i = 0; i < n; ++i) { mat.og_mu.push_back(at(2 * i)); mat.og_alpha.push_back(at(2 * i + 1)); }
+        for (int i = 0; i < n; ++i) mat.og_D.push_back(at(2 * n + i));
+      }
     } else if (k == "HYPERELASTIC") {
-      if (!c.has("NEO HOOKE")) throw std::runtime_error("*HYPERELASTIC: only NEO HOOKE supported at " + c.where());
+      if (!c.has("NEO HOOKE")) throw std::runtime_error("*HYPERELASTIC: only NEO HOOKE, MOONEY-RIVLIN, YEOH, OGDEN supported at " + c.where());
       mat.neohooke = true;
       mat.C10 = to_double(c.data.at(0).at(0), &c);
       mat.D1 = c.data[0].size() > 1 ? to_double(c.data[0][1], &c) : 0.0;
+    } else if (k == "USER MATERIAL" && mat.name.rfind("ABQ_SUPER_ELASTIC", 0) == 0) {
+      std::vector<double> v;
+      for (auto& d : c.data) for (auto& t : d) if (!trim(t).empty()) v.push_back(to_double(t, &c));
+      if (v.size() < 13) throw std::runtime_error("superelastic material " + mat.name + ": at least 13 constants expected at " + c.where());
+      mat.sma = true;
+      mat.sma_EA = v[0]; mat.sma_nuA = v[1]; mat.sma_EM = v[2]; mat.sma_nuM = v[3]; mat.sma_epsL = v[4];
+      mat.sma_CL = v[5]; mat.sma_sLs = v[6]; mat.sma_sLe = v[7]; mat.sma_T0 = v[8]; mat.sma_CU = v[9];
+      mat.sma_sUs = v[10]; mat.sma_sUe = v[11]; mat.sma_sCLs = v[12]; mat.sma_epsV = v.size() > 13 ? v[13] : v[4];
+      if (v.size() > 14 && v[14] != 0) warn_once("SMANA", "superelastic material " + mat.name + ": annealing constants ignored");
+    } else if (k == "DEPVAR" && mat.name.rfind("ABQ_SUPER_ELASTIC", 0) == 0) {
     } else {
       warn_once("MATKW" + k, "material option *" + k + " ignored (" + c.where() + ")");
     }
@@ -640,12 +710,27 @@ class Builder {
     Amplitude a;
     a.name = upper(c.get("NAME"));
     std::string def = c.getu("DEFINITION", "TABULAR");
-    if (def == "SMOOTH STEP") a.kind = Amplitude::SMOOTH_STEP;
-    else if (def != "TABULAR") throw std::runtime_error("amplitude definition " + def + " not supported at " + c.where());
     a.total_time = c.getu("TIME", "STEP TIME") == "TOTAL TIME";
     std::vector<double> v;
-    for (auto& d : c.data) for (auto& t : d) if (!t.empty()) v.push_back(to_double(t, &c));
-    for (size_t i = 0; i + 1 < v.size(); i += 2) { a.t.push_back(v[i]); a.v.push_back(v[i + 1]); }
+    for (auto& d : c.data) for (auto& t : d) if (!trim(t).empty()) v.push_back(to_double(t, &c));
+    if (def == "SMOOTH STEP") a.kind = Amplitude::SMOOTH_STEP;
+    if (def == "TABULAR" || def == "SMOOTH STEP") {
+      for (size_t i = 0; i + 1 < v.size(); i += 2) { a.t.push_back(v[i]); a.v.push_back(v[i + 1]); }
+    } else if (def == "EQUALLY SPACED") {  // values at BEGIN + i FIXED INTERVAL, linear in between
+      const double dt = c.getd("FIXED INTERVAL", 0.0), t0 = c.getd("BEGIN", 0.0);
+      if (!(dt > 0)) throw std::runtime_error("*AMPLITUDE, DEFINITION=EQUALLY SPACED needs FIXED INTERVAL at " + c.where());
+      for (size_t i = 0; i < v.size(); ++i) { a.t.push_back(t0 + i * dt); a.v.push_back(v[i]); }
+    } else if (def == "PERIODIC") {  // N, w, t0, A0, then A_n, B_n
+      if (v.size() < 4) throw std::runtime_error("*AMPLITUDE, DEFINITION=PERIODIC: N, w, t0, A0 expected at " + c.where());
+      a.kind = Amplitude::PERIODIC;
+      const int n = (int)v[0];
+      a.w = v[1]; a.t0 = v[2]; a.a0 = v[3];
+      for (int i = 0; i < n && 5 + 2 * i < (int)v.size(); ++i) { a.an.push_back(v[4 + 2 * i]); a.bn.push_back(v[5 + 2 * i]); }
+    } else if (def == "DECAY") {  // A0, A, t0, td
+      if (v.size() < 4) throw std::runtime_error("*AMPLITUDE, DEFINITION=DECAY: A0, A, t0, td expected at " + c.where());
+      a.kind = Amplitude::DECAY;
+      a.a0 = v[0]; a.ad = v[1]; a.t0 = v[2]; a.td = v[3];
+    } else throw std::runtime_error("amplitude definition " + def + " not supported at " + c.where());
     m.amplitude_index[a.name] = (int)m.amplitudes.size();
     m.amplitudes.push_back(a);
   }
@@ -773,14 +858,18 @@ class Builder {
         if (c.has("ELSET")) warn_once("MSELSET", "mass scaling ELSET ignored: applied to the whole model");
       } else if (k == "BOUNDARY" || k == "CLOAD" || k == "TEMPERATURE" || k == "FIELD") {
         LoadBlock lb;
-        lb.kind = k == "BOUNDARY" ? (c.getu("TYPE", "DISPLACEMENT") == "VELOCITY" ? LoadBlock::VELOCITY_BC : LoadBlock::BOUNDARY)
+        lb.kind = k == "BOUNDARY" ? (c.getu("TYPE", "DISPLACEMENT") == "VELOCITY" ? LoadBlock::VELOCITY_BC
+                                     : c.getu("TYPE", "DISPLACEMENT") == "ACCELERATION" ? LoadBlock::ACCELERATION_BC
+                                                                                         : LoadBlock::BOUNDARY)
                   : k == "CLOAD" ? LoadBlock::CLOAD : k == "TEMPERATURE" ? LoadBlock::TEMPERATURE : LoadBlock::FIELD;
         lb.op_new = c.getu("OP", "MOD") == "NEW";
         lb.amplitude = amplitude_of(c);
         lb.field_var = c.geti("VARIABLE", 1);
+        lb.follower = k == "CLOAD" && c.has("FOLLOWER");
         for (auto& d : c.data) {
           if (d.empty() || d[0].empty()) continue;
-          if (lb.kind == LoadBlock::BOUNDARY || lb.kind == LoadBlock::VELOCITY_BC) bc_line(c, d, lb.nodal);
+          if (lb.kind == LoadBlock::BOUNDARY || lb.kind == LoadBlock::VELOCITY_BC || lb.kind == LoadBlock::ACCELERATION_BC)
+            bc_line(c, d, lb.nodal);
           else if (lb.kind == LoadBlock::CLOAD) {
             auto nodes = nodes_of(d[0], "", c);
             int dof = to_int(d.at(1), &c) - 1;
@@ -813,6 +902,14 @@ class Builder {
             if (lt == "P") face = 1;
             else if (lt == "PNEG") face = -1;
             else if (lt.size() == 2 && lt[0] == 'P' && std::isdigit((unsigned char)lt[1])) face = lt[1] - '0';
+            else if (lt == "GRAV") {  // body force g along the direction (faces 1001..1003: components)
+              Vec3 dir(d.size() > 3 ? to_double(d[3], &c) : 0.0, d.size() > 4 ? to_double(d[4], &c) : 0.0,
+                       d.size() > 5 ? to_double(d[5], &c) : 0.0);
+              dir = normalized(dir);
+              for (int e : elems_of(d[0], "", c))
+                for (int kk = 0; kk < 3; ++kk) if (dir[kk] != 0) lb.faces.push_back({{e, 1001 + kk}, v * dir[kk]});
+              continue;
+            }
             else { warn_once("DL" + lt, "*DLOAD type " + lt + " not supported"); continue; }
             for (int e : elems_of(d[0], "", c)) lb.faces.push_back({{e, face}, v});
           }
@@ -1010,9 +1107,14 @@ class Builder {
         std::string t = c.getu("TYPE");
         for (auto& d : c.data) {
           if (d.empty() || d[0].empty()) continue;
-          auto nodes = nodes_of(d[0], "", c);
+          auto nodes = t == "STRESS" ? std::vector<int>() : nodes_of(d[0], "", c);
           if (t == "TEMPERATURE") for (int n : nodes) m.init_temperature.push_back({n, 0, to_double(d.at(1), &c)});
           else if (t == "VELOCITY") for (int n : nodes) m.init_velocity.push_back({n, to_int(d.at(1), &c) - 1, to_double(d.at(2), &c)});
+          else if (t == "STRESS") {
+            Model::ElemStress es{};
+            for (int kk = 0; kk < 6; ++kk) es.s[kk] = d.size() > 1 + kk && !trim(d[1 + kk]).empty() ? to_double(d[1 + kk], &c) : 0.0;
+            for (int e : elems_of(d[0], "", c)) { es.elem = e; m.init_stress.push_back(es); }
+          }
           else { warn_once("IC" + t, "*INITIAL CONDITIONS TYPE=" + t + " ignored"); break; }
         }
       } else if (k == "TIE") {
@@ -1029,6 +1131,14 @@ class Builder {
             warn_once("TIETYPE", "*TIE TYPE=" + c.getu("TYPE") + " treated as NODE TO SURFACE");
           m.surface_ties.push_back(t);
         }
+      } else if (k == "TRANSFORM") {
+        if (c.getu("TYPE", "R") != "R") warn_once("TRTYPE", "*TRANSFORM TYPE=" + c.getu("TYPE") + " treated as R (rectangular)");
+        if (c.data.empty() || c.data[0].size() < 6) throw std::runtime_error("*TRANSFORM: two points expected at " + c.where());
+        const auto& d = c.data[0];
+        const Vec3 a(to_double(d[0], &c), to_double(d[1], &c), to_double(d[2], &c));
+        const Vec3 b(to_double(d[3], &c), to_double(d[4], &c), to_double(d[5], &c));
+        const Vec3 e1 = normalized(a), e3 = normalized(cross(a, b)), e2 = cross(e3, e1);
+        for (int n : nodes_of(c.get("NSET"), "", c)) m.transforms[n] = Mat3::rows(e1, e2, e3);
       } else if (k == "COUPLING") {
         NodeCoupling cp;
         cp.name = upper(c.get("CONSTRAINT NAME"));

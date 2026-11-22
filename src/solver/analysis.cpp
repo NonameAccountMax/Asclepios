@@ -63,6 +63,19 @@ void Analysis::setup() {
     int cnt = G.size();
     info("  %-8s %8d elements", eltype_name(G.type), cnt);
   }
+  // lumped nodal masses of every element (body forces), without mass scaling
+  elem_mass_off.assign(m.ne(), -1);
+  elem_mass.clear();
+  for (auto& gp : groups) {
+    auto& G = *gp;
+    std::vector<double> Xe(3 * G.nen), me(G.nen), mre(G.nen);
+    for (int e = 0; e < G.size(); ++e) {
+      for (int I = 0; I < G.nen; ++I) for (int k = 0; k < 3; ++k) Xe[3 * I + k] = X[3 * G.conn[e * G.nen + I] + k];
+      G.mass(e, Xe.data(), me.data(), mre.data());
+      elem_mass_off[G.ids[e]] = (int)elem_mass.size();
+      for (int I = 0; I < G.nen; ++I) elem_mass.push_back(me[I] / std::max(G.msf[e], 1e-300));
+    }
+  }
   elem_rigid.assign(m.ne(), 0);
   build_constraints();
   group_rigid.assign(groups.size(), {});
@@ -216,7 +229,7 @@ void Analysis::begin_step(const Step& st, int si, bool ramp_default) {
   for (auto& lb : st.loads) {
     if (!lb.op_new) continue;
     const int removal = -1;
-    if (lb.kind == LoadBlock::BOUNDARY || lb.kind == LoadBlock::VELOCITY_BC) loads.bcs.clear();
+    if (lb.kind == LoadBlock::BOUNDARY || lb.kind == LoadBlock::VELOCITY_BC || lb.kind == LoadBlock::ACCELERATION_BC) loads.bcs.clear();
     else if (lb.kind == LoadBlock::CLOAD) for (auto& p : loads.cloads) { p.v1 = 0; p.amp = removal; }
     else if (lb.kind == LoadBlock::DSLOAD) for (auto& f : loads.press) { f.v1 = 0; f.amp = removal; }
     else if (lb.kind == LoadBlock::TEMPERATURE) loads.temps.clear();
@@ -226,16 +239,28 @@ void Analysis::begin_step(const Step& st, int si, bool ramp_default) {
     switch (lb.kind) {
       case LoadBlock::BOUNDARY:
       case LoadBlock::VELOCITY_BC:
+      case LoadBlock::ACCELERATION_BC:
         apply(loads.bcs, lb, lb.kind == LoadBlock::VELOCITY_BC, [&](int n, int d) { return u[6 * n + d]; });
+        if (lb.kind == LoadBlock::ACCELERATION_BC)
+          for (auto& nv : lb.nodal)
+            for (auto& p : loads.bcs) if (p.node == nv.node && p.dof == nv.dof) { p.acceleration = true; p.velocity = false; }
         break;
-      case LoadBlock::CLOAD: apply(loads.cloads, lb, false, [&](int, int) { return 0.0; }); break;
+      case LoadBlock::CLOAD:
+        apply(loads.cloads, lb, false, [&](int, int) { return 0.0; });
+        if (lb.follower)
+          for (auto& nv : lb.nodal) {
+            for (auto& p : loads.cloads) if (p.node == nv.node && p.dof == nv.dof) p.follower = true;
+            if (rot_track.empty()) rot_track.assign(nn, -1);
+            if (rot_track[nv.node] < 0) { rot_track[nv.node] = (int)node_R.size(); node_R.push_back(Mat3::identity()); }
+          }
+        break;
       case LoadBlock::TEMPERATURE: apply(loads.temps, lb, false, [&](int n, int) { return temp[n]; }); break;
       case LoadBlock::FIELD: apply(loads.fields, lb, false, [&](int n, int) { return fv1[n]; }); break;
       case LoadBlock::DSLOAD: {
         std::map<long, int> idx;
-        for (size_t i = 0; i < loads.press.size(); ++i) idx[(long)loads.press[i].face.elem * 16 + loads.press[i].face.face + 8] = (int)i;
+        for (size_t i = 0; i < loads.press.size(); ++i) idx[(long)loads.press[i].face.elem * 4096 + loads.press[i].face.face + 2048] = (int)i;
         for (auto& fv : lb.faces) {
-          long key = (long)fv.face.elem * 16 + fv.face.face + 8;
+          long key = (long)fv.face.elem * 4096 + fv.face.face + 2048;
           auto it = idx.find(key);
           if (it != idx.end()) {
             FaceLoad& f = loads.press[it->second];  // v0 frozen at the end of the previous step
@@ -255,8 +280,15 @@ void Analysis::begin_step(const Step& st, int si, bool ramp_default) {
 
 void Analysis::update_fixed(const Step&) {
   std::fill(fixed.begin(), fixed.end(), 0);
-  for (auto& b : m.model_bcs) fixed[6 * b.node + b.dof] = 1;
-  for (auto& b : loads.bcs) fixed[6 * b.node + b.dof] = 1;
+  local_bcs.clear();
+  report_rf.assign(6 * nn, 0);
+  auto set = [&](int node, int dof, double value) {
+    if (!m.transforms.count(node)) { fixed[6 * node + dof] = 1; return; }
+    local_bcs.push_back({node, dof, value});
+    for (int k = 0; k < 3; ++k) report_rf[6 * node + (dof < 3 ? 0 : 3) + k] = 1;
+  };
+  for (auto& b : m.model_bcs) set(b.node, b.dof, b.value);
+  for (auto& b : loads.bcs) set(b.node, b.dof, b.v1);
 }
 
 Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, bool dynamic, bool commit, std::vector<double>& f) {
@@ -375,15 +407,40 @@ const int HEXF[6][4] = {{0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4}, {1, 2, 6, 5}, 
 const int TETF[4][3] = {{0, 2, 1}, {0, 1, 3}, {1, 2, 3}, {2, 0, 3}};
 }  // namespace
 
+void Analysis::commit_rotations() {
+  for (int n = 0; n < (int)rot_track.size(); ++n)
+    if (rot_track[n] >= 0) node_R[rot_track[n]] = rotation_from_vector(load3(&du[6 * n + 3])) * node_R[rot_track[n]];
+}
+
 void Analysis::external_forces(double st, double tt, std::vector<double>& f) {
   std::fill(f.begin(), f.end(), 0.0);
-  for (auto& c : loads.cloads) f[6 * c.node + c.dof] += loads.value(c, st, tt, m);
+  for (auto& c : loads.cloads) {
+    const double v = loads.value(c, st, tt, m);
+    auto tr = m.transforms.find(c.node);
+    if (tr != m.transforms.end() && !c.follower) {  // load given in the local axes of the node
+      const int base = c.dof < 3 ? 0 : 3;
+      add3(&f[6 * c.node + base], tr->second.row(c.dof - base) * v);
+      continue;
+    }
+    if (!c.follower || rot_track.empty() || rot_track[c.node] < 0) { f[6 * c.node + c.dof] += v; continue; }
+    // follower: the reference direction rotated with the node (rotation at the start of the increment, times the
+    // rotation of the increment)
+    const Mat3 R = rotation_from_vector(load3(&du[6 * c.node + 3])) * node_R[rot_track[c.node]];
+    const int base = c.dof < 3 ? 0 : 3;
+    add3(&f[6 * c.node + base], R.col(c.dof - base) * v);
+  }
   if (loads.press.empty()) return;
   auto xcur = [&](int n) { return Vec3(X[3 * n] + u[6 * n] + du[6 * n], X[3 * n + 1] + u[6 * n + 1] + du[6 * n + 1], X[3 * n + 2] + u[6 * n + 2] + du[6 * n + 2]); };
   for (auto& pl : loads.press) {
     double p = loads.value(pl.v0, pl.v1, pl.amp, st, tt, m);
     if (p == 0) continue;
     const Element& el = m.elems[pl.face.elem];
+    if (pl.face.face >= 1001 && pl.face.face <= 1003) {  // gravity: lumped nodal masses x acceleration component
+      const int k = pl.face.face - 1001, off = elem_mass_off.empty() ? -1 : elem_mass_off[pl.face.elem];
+      if (off < 0) continue;
+      for (size_t I = 0; I < el.nodes.size(); ++I) f[6 * el.nodes[I] + k] += elem_mass[off + I] * p;
+      continue;
+    }
     int nodes[4];
     int nf = 0;
     double sgn = 1;
