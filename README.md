@@ -13,11 +13,12 @@ replacement for a commercial package.
 | Area | Supported |
 |---|---|
 | Input | `*INCLUDE`, `*PARAMETER` (expressions), `*PART` / `*ASSEMBLY` / `*INSTANCE` (translation, rotation), `Assembly.Instance.set` names, `*NODE`, `*ELEMENT`, `*NSET` / `*ELSET` (GENERATE, INSTANCE, `*NSET, ELSET=`), `*SURFACE` (ELEMENT SPOS/SNEG/S1…S6, NODE), `*ORIENTATION` (rectangular) |
-| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN) |
+| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN, JOIN) |
 | Materials | isotropic `*ELASTIC`, tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC, `*HYPERELASTIC` NEO HOOKE, linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
 | Loads | `*BOUNDARY` (displacement, velocity, ENCASTRE…, OP=NEW), `*CLOAD`, `*DSLOAD` / `*DLOAD` P (follower pressure), `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, step or total time); loads propagate between steps |
+| Constraints | `*TIE` (surface ties of solid faces and shells, non-matching meshes; ADJUST, POSITION TOLERANCE, NO ROTATION), `*COUPLING` (`*KINEMATIC`, `*DISTRIBUTING` with UNIFORM / LINEAR / QUADRATIC / CUBIC weighting, constrained degrees of freedom), `*RIGID BODY` (REF NODE, ELSET, PIN / TIE NSET), `*EQUATION`, `*MPC` (BEAM, TIE, PIN), CONN3D2 JOIN |
 | Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`; node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), node-to-beam segment |
 | Output | `*OUTPUT, FIELD` (NUMBER INTERVAL / TIME INTERVAL; FREQUENCY in static steps, ignored in explicit ones as Abaqus/Explicit does), `*OUTPUT, HISTORY` (number of intervals) |
 
@@ -159,12 +160,22 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   incrementally, so it does not jump when the stiffness changes, when a node moves to another facet, or when a contact
   is detected already penetrated. Initial overclosures are removed by a strain-free adjustment (half the
   penetration on each side, reported in the displacements). Coulomb friction.
+- **Constraints**: every constraint is a set of linear dependencies u_dependent = Σ c·u_independent. Implicit
+  procedures eliminate the dependent degrees of freedom; explicit procedures move the forces and masses of a dependent
+  node onto its independent nodes with the same coefficients (an offset mass adds its m·d² to their rotary inertia)
+  and interpolate its velocity. Surface ties (`*TIE`): each slave node is paired once with the master surface;
+  explicit procedures use the shape functions at the closest point of the master facet, implicit procedures dual
+  mortar weights (master motion averaged over the share of the slave faces of each slave node, exact for linear
+  fields); with tied rotations an offset slave node is carried rigidly (lap joints of shells). Kinematic couplings
+  and rigid bodies: the coupling nodes follow the rigid motion of the reference node (the elements of a rigid body only
+  carry mass). Distributing couplings: the reference node follows the translation of the weighted centroid and the
+  least-squares rotation of the coupling nodes (weights: tributary areas).
 - **Static implicit**: Newton-Raphson; element tangents by central finite differences of the internal force
   routine, so the same element code serves both procedures. Double precision throughout.
 
 ## Validation (`make validate`, `make parallel`)
 
-181 small decks, run after every change of the solver:
+195 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
@@ -223,6 +234,8 @@ Mesh-convergence curves and deformed shapes of every benchmark: [validation/LITE
 | B31 beam, CIRC / RECT | 0.021222 / 0.099994 mm | 0.021221 / 0.1 |
 | B31 thermal expansion | −0.1000 mm | −0.1 |
 | Plate impact on a fixed plate (general contact) | ETOTAL conserved to 1e-4 | energy balance |
+| C3D8 bars with non-matching meshes tied (`*TIE`), uniform tension / free rigid motion | S11 = 10 MPa in every element, tip u1 exact; ALLKE kept, ALLIE = 0 | patch test; momentum |
+| C3D8 bar loaded through a distributing coupling / moving with a massless kinematic reference node | S11 = 10 MPa in every element, reference node u1 exact; ALLKE kept, ALLIE = 0 | uniform traction; momentum |
 | Fung anisotropic shell, biaxial stretch 1.15 × 1.10, S4R and S3R, material axes at 0° and 30° | σ_xx, σ_yy within 1e-6 | Fung energy differentiated with 40-digit arithmetic (mpmath) |
 
 ## Roadmap
@@ -232,8 +245,8 @@ Features exercised by the validation suite and not supported yet:
 - Contact: beam-to-beam edge contact, contact pairs
   (`*CONTACT PAIR`), rigid surfaces (R3D4, `*RIGID BODY`), contact in implicit procedures, one-sided SPOS/SNEG
   contact.
-- Constraints: `*TIE`, `*COUPLING` (kinematic and distributing), `*MPC`, `*EQUATION`, `*RIGID BODY`, connector types
-  other than AXIAL, CARTESIAN and JOIN (HINGE, ...).
+- Constraints: connector types other than AXIAL, CARTESIAN and JOIN (HINGE, ...); rigid links that follow large
+  rotations exactly (the dependencies are linear in the rotations).
 - Elements: C3D10M, C3D6, S4, M3D4R, T3D2, B32, SPRINGA, DASHPOTA, MASS.
 - Loads and conditions: gravity (`GRAV`), follower forces, nodal transformations (`*TRANSFORM`), periodic amplitudes,
   initial stresses, temperature-dependent elastic properties.

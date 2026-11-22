@@ -197,8 +197,7 @@ def constraint_features():
                            ['%d, 3, %s' % (n, fmt(-100.0 / len(tip))) for n in tip], False, nframes=1)
     register(d, 'static', 'C3D8R', '*TIE', 'Cantilever made of two bars with non-matching meshes tied at mid-length '
              '(surface-based tie), 100 N tip load.', tip[:2] + d.select(lambda x, y, z: near(x, 10.0) and near(z, 4.0)),
-             fix, False, 'linear', 'linear', category='feature', group='constraint', supported=False,
-             reason=NS + '*TIE')
+             fix, False, 'linear', 'linear', category='feature', group='constraint', supported=True)
 
     d = Deck('tie_shell', 'Two overlapping S4R strips tied face to face (lap joint), cantilever tip load')
     q1, i1 = quad_plate(d, 6, 2, 24.0, 6.0)
@@ -214,7 +213,7 @@ def constraint_features():
                            ['%d, 3, %s' % (n, fmt(-0.5 / len(tip))) for n in tip], False, rot=True, nframes=1)
     register(d, 'static', 'S4R', '*TIE', 'Cantilever made of two overlapping strips tied face to face over 4 mm, '
              '0.5 N tip load.', tip[:2] + [i1[6, 1]], fix, True, 'linear', 'linear', category='feature',
-             group='constraint', supported=False, reason=NS + '*TIE')
+             group='constraint', supported=True)
 
     for kind in ('kinematic', 'distributing'):
         d = Deck('coupling_%s' % kind, 'C3D8R bar, end face coupled to a reference node (%s coupling)' % kind)
@@ -230,8 +229,7 @@ def constraint_features():
                                rot=True, nframes=1)
         register(d, 'static', 'C3D8R', '*COUPLING %s' % kind, 'Bar loaded through a reference node coupled to its end '
                  'face: transverse force and torque.', [rp] + d.select(lambda x, y, z: near(x, 20.0) and near(z, 4.0)),
-                 fix, True, 'linear', 'linear', category='feature', group='constraint', supported=False,
-                 reason=NS + '*COUPLING')
+                 fix, True, 'linear', 'linear', category='feature', group='constraint', supported=True)
 
     d = Deck('mpc_beam', 'Two B31 cantilevers joined by a rigid MPC BEAM link')
     s1, b1 = beam_line(d, 40, 20.0)
@@ -243,7 +241,7 @@ def constraint_features():
                            rot=True, nframes=1)
     register(d, 'static', 'B31', '*MPC BEAM', 'Two cantilever segments joined by a rigid beam MPC across a 1 mm gap, '
              'tip load.', [b2[-1], b1[-1], b2[0]], [b1[0]], True, 'theory', 'linear', category='feature',
-             group='constraint', supported=False, reason=NS + '*MPC', reference='analytic')
+             group='constraint', supported=True, reference='analytic')
 
     d = Deck('equation', 'Two parallel B31 cantilevers with equal tip deflections imposed by *EQUATION')
     s1, b1 = beam_line(d, 40, 20.0)
@@ -255,7 +253,7 @@ def constraint_features():
                                     '%d, 3, -1.' % b1[-1]], False, rot=True, nframes=1)
     register(d, 'static', 'B31', '*EQUATION', 'Two parallel cantilevers, linear constraint u3(tip 1) = u3(tip 2), '
              'load on tip 1 only: each beam takes half.', [b1[-1], b2[-1]], [b1[0], b2[0]], True, 'theory', 'linear',
-             category='feature', group='constraint', supported=False, reason=NS + '*EQUATION', reference='analytic')
+             category='feature', group='constraint', supported=True, reference='analytic')
 
     d = Deck('rigid_body', 'Rigid C3D8R block on four axial springs, eccentric load on its reference node')
     blk = hex_block(d, 2, 2, 1, 4.0, 4.0, 2.0, x0=(-2.0, -2.0, 10.0))
@@ -273,7 +271,7 @@ def constraint_features():
                                     '*Cload', '%d, 3, -4.' % rp], True, rot=True)
     register(d, 'static', 'C3D8R + CONN3D2', '*RIGID BODY', 'Rigid block (reference node, eccentric load) supported '
              'by four axial springs: translation and tilt.', [rp] + corners[:2], ground, True, 'exact',
-             category='feature', group='constraint', supported=False, reason=NS + '*RIGID BODY', twin=False,
+             category='feature', group='constraint', supported=True, twin=False,
              reference='analytic')
 
     d = Deck('connector_join', 'Two B31 beams pinned by a CONN3D2 JOIN connector, far end on a roller')

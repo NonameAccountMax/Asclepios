@@ -2,6 +2,7 @@
 #pragma once
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -62,9 +63,34 @@ struct Analysis {
   void rotary_accelerations(int n, const double* r, const double* w, double* acc, double* react) const;
   double rotary_energy(int n, const double* w) const;  // 0.5 w.(mr + J) w
   std::vector<char> fixed;                        // 6nn prescribed dof (current step)
-  // kinematic ties (CONN3D2 JOIN): the translations of node b are those of node a
-  std::vector<std::pair<int, int>> ties;
-  void tie_accelerations();                       // explicit: common acceleration of tied nodes
+  // linear dependencies between dofs (links.cpp): u[dof] = sum c u[term], from surface ties and JOIN connectors
+  struct LinkTerm { int dof; double c, mc; };    // coefficient, mass share (c^2 / interpolation weight)
+  struct NodeTie {                                // slave node following master facet nodes
+    int slave;
+    std::vector<int> masters;
+    std::vector<double> w_pt, w_avg;              // closest-point interpolation; surface average (implicit)
+    bool rotations;
+    Vec3 off_pt, off_avg;                         // X_slave - interpolated master point (after ADJUST)
+  };
+  std::vector<NodeTie> node_ties;
+  std::vector<std::pair<int, int>> joins;         // CONN3D2 JOIN: the translations of node b are those of node a
+  struct DofLink { int dof, first, count; };
+  std::vector<DofLink> links;                     // active in the current step (dependent dof not prescribed)
+  std::vector<LinkTerm> link_terms;
+  std::vector<int> link_of;                       // 6nn: index in links, -1 for an independent dof
+  std::vector<int> link_term_dofs;                // dofs appearing as terms
+  std::vector<double> link_r, link_m, res;        // explicit work arrays (res: residual forces of all dofs)
+  void tie_surfaces();                            // setup, before the element groups: pairing, ADJUST
+  void build_constraints();                       // setup: couplings, rigid bodies, equations, MPCs
+  std::vector<std::pair<int, std::vector<LinkTerm>>> constraint_links;
+  std::vector<char> elem_rigid;                   // per model element: part of a rigid body (not evaluated)
+  std::vector<std::vector<char>> group_rigid;     // the same per group element
+  void activate_links(bool implicit);             // start of a step, after the boundary conditions
+  void gather_links(std::vector<double>& f) const;  // forces of the dependent dofs moved onto their terms
+  void spread_links(std::vector<double>& x) const;  // dependent values from their terms
+  void link_accelerations(const std::vector<double>& r);  // explicit: accelerations and reactions with the links
+  std::set<std::string> warned_keys;
+  void warn_once_flag(const std::string& key, const std::string& msg);
   std::vector<std::vector<double>> efor;          // per group element force buffers
   std::vector<std::vector<double>> spring_k;      // per group: spring stiffness of connector-like elements
   std::vector<double> node_om2, node_ks;          // nodal frequency bound work arrays

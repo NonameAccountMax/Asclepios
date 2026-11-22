@@ -373,6 +373,126 @@ def reaction_history():
     ok &= check('reaction history: last value = field reaction', float(rows[-1].split(',')[1]), fx, 1e-5)
     return ok
 
+def tied_bars(path, static):
+    # two C3D8 bars with non-matching meshes (2 x 2 x 2 and 3 x 3 x 3 elements, section 4 x 4) tied at x = 10;
+    # static: uniform tension 10 MPa on the x = 20 face with symmetry conditions; explicit: free rigid motion
+    nodes, els, ids = [], [], {}
+    def block(tag, x0, nx, ny):
+        for k in range(ny + 1):
+            for j in range(ny + 1):
+                for i in range(nx + 1):
+                    ids[tag, i, j, k] = 1 + len(nodes)
+                    nodes.append('%d, %.10g, %.10g, %.10g' % (ids[tag, i, j, k], x0 + 10. * i / nx, 4. * j / ny, 4. * k / ny))
+        for k in range(ny):
+            for j in range(ny):
+                for i in range(nx):
+                    c = [ids[tag, i, j, k], ids[tag, i + 1, j, k], ids[tag, i + 1, j + 1, k], ids[tag, i, j + 1, k],
+                         ids[tag, i, j, k + 1], ids[tag, i + 1, j, k + 1], ids[tag, i + 1, j + 1, k + 1], ids[tag, i, j + 1, k + 1]]
+                    els.append((tag, i, j, k, '%d, %s' % (1 + len(els), ', '.join(map(str, c)))))
+    block('A', 0., 2, 2)
+    block('B', 10., 3, 3)
+    ea = [e[4] for e in els if e[0] == 'A']; eb = [e[4] for e in els if e[0] == 'B']
+    master = ['%s, S4' % e[4].split(',')[0] for e in els if e[0] == 'A' and e[1] == 1]
+    slave = ['%s, S6' % e[4].split(',')[0] for e in els if e[0] == 'B' and e[1] == 0]
+    d = ['*Heading', '*Node'] + nodes + ['*Element, type=C3D8, elset=BA'] + ea + ['*Element, type=C3D8, elset=BB'] + eb
+    d += ['*Solid Section, elset=BA, material=ST', ',', '*Solid Section, elset=BB, material=ST', ',',
+          '*Surface, type=ELEMENT, name=M'] + master + ['*Surface, type=ELEMENT, name=S'] + slave
+    d += ['*Tie, name=T, adjust=yes', 'S, M', '*Material, name=ST', '*Density', '7.85e-09', '*Elastic', '210000., 0.3']
+    if static:
+        x0 = [str(ids['A', 0, j, k]) for j in range(3) for k in range(3)]
+        y0 = [str(n) for key, n in ids.items() if key[2] == 0 and key[0] == 'A'] + [str(n) for key, n in ids.items() if key[2] == 0 and key[0] == 'B' and key[1] > 0]
+        z0 = [str(n) for key, n in ids.items() if key[3] == 0 and key[0] == 'A'] + [str(n) for key, n in ids.items() if key[3] == 0 and key[0] == 'B' and key[1] > 0]
+        load = []
+        for j in range(4):
+            for k in range(4):
+                share = (1 if j in (0, 3) else 2) * (1 if k in (0, 3) else 2) / 36.
+                load.append('%d, 1, %.10g' % (ids['B', 3, j, k], 160. * share))
+        d += ['*Nset, nset=X0'] + [', '.join(x0)] + ['*Nset, nset=Y0'] + [', '.join(y0[i:i + 12]) for i in range(0, len(y0), 12)]
+        d += ['*Nset, nset=Z0'] + [', '.join(z0[i:i + 12]) for i in range(0, len(z0), 12)]
+        d += ['*Step, nlgeom=NO', '*Static', '1., 1.', '*Boundary', 'X0, 1', 'Y0, 2', 'Z0, 3', '*Cload'] + load
+        d += ['*Output, field, number interval=1', '*Node Output', 'U, RF', '*Element Output', 'S', '*End Step']
+    else:
+        d += ['*Nset, nset=ALL, elset=BA', '*Nset, nset=ALLB, elset=BB', '*Initial Conditions, type=VELOCITY',
+              'ALL, 1, 100.', 'ALL, 2, -50.', 'ALLB, 1, 100.', 'ALLB, 2, -50.', '*Step, nlgeom=YES', '*Dynamic, Explicit',
+              ', 2e-05', '*Output, field, number interval=1', '*Node Output', 'U, V', '*End Step']
+    open(path, 'w').write('\n'.join(d) + '\n')
+    return ids
+
+@case
+def surface_tie():
+    # *TIE of non-matching meshes: patch test (uniform tension passes the tied interface exactly, implicit surface
+    # formulation) and free rigid motion of the tied bars (explicit point formulation: no strain energy, momentum kept)
+    ok = True
+    ids = tied_bars(os.path.join(OUT, 'tie_patch.inp'), True)
+    run('tie_patch')
+    S = last('tie_patch', 'S11')
+    ok &= check('tied non-matching bars: min S11', min(S), 10.0, 1e-6)
+    ok &= check('tied non-matching bars: max S11', max(S), 10.0, 1e-6)
+    U = last('tie_patch', 'U')
+    tip = ids['B', 3, 3, 3] - 1
+    ok &= check('tied non-matching bars: tip u1 = sigma L / E', U[3 * tip], 10. * 20. / 210000., 1e-6)
+    tied_bars(os.path.join(OUT, 'tie_rigid.inp'), False)
+    run('tie_rigid')
+    h = history('tie_rigid')
+    m = 7.85e-9 * 16 * 20
+    ok &= check('tied bars, rigid motion: kinetic energy kept', h['ALLKE'], 0.5 * m * (100. ** 2 + 50. ** 2), 1e-9)
+    ok &= check('tied bars, rigid motion: strain energy / kinetic', 1 + h['ALLIE'] / h['ALLKE'], 1.0, 1e-9)
+    return ok
+
+def coupled_bar(path, kind, static):
+    # C3D8 bar 10 x 4 x 4 (5 x 2 x 2 elements), end face x = 10 coupled to a reference node at its centre
+    nodes, ids = [], {}
+    for k in range(3):
+        for j in range(3):
+            for i in range(6):
+                ids[i, j, k] = 1 + len(nodes); nodes.append('%d, %g, %g, %g' % (ids[i, j, k], 2. * i, 2. * j, 2. * k))
+    els = []
+    for k in range(2):
+        for j in range(2):
+            for i in range(5):
+                c = [ids[i, j, k], ids[i + 1, j, k], ids[i + 1, j + 1, k], ids[i, j + 1, k], ids[i, j, k + 1],
+                     ids[i + 1, j, k + 1], ids[i + 1, j + 1, k + 1], ids[i, j + 1, k + 1]]
+                els.append('%d, %s' % (1 + len(els), ', '.join(map(str, c))))
+    endf = ['%d, S4' % (1 + i + 5 * (j + 2 * k)) for i in (4,) for j in range(2) for k in range(2)]
+    d = ['*Heading', '*Node'] + nodes + ['100, 10., 2., 2.', '*Element, type=C3D8, elset=B'] + els
+    d += ['*Solid Section, elset=B, material=ST', ',', '*Surface, type=ELEMENT, name=E'] + endf
+    d += ['*Coupling, constraint name=C, ref node=100, surface=E', '*Kinematic' if kind == 'kinematic' else '*Distributing']
+    d += ['*Material, name=ST', '*Density', '7.85e-09', '*Elastic', '210000., 0.3']
+    if static:
+        x0 = [str(ids[0, j, k]) for j in range(3) for k in range(3)]
+        y0 = [str(ids[i, 0, k]) for i in range(5) for k in range(3)]
+        z0 = [str(ids[i, j, 0]) for i in range(5) for j in range(3)]
+        d += ['*Nset, nset=X0', ', '.join(x0), '*Nset, nset=Y0', ', '.join(y0), '*Nset, nset=Z0', ', '.join(z0)]
+        d += ['*Step, nlgeom=NO', '*Static', '1., 1.', '*Boundary', 'X0, 1', 'Y0, 2', 'Z0, 3', '*Cload', '100, 1, 160.',
+              '*Output, field, number interval=1', '*Node Output', 'U, RF', '*Element Output', 'S', '*End Step']
+    else:
+        d += ['*Nset, nset=ALL, elset=B', '*Initial Conditions, type=VELOCITY', 'ALL, 1, 100.', 'ALL, 3, 40.',
+              '100, 1, 100.', '100, 3, 40.',
+              '*Step, nlgeom=YES', '*Dynamic, Explicit', ', 2e-05', '*Output, field, number interval=1', '*Node Output',
+              'U, V', '*End Step']
+    open(path, 'w').write('\n'.join(d) + '\n')
+
+@case
+def node_couplings():
+    # *COUPLING: a force on the reference node of a distributing coupling is spread as a uniform traction (end face
+    # weighted by the tributary areas: uniform stress, exact); a bar moving freely with a massless kinematic
+    # reference node keeps its kinetic energy without straining
+    ok = True
+    coupled_bar(os.path.join(OUT, 'cpl_dist.inp'), 'distributing', True)
+    run('cpl_dist')
+    S = last('cpl_dist', 'S11')
+    ok &= check('distributing coupling, axial force: min S11', min(S), 10.0, 1e-6)
+    ok &= check('distributing coupling, axial force: max S11', max(S), 10.0, 1e-6)
+    U = last('cpl_dist', 'U')
+    ok &= check('distributing coupling: reference node u1 = sigma L / E', U[3 * 54], 10. * 10. / 210000., 1e-6)
+    coupled_bar(os.path.join(OUT, 'cpl_kin.inp'), 'kinematic', False)
+    run('cpl_kin')
+    h = history('cpl_kin')
+    m = 7.85e-9 * 160
+    ok &= check('kinematic coupling, rigid motion: kinetic energy kept', h['ALLKE'], 0.5 * m * (100. ** 2 + 40. ** 2), 1e-9)
+    ok &= check('kinematic coupling, rigid motion: strain energy / kinetic', 1 + h['ALLIE'] / h['ALLKE'], 1.0, 1e-9)
+    return ok
+
 if __name__ == '__main__':
     allok = True
     for c in cases:

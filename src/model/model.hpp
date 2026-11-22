@@ -113,6 +113,36 @@ struct Surface {
   std::vector<int> nodes;
 };
 
+// *TIE: the nodes of the slave surface follow the master surface (interpolated at their closest point)
+struct SurfaceTie {
+  std::string name, slave, master;  // surface names
+  bool adjust = true;               // ADJUST=YES: slave nodes moved onto the master surface (strain free)
+  double tolerance = -1;            // POSITION TOLERANCE (< 0: default)
+  bool rotations = true;            // rotations tied too when both sides carry them (NO ROTATION: off)
+};
+
+// *COUPLING (KINEMATIC / DISTRIBUTING) and *RIGID BODY: coupling nodes tied to a reference node
+struct NodeCoupling {
+  std::string name;
+  int ref = -1;                  // reference node
+  std::string surface;           // coupling nodes: nodes of this surface...
+  std::vector<int> nodes;        // ...or these nodes
+  enum Kind { KINEMATIC, DISTRIBUTING } kind = KINEMATIC;
+  bool dof[6] = {true, true, true, true, true, true};  // constrained degrees of freedom
+  int weighting = 0;             // DISTRIBUTING: UNIFORM 0, LINEAR 1, QUADRATIC 2, CUBIC 3
+  std::vector<int> rigid_elems;  // *RIGID BODY: elements moving rigidly (mass only, not evaluated)
+};
+// *EQUATION: sum coef_i u(node_i, dof_i) = 0, the first term is eliminated
+struct LinearConstraint {
+  std::vector<int> node, dof;
+  std::vector<double> coef;
+};
+// *MPC BEAM / TIE / PIN: node a follows node b
+struct NodePairMpc {
+  enum Kind { BEAM, TIE, PIN } kind = BEAM;
+  int a = -1, b = -1;
+};
+
 struct SurfaceInteraction {
   std::string name;
   double friction = 0;
@@ -214,6 +244,10 @@ struct Model {
   std::map<std::string, int> amplitude_index;
   std::vector<SurfaceInteraction> interactions;
   std::map<std::string, int> interaction_index;
+  std::vector<SurfaceTie> surface_ties;
+  std::vector<NodeCoupling> couplings;
+  std::vector<LinearConstraint> equations;
+  std::vector<NodePairMpc> mpcs;
   // initial / model-level data
   std::vector<NodalValue> init_temperature;
   std::vector<NodalValue> init_velocity;

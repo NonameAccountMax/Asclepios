@@ -24,27 +24,11 @@ double LoadState::value(double v0, double v1, int amp, double st, double tt, con
 
 Analysis::Analysis(Model& model) : m(model) {}
 
-// Tied translations move together: common acceleration (r_a + r_b) / (m_a + m_b); a prescribed dof of one
-// node holds the other one, whose force then adds to the reaction.
-void Analysis::tie_accelerations() {
-  for (auto [na, nb] : ties)
-    for (int k = 0; k < 3; ++k) {
-      int ia = 6 * na + k, ib = 6 * nb + k;
-      double ra = fixed[ia] ? -rf[ia] : mt[na] * a[ia], rb = fixed[ib] ? -rf[ib] : mt[nb] * a[ib];
-      if (fixed[ia] || fixed[ib]) {
-        if (fixed[ia] && !fixed[ib]) { rf[ia] -= rb; a[ib] = a[ia]; }
-        else if (fixed[ib] && !fixed[ia]) { rf[ib] -= ra; a[ia] = a[ib]; }
-        continue;
-      }
-      double mm = mt[na] + mt[nb];
-      double ac = mm > 0 ? (ra + rb) / mm : 0.0;
-      a[ia] = a[ib] = ac;
-    }
-}
 Analysis::~Analysis() = default;
 
 void Analysis::setup() {
   nn = m.nn();
+  tie_surfaces();  // may move slave nodes (ADJUST=YES) before the reference geometry is stored
   X.resize(3 * nn);
   for (int i = 0; i < nn; ++i) store3(&X[3 * i], m.X[i]);
   u.assign(6 * nn, 0); v.assign(6 * nn, 0); a.assign(6 * nn, 0); du.assign(6 * nn, 0);
@@ -56,11 +40,11 @@ void Analysis::setup() {
   node_aniso.assign(nn, 0);
   jrot.assign(6 * (size_t)nn, 0.0);
   groups = make_element_groups(m);
-  ties.clear();
+  joins.clear();
   for (const auto& el : m.elems)
     if (el.type == ElType::CONN3D2 && el.nodes.size() == 2 && el.section >= 0 &&
         m.sections[el.section].ctype == Section::JOIN)
-      ties.push_back({el.nodes[0], el.nodes[1]});
+      joins.push_back({el.nodes[0], el.nodes[1]});
   efor.resize(groups.size());
   for (size_t g = 0; g < groups.size(); ++g) {
     auto& G = *groups[g];
@@ -78,6 +62,16 @@ void Analysis::setup() {
     }
     int cnt = G.size();
     info("  %-8s %8d elements", eltype_name(G.type), cnt);
+  }
+  elem_rigid.assign(m.ne(), 0);
+  build_constraints();
+  group_rigid.assign(groups.size(), {});
+  for (size_t g = 0; g < groups.size(); ++g) {
+    const auto& G = *groups[g];
+    bool any = false;
+    std::vector<char> r(G.size(), 0);
+    for (int e = 0; e < G.size(); ++e) any |= (r[e] = elem_rigid[G.ids[e]]) != 0;
+    if (any) group_rigid[g] = std::move(r);
   }
   for (auto& t : m.init_temperature) { temp[t.node] = t.value; has_temp = true; }
   temp_prev = temp;
@@ -256,6 +250,7 @@ void Analysis::begin_step(const Step& st, int si, bool ramp_default) {
     }
   }
   update_fixed(st);
+  activate_links(st.proc == Step::STATIC);
 }
 
 void Analysis::update_fixed(const Step&) {
@@ -286,6 +281,10 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
 #pragma omp for reduction(+ : ev, ep, ea, nfail) schedule(static)
       for (int e = 0; e < G.size(); ++e) {
         const int* cn = &G.conn[e * nen];
+        if (!group_rigid[g].empty() && group_rigid[g][e]) {  // element of a rigid body: mass only
+          std::fill(EF + (size_t)e * nen * 6, EF + (size_t)(e + 1) * nen * 6, 0.0);
+          continue;
+        }
         for (int I = 0; I < nen; ++I) {
           int n = cn[I];
           for (int k = 0; k < 3; ++k) { Xe[3 * I + k] = X[3 * n + k]; xo[3 * I + k] = X[3 * n + k] + u[6 * n + k]; }

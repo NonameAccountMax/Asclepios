@@ -184,7 +184,7 @@ class Builder {
   int cur_material = -1;
   int cur_behavior = -1;
   int cur_interaction = -1;
-  enum { CTX_NONE, CTX_MATERIAL, CTX_BEHAVIOR, CTX_INTERACTION } ctx = CTX_NONE;
+  enum { CTX_NONE, CTX_MATERIAL, CTX_BEHAVIOR, CTX_INTERACTION, CTX_COUPLING } ctx = CTX_NONE;
 
   void warn_once(const std::string& key, const std::string& msg) {
     if (warned.insert(key).second) warn("%s", msg.c_str());
@@ -193,6 +193,11 @@ class Builder {
   std::string resolve_name(const std::string& raw, const std::string& prefix) {
     std::string n = upper(trim(raw));
     if (n.rfind("ASSEMBLY.", 0) == 0) n = n.substr(9);
+    return n;
+  }
+  std::string surface_name(const std::string& raw, const Card& c) {
+    std::string n = resolve_name(raw, "");
+    if (!m.surfaces.count(n)) throw std::runtime_error("unknown surface '" + raw + "' at " + c.where());
     return n;
   }
   const std::vector<int>* find_set(std::map<std::string, std::vector<int>>& sets, const std::string& raw,
@@ -861,6 +866,25 @@ class Builder {
         else if (k != "FRICTION") warn_once("INTKW" + k, "interaction option *" + k + " ignored");
         continue;
       }
+      if (ctx == CTX_COUPLING && (k == "KINEMATIC" || k == "DISTRIBUTING")) {
+        NodeCoupling& cp = m.couplings.back();
+        cp.kind = k == "KINEMATIC" ? NodeCoupling::KINEMATIC : NodeCoupling::DISTRIBUTING;
+        if (k == "DISTRIBUTING") {
+          const std::string wm = c.getu("WEIGHTING METHOD", "UNIFORM");
+          cp.weighting = wm == "LINEAR" ? 1 : wm == "QUADRATIC" ? 2 : wm == "CUBIC" ? 3 : 0;
+          if (c.has("COUPLING")) warn_once("DISTCOUP", "*DISTRIBUTING COUPLING=" + c.getu("COUPLING") + " treated as CONTINUUM");
+        }
+        // data lines: ranges of constrained degrees of freedom (none: all six)
+        bool any = false;
+        for (auto& d : c.data) {
+          if (d.empty() || d[0].empty()) continue;
+          if (!any) for (bool& b : cp.dof) b = false;
+          any = true;
+          const int a = to_int(d[0], &c), b = d.size() > 1 && !d[1].empty() ? to_int(d[1], &c) : a;
+          for (int i = a; i <= b && i <= 6; ++i) if (i >= 1) cp.dof[i - 1] = true;
+        }
+        continue;
+      }
       ctx = CTX_NONE;
       if (k == "HEADING") {
         for (auto& d : c.data) for (auto& t : d) m.heading += t + " ";
@@ -940,6 +964,83 @@ class Builder {
           if (t == "TEMPERATURE") for (int n : nodes) m.init_temperature.push_back({n, 0, to_double(d.at(1), &c)});
           else if (t == "VELOCITY") for (int n : nodes) m.init_velocity.push_back({n, to_int(d.at(1), &c) - 1, to_double(d.at(2), &c)});
           else { warn_once("IC" + t, "*INITIAL CONDITIONS TYPE=" + t + " ignored"); break; }
+        }
+      } else if (k == "TIE") {
+        for (auto& d : c.data) {
+          if (d.size() < 2 || d[0].empty()) continue;
+          SurfaceTie t;
+          t.name = upper(c.get("NAME"));
+          t.slave = surface_name(d[0], c);
+          t.master = surface_name(d[1], c);
+          t.adjust = c.getu("ADJUST", "YES") != "NO";
+          if (c.has("POSITION TOLERANCE")) t.tolerance = c.getd("POSITION TOLERANCE", -1);
+          t.rotations = !c.has("NO ROTATION");
+          if (c.has("TYPE") && c.getu("TYPE") != "SURFACE TO SURFACE" && c.getu("TYPE") != "NODE TO SURFACE")
+            warn_once("TIETYPE", "*TIE TYPE=" + c.getu("TYPE") + " treated as NODE TO SURFACE");
+          m.surface_ties.push_back(t);
+        }
+      } else if (k == "COUPLING") {
+        NodeCoupling cp;
+        cp.name = upper(c.get("CONSTRAINT NAME"));
+        const auto ref = nodes_of(c.get("REF NODE"), "", c);
+        if (ref.size() != 1) throw std::runtime_error("*COUPLING: REF NODE must be one node at " + c.where());
+        cp.ref = ref[0];
+        if (c.has("SURFACE")) cp.surface = surface_name(c.get("SURFACE"), c);
+        else throw std::runtime_error("*COUPLING without SURFACE at " + c.where());
+        if (c.has("INFLUENCE RADIUS")) warn_once("CPRAD", "*COUPLING INFLUENCE RADIUS ignored (all the surface nodes are coupled)");
+        m.couplings.push_back(cp);
+        ctx = CTX_COUPLING;
+      } else if (k == "RIGID BODY") {
+        NodeCoupling cp;
+        cp.name = "RIGID BODY";
+        const auto ref = nodes_of(c.get("REF NODE"), "", c);
+        if (ref.size() != 1) throw std::runtime_error("*RIGID BODY: REF NODE must be one node at " + c.where());
+        cp.ref = ref[0];
+        std::set<int> ns;
+        if (c.has("ELSET"))
+          for (int e : elems_of(c.get("ELSET"), "", c)) {
+            cp.rigid_elems.push_back(e);
+            ns.insert(m.elems[e].nodes.begin(), m.elems[e].nodes.end());
+          }
+        for (const char* key : {"PIN NSET", "TIE NSET"})
+          if (c.has(key)) for (int n : nodes_of(c.get(key), "", c)) ns.insert(n);
+        if (c.has("PIN NSET")) warn_once("RBPIN", "*RIGID BODY PIN NSET: rotations of the pinned nodes tied too");
+        ns.erase(cp.ref);
+        cp.nodes.assign(ns.begin(), ns.end());
+        m.couplings.push_back(cp);
+      } else if (k == "EQUATION") {
+        size_t r = 0;
+        while (r < c.data.size()) {
+          if (c.data[r].empty() || c.data[r][0].empty()) { ++r; continue; }
+          const int nt = to_int(c.data[r][0], &c);
+          ++r;
+          LinearConstraint eq;
+          std::vector<std::string> tok;
+          while ((int)tok.size() < 3 * nt && r < c.data.size()) {
+            for (auto& t : c.data[r]) if (!trim(t).empty()) tok.push_back(t);
+            ++r;
+          }
+          for (int i = 0; i + 2 < (int)tok.size() && i < 3 * nt; i += 3) {
+            const auto ns = nodes_of(tok[i], "", c);
+            if (ns.size() != 1) throw std::runtime_error("*EQUATION with node sets of several nodes not supported at " + c.where());
+            eq.node.push_back(ns[0]);
+            eq.dof.push_back(to_int(tok[i + 1], &c) - 1);
+            eq.coef.push_back(to_double(tok[i + 2], &c));
+          }
+          if (!eq.node.empty()) m.equations.push_back(eq);
+        }
+      } else if (k == "MPC") {
+        for (auto& d : c.data) {
+          if (d.size() < 3 || d[0].empty()) continue;
+          const std::string t = upper(trim(d[0]));
+          NodePairMpc mp;
+          if (t == "BEAM") mp.kind = NodePairMpc::BEAM;
+          else if (t == "TIE") mp.kind = NodePairMpc::TIE;
+          else if (t == "PIN") mp.kind = NodePairMpc::PIN;
+          else { warn_once("MPC" + t, "*MPC type " + t + " not supported: ignored"); continue; }
+          const auto a = nodes_of(d[1], "", c), b = nodes_of(d[2], "", c);
+          if (b.size() != 1) throw std::runtime_error("*MPC: the independent node must be a single node at " + c.where());
+          for (int n : a) { mp.a = n; mp.b = b[0]; m.mpcs.push_back(mp); }
         }
       } else if (k == "BOUNDARY") {
         for (auto& d : c.data) if (!d.empty() && !d[0].empty()) bc_line(c, d, m.model_bcs);

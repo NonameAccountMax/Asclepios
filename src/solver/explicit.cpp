@@ -237,6 +237,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
   } else {
     if (first) {
       std::fill(A.du.begin(), A.du.end(), 0.0);
+      A.spread_links(A.v);  // initial velocities consistent with the ties
       A.lump_masses();
       // initial element pass (zero increment) for stable increments and initial forces; the element increments
       // include the damping of the linear bulk viscosity (they drive the variable mass scaling)
@@ -288,6 +289,10 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
           // applied load carried by the prescribed nodes)
           A.rf[i] = A.fixed[i] ? -(A.fext[i] + A.fcon[i] - A.fint[i] - fvis[i]) : 0.0;
         }
+      if (!A.links.empty()) {
+        for (int i = 0; i < 6 * nn; ++i) A.res[i] = A.fext[i] + A.fcon[i] - A.fint[i];
+        A.link_accelerations(A.res);
+      }
       for (int n = 0; n < nn; ++n)
         if (A.node_aniso[n]) {  // anisotropic rotary inertia (coupled rotational dofs)
           double r[3], acc[3], re[3];
@@ -378,6 +383,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       else A.v[i] = (target - A.u[i]) / dt;
     }
     for (auto& b : A.m.model_bcs) { int i = 6 * b.node + b.dof; A.v[i] = (b.value - A.u[i]) / dt; }
+    if (!A.links.empty()) A.spread_links(A.v);  // dependent dofs follow their (possibly prescribed) terms
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
     for (int i = 0; i < 6 * nn; ++i) A.du[i] = dt * A.v[i];
 
@@ -423,12 +429,14 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     }
     // accelerations; reactions on prescribed dofs
     double ke = 0, ker = 0;
+    const bool has_links = !A.links.empty();
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
     for (int n = 0; n < nn; ++n)
       for (int k = 0; k < 6; ++k) {
         int i = 6 * n + k;
         double r = A.fext[i] + A.fcon[i] - A.fint[i] - fd[i];
         double mm = k < 3 ? A.mt[n] : A.mr[n];
+        if (has_links) A.res[i] = r;
         if (A.fixed[i]) { A.rf[i] = -r; A.a[i] = 0; }
         else { A.rf[i] = 0; A.a[i] = mm > 0 ? r / mm : 0.0; }
         if (std::isnan(A.a[i])) A.a[i] = 0;
@@ -448,7 +456,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
         }
       }
     }
-    if (!A.ties.empty()) A.tie_accelerations();
+    if (has_links) A.link_accelerations(A.res);
 #pragma omp parallel for num_threads(A.nthreads) reduction(+ : ke, ker) schedule(static)
     for (int n = 0; n < nn; ++n)
       for (int k = 0; k < 6; ++k) {

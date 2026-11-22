@@ -61,33 +61,36 @@ void run_static_step(Analysis& A, const Step& st, int si) {
   if (A.total_increments == 0 && si == 0) W.frame(si, st.name, 0.0, A.total_time);
 
   // active dofs: translations of nodes carrying elements, rotations of shell/beam nodes
-  std::vector<char> has_el(nn, 0);
+  std::vector<char> has_el(nn, 0), is_term(6 * nn, 0);
   for (auto& gp : A.groups) for (int n : gp->conn) has_el[n] = 1;
+  for (int j : A.link_term_dofs) is_term[j] = 1;  // e.g. the reference node of a kinematic coupling
   DofMap dm;
   dm.eq.assign(6 * nn, -1);
   for (int n = 0; n < nn; ++n)
     for (int k = 0; k < 6; ++k) {
-      if (!has_el[n] || (k >= 3 && !A.node_rot[n])) continue;
+      if (!is_term[6 * n + k] && (!has_el[n] || (k >= 3 && !A.node_rot[n]))) continue;
       if (A.fixed[6 * n + k]) continue;
       dm.eq[6 * n + k] = dm.neq++;
     }
-  // tied translations (CONN3D2 JOIN) share the equations of the first node
-  std::vector<char> slave(6 * nn, 0);
-  for (auto [na, nb] : A.ties)
-    for (int k = 0; k < 3; ++k) {
-      int ia = 6 * na + k, ib = 6 * nb + k;
-      if (dm.eq[ia] < 0 || dm.eq[ib] < 0) continue;
-      slave[ib] = 1;
-    }
-  if (!A.ties.empty()) {  // renumber without the slave equations, then point the slaves to their master
+  // dependent dofs (surface ties, JOIN connectors) are eliminated: their rows and columns go to their terms
+  if (!A.links.empty()) {
     int neq = 0;
-    std::vector<int> old = dm.eq;
-    for (int i = 0; i < 6 * nn; ++i) dm.eq[i] = (old[i] >= 0 && !slave[i]) ? neq++ : -1;
+    for (int i = 0; i < 6 * nn; ++i) dm.eq[i] = (dm.eq[i] >= 0 && A.link_of[i] < 0) ? neq++ : -1;
     dm.neq = neq;
-    for (auto [na, nb] : A.ties)
-      for (int k = 0; k < 3; ++k)
-        if (slave[6 * nb + k]) dm.eq[6 * nb + k] = dm.eq[6 * na + k];
   }
+  // equations of a dof with their coefficients: itself, or the terms of its link (prescribed terms excluded)
+  auto eq_terms = [&](int i, int* eqs, double* cs) {
+    const int l = A.link_of[i];
+    if (l < 0) { if (dm.eq[i] < 0) return 0; eqs[0] = dm.eq[i]; cs[0] = 1.0; return 1; }
+    int n = 0;
+    const auto& L = A.links[l];
+    for (int t = L.first; t < L.first + L.count && n < 64; ++t) {
+      const int g = dm.eq[A.link_terms[t].dof];
+      if (g < 0) continue;
+      eqs[n] = g; cs[n] = A.link_terms[t].c; ++n;
+    }
+    return n;
+  };
   info("  %d equations", dm.neq);
   // characteristic length for finite-difference steps
   double lmin = 1e30;
@@ -128,6 +131,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       double target = A.loads.value(b, tn, ttn, A.m);
       A.du[6 * b.node + b.dof] = b.velocity ? target * dt : target - A.u[6 * b.node + b.dof];
     }
+    A.spread_links(A.du);
     A.temp_prev = A.temp;
     A.temperatures(tn, ttn);
     bool converged = false;
@@ -142,8 +146,9 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       rmax = 0;
       std::vector<double> req(dm.neq, 0.0);  // residual per equation (tied dofs summed)
       bool finite = true;
+      for (int i = 0; i < 6 * nn; ++i) R[i] = A.fext[i] - A.fint[i];
+      A.gather_links(R);
       for (int i = 0; i < 6 * nn; ++i) {
-        R[i] = A.fext[i] - A.fint[i];
         finite = finite && std::isfinite(R[i]);
         if (dm.eq[i] >= 0) req[dm.eq[i]] += R[i];
         if (i % 6 < 3 || A.node_rot[i / 6]) {  // time-averaged force: all active dofs, reactions included
@@ -187,13 +192,17 @@ void run_static_step(Analysis& A, const Step& st, int si) {
             if (A.has_temp) { in.temp0 = t0.data(); in.temp1 = t1.data(); }
             in.fv1 = fv.data(); in.dt = dt; in.dynamic = false; in.nlgeom = A.nlgeom;
             element_tangent(G, e, in, due.data(), nen, hfd, K.data());
+            int ei[64], ej[64];
+            double ci[64], cj[64];
             for (int i = 0; i < nd; ++i) {
-              int gi = dm.eq[6 * cn[i / 6] + i % 6];
-              if (gi < 0) continue;
+              const int ni = eq_terms(6 * cn[i / 6] + i % 6, ei, ci);
+              if (!ni) continue;
               for (int j = 0; j < nd; ++j) {
-                int gj = dm.eq[6 * cn[j / 6] + j % 6];
-                if (gj < 0 || K[i * nd + j] == 0) continue;
-                loc.push_back({gi, gj, K[i * nd + j]});
+                const double kij = K[i * nd + j];
+                if (kij == 0) continue;
+                const int nj = eq_terms(6 * cn[j / 6] + j % 6, ej, cj);
+                for (int a = 0; a < ni; ++a)
+                  for (int b = 0; b < nj; ++b) loc.push_back({ei[a], ej[b], ci[a] * cj[b] * kij});
               }
             }
           }
@@ -216,6 +225,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       cmax = 0;
       for (int i = 0; i < 6 * nn; ++i)
         if (dm.eq[i] >= 0) { A.du[i] += c[dm.eq[i]]; cmax = std::max(cmax, std::fabs(c[dm.eq[i]])); }
+      A.spread_links(A.du);
       dumax = 0;
       for (int i = 0; i < 6 * nn; ++i) if (i % 6 < 3) dumax = std::max(dumax, std::fabs(A.du[i]));
       if (!std::isfinite(cmax)) break;
@@ -232,12 +242,15 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     Analysis::ElemSum S = A.eval_elements(dt, 0, 0, false, true, A.fint);
     A.en.plastic += S.e_plastic;
     double dWi = 0, dWe = 0;
+    std::vector<double> fr(6 * nn);  // nodal reactions, the forces of the dependent dofs moved onto their terms
+    for (int i = 0; i < 6 * nn; ++i) fr[i] = A.fint[i] - A.fext[i];
+    A.gather_links(fr);
     for (int i = 0; i < 6 * nn; ++i) {
       const double d = A.du[i];
       dWi += 0.5 * (fint_c[i] + A.fint[i]) * d;
       dWe += 0.5 * (fext_c[i] + A.fext[i]) * d;
       if (A.fixed[i]) dWe += 0.5 * (fint_c[i] - fext_c[i] + A.fint[i] - A.fext[i]) * d;  // work of the reactions
-      A.rf[i] = A.fixed[i] ? A.fint[i] - A.fext[i] : 0.0;
+      A.rf[i] = A.fixed[i] ? fr[i] : 0.0;
       A.u[i] += A.du[i];
     }
     A.en.internal += dWi;
