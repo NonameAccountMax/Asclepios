@@ -672,7 +672,7 @@ def more_features():
                            True)
     register(d, 'static', 'C3D8R', 'Holzapfel-Gasser-Ogden', 'Fibre-reinforced (arterial) hyperelastic block, two '
              'fibre families, uniaxial stretch to 1.3.', tip[:3], fx, False, 'nonlinear', category='feature',
-             group='material', supported=False, reason=NS + 'Holzapfel-Gasser-Ogden hyperelasticity')
+             group='material', supported=True)
 
     d = Deck('mat_superelastic', 'Superelastic NiTi bar (ABQ_SUPER_ELASTIC), loading and unloading through transformation')
     hexes = hex_block(d, 4, 1, 1, 20.0, 2.0, 2.0)
@@ -818,7 +818,7 @@ def more_features():
                                               'ENDS, 3, 3, -3.', 'ENDS, 2, 2, 0.'] + general_contact(d), rot=True)
     register(d, 'explicit', 'S4R + analytical rigid surface', 'analytical rigid surface', 'Strip whose ends are pulled '
              'down, wrapping it around a rigid cylinder of radius 5.', [ids[8, 1], ids[4, 1]], [rp], True, 'contact',
-             category='feature', group='contact', supported=False, reason=NS + 'analytical rigid surfaces', twin=False)
+             category='feature', group='contact', supported=True, twin=False)
 
     def tube(d, nt=16, nz=6, r=5.0, length=10.0, elset='TUBE', mat='STEEL_PL', t=0.2):
         ids = {}
@@ -873,8 +873,7 @@ def more_features():
     d.steps += explicit_step('Crimp', 0.0025, body + ['*Boundary', 'TUBEZ0, 3, 3'] + general_contact(d, 0.1), rot=True)
     register(d, 'explicit', 'S4R + R3D4', 'crimping with rigid plates', 'Tube of radius 5 crimped by eight rigid '
              'plates moving radially from radius 6 to 3.', [tids[0, 3], tids[4, 3]], [r[0] for r in rps], True,
-             'contact', category='feature', group='contact', supported=False, reason=NS + 'R3D4 rigid elements, '
-             '*RIGID BODY', twin=False)
+             'contact', category='feature', group='contact', supported=True, twin=False)
 
     # shell section options
     d = Deck('shell_offset', 'S4R cantilever strip with the reference surface on its bottom face (OFFSET=SPOS)')

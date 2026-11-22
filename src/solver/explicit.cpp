@@ -413,6 +413,18 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       dWc += 0.5 * (fcon_old[i] + A.fcon[i]) * d;
       dWd += fd[i] * d;
     }
+    // work of the reactions of prescribed dofs reached through links (e.g. a rigid surface driven by its
+    // reference node): force of the dependent dof times the prescribed part of its motion
+    for (const auto& L : A.links) {
+      double dfix = 0;
+      for (int t = L.first; t < L.first + L.count; ++t) {
+        const auto& lt = A.link_terms[t];
+        if (A.fixed[lt.dof]) dfix += lt.c * A.du[lt.dof];
+      }
+      if (dfix == 0) continue;
+      const int i = L.dof;
+      dWe += 0.5 * (fint_old[i] - fext_old[i] - fcon_old[i] + A.fint[i] - A.fext[i] - A.fcon[i]) * dfix;
+    }
     A.en.viscous += S.e_visc;
     A.en.plastic += S.e_plastic;
     A.en.artificial += S.e_art;

@@ -533,6 +533,7 @@ class ShellGroup : public ElementGroup {
       const Section& s = m.sections[m.elems[ids[e]].section];
       sec[e] = &s;
       mat[e] = &m.materials[s.material];
+      if (mat[e]->hgo) throw std::runtime_error("Holzapfel-Gasser-Ogden material " + mat[e]->name + ": solid elements only");
       if (s.nip > MAXPT) throw std::runtime_error("shell section: at most 15 integration points");
       if (s.nip % 2 == 0 && s.nip > 1) throw std::runtime_error("shell section: Simpson integration needs an odd number of points");
       if (s.thickness <= 0) throw std::runtime_error("shell section: thickness must be positive");

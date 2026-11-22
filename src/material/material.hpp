@@ -21,7 +21,10 @@ double j2_update_beam(const Material& m, double G, double d11, double dg12, doub
 // ---- hyperelasticity, total formulation
 // Fung (generalized, anisotropic) and neo-Hooke. C in the material (orientation) basis.
 // 3D: Cauchy stress (material basis) from the deformation gradient F (material basis).
-void hyper_cauchy_3d(const Material& m, const Mat3& F, Sym6& sigma, double* energy = nullptr);
+// fib: Holzapfel-Gasser-Ogden fibre directions (unit vectors, reference configuration, basis of F), 3 per family.
+void hyper_cauchy_3d(const Material& m, const Mat3& F, Sym6& sigma, double* energy = nullptr, const double* fib = nullptr);
+// Holzapfel-Gasser-Ogden: largest tangent modulus of the fibres in their direction (stable increment estimate).
+double hgo_fibre_modulus(const Material& m, const Mat3& F, const double* fib);
 // Plane stress membrane: in-plane C (C11, C22, C12) in material basis; solves for C33 with S33 = 0.
 // Outputs 2nd Piola-Kirchhoff in-plane components S (S11, S22, S12) and the thickness stretch; for Fung,
 // *qexp receives the exponent Q (tracks the stiffening between tangent updates), else -1.

@@ -115,6 +115,7 @@ class BeamGroup : public ElementGroup {
       if (sec_to_prop[si] < 0) { sec_to_prop[si] = (int)props.size(); props.push_back(section_props(s)); }
       pidx[e] = sec_to_prop[si];
       mat[e] = &m.materials[s.material];
+      if (mat[e]->hgo) throw std::runtime_error("Holzapfel-Gasser-Ogden material " + mat[e]->name + ": solid elements only");
       if (!mat[e]->elastic) throw std::runtime_error("beam elements need an *ELASTIC material (" + mat[e]->name + ")");
       const SectionProps& P = props[pidx[e]];
       Vec3 a = m.X[conn[2 * e]], b = m.X[conn[2 * e + 1]];

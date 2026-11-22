@@ -261,6 +261,7 @@ class SolidGroup : public ElementGroup {
   std::vector<int> hgKi;         // index of the element's matrix in hgK, -1 for the default control
   std::vector<const Material*> mat;
   std::vector<int> orient;
+  std::vector<double> fib;       // Holzapfel-Gasser-Ogden: 3 fibre directions per element (global, reference)
 
   void setup(const Model& m) override {
     model = &m;
@@ -278,6 +279,17 @@ class SolidGroup : public ElementGroup {
       const Section& s = m.sections[m.elems[ids[e]].section];
       mat[e] = &m.materials[s.material];
       orient[e] = s.orientation;
+      if (mat[e]->hgo) {
+        // fibre families: the LOCAL DIRECTIONS of the orientation (default: local axes 1, 2, 3), in global axes
+        if (fib.empty()) fib.assign(size() * 9, 0.0);
+        const Orientation* o = s.orientation >= 0 ? &m.orients[s.orientation] : nullptr;
+        const Mat3 R = o ? o->R : Mat3::identity();
+        for (int f = 0; f < 3; ++f) {
+          Vec3 l = o && f < (int)o->local_dirs.size() ? o->local_dirs[f] : Vec3(f == 0, f == 1, f == 2);
+          Vec3 a = normalized(R.row(0) * l.x + R.row(1) * l.y + R.row(2) * l.z);
+          store3(&fib[e * 9 + 3 * f], a);
+        }
+      }
       if (type == ElType::C3D8R) {
         double x[24];
         for (int I = 0; I < 8; ++I) store3(x + 3 * I, m.X[conn[e * 8 + I]]);
@@ -293,7 +305,7 @@ class SolidGroup : public ElementGroup {
         fdt[e] = s.face_dt;
         // enhanced hourglass control: requested (*SECTION CONTROLS, HOURGLASS=ENHANCED) or, as the Abaqus default,
         // for hyperelastic materials
-        if (s.hg_enhanced || mat[e]->fung || mat[e]->neohooke) {
+        if (s.hg_enhanced || mat[e]->hyper()) {
           const double mu0 = mat[e]->shear_modulus(), lam0 = std::max(0.0, dilatational_modulus(*mat[e]) - 2 * mu0);
           hgKi[e] = (int)(hgK.size() / 144);
           hgK.resize(hgK.size() + 144);
@@ -318,16 +330,16 @@ class SolidGroup : public ElementGroup {
 
   // material update at one point; returns plastic dissipation density
   double update_point(const Material& m, PointState& p, const Sym6& deps, const Vec3& w, const Mat3& dF, bool rotate,
-                      double dtemp) {
+                      double dtemp, const double* fibres = nullptr) {
     Mat3 Q = rotate ? hughes_winget(w) : Mat3::identity();
     if (rotate) { p.sig = abq::rotate(Q, p.sig); p.eps = abq::rotate(Q, p.eps); }
     for (int i = 0; i < 6; ++i) p.eps[i] += deps[i];
-    if (m.fung || m.neohooke) {
+    if (m.hyper()) {
       Mat3 F;
       std::memcpy(&F.m[0][0], p.F, sizeof(p.F));
       F = dF * F;
       std::memcpy(p.F, &F.m[0][0], sizeof(p.F));
-      hyper_cauchy_3d(m, F, p.sig);
+      hyper_cauchy_3d(m, F, p.sig, nullptr, fibres);
       return 0;
     }
     Sym6 d = deps;
@@ -351,6 +363,11 @@ class SolidGroup : public ElementGroup {
     const bool rotate = in.nlgeom;
     const double rho = m.density * msf[e];
     double M = dilatational_modulus(m);
+    if (m.hgo && !fib.empty()) {  // fibres stiffen with the stretch: current modulus along the fibres
+      Mat3 F0;
+      std::memcpy(&F0.m[0][0], st[e * npt].F, sizeof(st[e * npt].F));
+      M += hgo_fibre_modulus(m, F0, &fib[e * 9]);
+    }
     double Le, V1, Ldt = 0;  // Le: bulk viscosity and stable increment; Ldt: stable increment when larger
     double trd = 0;
     double ep_max = 0, mis_max = 0;
@@ -378,7 +395,7 @@ class SolidGroup : public ElementGroup {
       w *= 0.5;
       // deformation-gradient increment relative to start configuration: dF = I + L (1 + L/2)^-1 approx
       Mat3 dF = Mat3::identity();
-      if (m.fung || m.neohooke) {
+      if (m.hyper()) {
         Vec3 bo[8];
         double xo[24];
         for (int i = 0; i < 3 * n; ++i) xo[i] = xref ? xref[i] : in.xo[i];
@@ -388,7 +405,7 @@ class SolidGroup : public ElementGroup {
             for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[I][j];
       }
       PointState p = st[e];
-      double wp = update_point(m, p, deps, w, dF, rotate, dtemp);
+      double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9]);
       // explicit: while the point flows plastically, the increments of the applied hourglass forces are scaled by
       // max(0.1, H / (3 G + H)) (single-element Abaqus/Explicit runs: 0.1 for perfect plasticity and for a slope H
       // of 0.08 E, with HOURGLASS=STIFFNESS and RELAX STIFFNESS alike: an hourglass deformation added during the
@@ -460,7 +477,7 @@ class SolidGroup : public ElementGroup {
         for (int I = 0; I < 8; ++I) bbc += norm2(b1[I]);
         const double kc = 8.0 / 15.0 * hgs[e] * mat[e]->shear_modulus() * V1 * bbc;
         double kd3[3] = {kc, kc, kc};
-        if (!in.dynamic && !(mat[e]->fung || mat[e]->neohooke)) {
+        if (!in.dynamic && !(mat[e]->hyper())) {
           double Si[3] = {0, 0, 0};
           for (int I = 0; I < 8; ++I) { Si[0] += b1[I].x * b1[I].x; Si[1] += b1[I].y * b1[I].y; Si[2] += b1[I].z * b1[I].z; }
           const double c = 0.0754 * hgs[e] * mat[e]->shear_modulus() * V1;
@@ -609,11 +626,11 @@ class SolidGroup : public ElementGroup {
         Sym6 deps = Sym6::from(L);
         Vec3 w(0.5 * (L.m[2][1] - L.m[1][2]), 0.5 * (L.m[0][2] - L.m[2][0]), 0.5 * (L.m[1][0] - L.m[0][1]));
         Mat3 dF = Mat3::identity();
-        if (m.fung || m.neohooke)
+        if (m.hyper())
           for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j) dF.m[i][j] += L.m[i][j];
         PointState p = st[e * 8 + g];
-        double wp = update_point(m, p, deps, w, dF, rotate, dtemp);
+        double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9]);
         out.e_plastic += wp * d1[g];
         const Sym6& s = p.sig;
         for (int I = 0; I < 8; ++I) {
@@ -676,7 +693,7 @@ class SolidGroup : public ElementGroup {
         for (int i = 0; i < 3; ++i) deps[i] += corr;
         Vec3 w(0.5 * (L.m[2][1] - L.m[1][2]), 0.5 * (L.m[0][2] - L.m[2][0]), 0.5 * (L.m[1][0] - L.m[0][1]));
         Mat3 dF = Mat3::identity();
-        if (m.fung || m.neohooke) {
+        if (m.hyper()) {
           double xo[24];
           for (int i = 0; i < 24; ++i) xo[i] = xref ? xref[i] : in.xo[i];
           Vec3 bo[8];
@@ -686,7 +703,7 @@ class SolidGroup : public ElementGroup {
               for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[I][j];
         }
         PointState p = st[e * 8 + g];
-        double wp = update_point(m, p, deps, w, dF, rotate, dtemp);
+        double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9]);
         out.e_plastic += wp * d1[g];
         const Sym6& s = p.sig;
         double trs = s.trace() / 3.0;

@@ -493,6 +493,104 @@ def node_couplings():
     ok &= check('kinematic coupling, rigid motion: strain energy / kinetic', 1 + h['ALLIE'] / h['ALLKE'], 1.0, 1e-9)
     return ok
 
+def rigid_deck(path, kind, ccw=True):
+    # S4R sheet 4 x 4 (2 x 2 elements) falling at 1 m/s from 0.5 mm above a rigid surface: R3D4 plane at z = 0, or the
+    # upper half of an analytical cylinder of radius 5 (axis y, top at z = 0) described counterclockwise (normal into
+    # the cylinder: the sheet comes from behind) or clockwise (normal outwards)
+    nodes = []
+    for j in range(3):
+        for i in range(3):
+            nodes.append('%d, %g, %g, 0.5' % (1 + i + 3 * j, -2. + 2. * i, -2. + 2. * j))
+    els = ['%d, %d, %d, %d, %d' % (1 + i + 2 * j, 1 + i + 3 * j, 2 + i + 3 * j, 5 + i + 3 * j, 4 + i + 3 * j)
+           for j in range(2) for i in range(2)]
+    d = ['*Heading', '*Node'] + nodes + ['100, 0., 0., -5.']
+    if kind == 'r3d4':
+        d += ['101, -10., -10., 0.', '102, 10., -10., 0.', '103, 10., 10., 0.', '104, -10., 10., 0.',
+              '*Element, type=R3D4, elset=RIG', '50, 101, 102, 103, 104', '*Rigid Body, ref node=100, elset=RIG']
+    d += ['*Element, type=S4R, elset=SH'] + els + ['*Shell Section, elset=SH, material=AL', '0.5, 5']
+    if kind == 'cyl':
+        prof = ['START, 5., 0.', 'CIRCL, 0., 5., 0., 0.', 'CIRCL, -5., 0., 0., 0.'] if ccw else \
+               ['START, -5., 0.', 'CIRCL, 0., 5., 0., 0.', 'CIRCL, 5., 0., 0., 0.']
+        d += ['*Surface, type=CYLINDER, name=CY', '0., 0., -5., 1., 0., -5.', '0., 0., -4.'] + prof
+        d += ['*Rigid Body, ref node=100, analytical surface=CY']
+    d += ['*Nset, nset=ALL, elset=SH', '*Material, name=AL', '*Density', '2.7e-09', '*Elastic', '70000., 0.33',
+          '*Initial Conditions, type=VELOCITY', 'ALL, 3, -1000.', '*Step, nlgeom=YES', '*Dynamic, Explicit', ', 0.002',
+          '*Boundary', '100, ENCASTRE', '*Contact', '*Contact Inclusions, ALL EXTERIOR',
+          '*Output, field, number interval=4', '*Node Output', 'U, V', '*End Step']
+    open(path, 'w').write('\n'.join(d) + '\n')
+
+@case
+def rigid_surfaces():
+    # rigid surfaces in general contact: a sheet bounces on an R3D4 plane held by its reference node (work of the
+    # contact returned, energy balance); one-sided analytical cylinder: passed through from behind without any
+    # contact, bounced on from the front
+    ok = True
+    m = 2.7e-9 * 16 * 0.5
+    ke0 = 0.5 * m * 1000. ** 2
+    rigid_deck(os.path.join(OUT, 'rig_plane.inp'), 'r3d4'); run('rig_plane')
+    h = history('rig_plane')
+    ok &= check('sheet on a rigid R3D4 plane: energy kept by the bounce > 75 %', 1.0 if h['ALLKE'] + h['ALLIE'] > 0.75 * ke0 else 0.0, 1.0, 1e-12)
+    ok &= check('sheet on a rigid R3D4 plane: ETOTAL = KE0', h['ETOTAL'], ke0, 1e-3)
+    U = last('rig_plane', 'U')
+    ok &= check('sheet on a rigid R3D4 plane: bounced (u3 of the centre > 0)', 1.0 if U[3 * 4 + 2] > 0 else 0.0, 1.0, 1e-12)
+    rigid_deck(os.path.join(OUT, 'rig_cyl_behind.inp'), 'cyl', True); run('rig_cyl_behind')
+    U = last('rig_cyl_behind', 'U')
+    ok &= check('analytical cylinder seen from behind: free fall', U[3 * 4 + 2], -2.0, 1e-9)
+    rigid_deck(os.path.join(OUT, 'rig_cyl_front.inp'), 'cyl', False); run('rig_cyl_front')
+    U = last('rig_cyl_front', 'U')
+    ok &= check('analytical cylinder seen from the front: bounced', 1.0 if U[3 * 4 + 2] > 0 else 0.0, 1.0, 1e-12)
+    return ok
+
+def hgo_energy(F, C10, D, k1, k2, ka, fibres):
+    # Holzapfel-Gasser-Ogden strain energy (pure Python, for the numerical derivative of the test below)
+    C = [[sum(F[k][i] * F[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+    J = (F[0][0] * (F[1][1] * F[2][2] - F[1][2] * F[2][1]) - F[0][1] * (F[1][0] * F[2][2] - F[1][2] * F[2][0]) +
+         F[0][2] * (F[1][0] * F[2][1] - F[1][1] * F[2][0]))
+    j23 = J ** (-2. / 3.)
+    I1 = j23 * (C[0][0] + C[1][1] + C[2][2])
+    W = C10 * (I1 - 3) + ((J * J - 1) / 2 - math.log(J)) / D
+    for a in fibres:
+        I4 = j23 * sum(a[i] * C[i][j] * a[j] for i in range(3) for j in range(3))
+        E = ka * (I1 - 3) + (1 - 3 * ka) * (I4 - 1)
+        if E > 0:
+            W += k1 / (2 * k2) * (math.exp(k2 * E * E) - 1)
+    return W, J
+
+@case
+def hgo_homogeneous():
+    # Holzapfel-Gasser-Ogden C3D8R cube under a prescribed homogeneous deformation (stretch, shear), fibres at +-30
+    # degrees in the (x, y) plane: Cauchy stress = (1/J) dW/dF F^T from a central-difference derivative of the energy
+    Fm = [[1.2, 0.1, 0.0], [0.05, 0.95, 0.0], [0.0, 0.0, 0.9]]
+    pars = (0.05, 0.02, 2.0, 10.0, 0.1)
+    c, s_ = math.cos(math.radians(30)), math.sin(math.radians(30))
+    fib = [(c, s_, 0.0), (c, -s_, 0.0)]
+    X = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)]
+    d = ['*Heading', '*Node'] + ['%d, %g, %g, %g' % (i + 1, *x) for i, x in enumerate(X)]
+    d += ['*Element, type=C3D8R, elset=E', '1, 1, 2, 3, 4, 5, 6, 7, 8', '*Orientation, name=O, local directions=2',
+          '1., 0., 0., 0., 1., 0.', '3, 0.', '%.12g, %.12g, 0.' % fib[0][:2], '%.12g, %.12g, 0.' % fib[1][:2],
+          '*Solid Section, elset=E, material=H, orientation=O', ',', '*Material, name=H', '*Density', '1e-09',
+          '*Anisotropic Hyperelastic, holzapfel, local directions=2', '%g, %g, %g, %g, %g' % pars,
+          '*Step, nlgeom=YES, inc=1000', '*Static', '0.1, 1., 1e-05, 0.1', '*Boundary']
+    for i, x in enumerate(X):
+        for k in range(3):
+            d.append('%d, %d, %d, %.12g' % (i + 1, k + 1, k + 1, sum(Fm[k][j] * x[j] for j in range(3)) - x[k]))
+    d += ['*Output, field, number interval=1', '*Node Output', 'U', '*Element Output', 'S', '*End Step']
+    open(os.path.join(OUT, 'hgo_hom.inp'), 'w').write('\n'.join(d) + '\n')
+    run('hgo_hom')
+    h = 1e-6
+    P = [[0.0] * 3 for _ in range(3)]
+    for i in range(3):
+        for j in range(3):
+            Fp = [r[:] for r in Fm]; Fp[i][j] += h
+            Fn = [r[:] for r in Fm]; Fn[i][j] -= h
+            P[i][j] = (hgo_energy(Fp, *pars, fib)[0] - hgo_energy(Fn, *pars, fib)[0]) / (2 * h)
+    J = hgo_energy(Fm, *pars, fib)[1]
+    sig = [[sum(P[i][k] * Fm[j][k] for k in range(3)) / J for j in range(3)] for i in range(3)]
+    ok = True
+    for lab, (i, j) in (('S11', (0, 0)), ('S22', (1, 1)), ('S33', (2, 2)), ('S12', (0, 1))):
+        ok &= check('HGO homogeneous deformation: ' + lab, last('hgo_hom', lab)[0], sig[i][j], 2e-4)
+    return ok
+
 if __name__ == '__main__':
     allok = True
     for c in cases:

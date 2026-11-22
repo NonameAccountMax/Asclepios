@@ -9,14 +9,16 @@
 
 namespace abq {
 
-enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, UNKNOWN };
+enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, R3D4, R3D3, UNKNOWN };
 const char* eltype_name(ElType t);
+inline bool is_rigid_type(ElType t) { return t == ElType::R3D4 || t == ElType::R3D3; }
 inline bool is_solid_type(ElType t) { return t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4; }
 ElType eltype_from(const std::string& abaqus_name, int& nnodes);
 
 struct Orientation {
   std::string name;
   Mat3 R = Mat3::identity();  // rows = local axes 1, 2, 3 in global coordinates
+  std::vector<Vec3> local_dirs;  // LOCAL DIRECTIONS (e.g. fibre directions), in the local axes
 };
 
 struct Amplitude {
@@ -40,6 +42,11 @@ struct Material {
   double fung_c = 0, fung_D = 0;
   bool neohooke = false;
   double C10 = 0, D1 = 0;
+  // Holzapfel-Gasser-Ogden (*ANISOTROPIC HYPERELASTIC, HOLZAPFEL): C10, D, k1, k2, kappa, fibre families
+  bool hgo = false;
+  double hgo_C10 = 0, hgo_D = 0, hgo_k1 = 0, hgo_k2 = 0, hgo_kappa = 0;
+  int hgo_nfib = 0;
+  bool hyper() const { return fung || neohooke || hgo; }
   bool plastic() const { return !plastic_sy.empty(); }
   double yield(double ep, double* H = nullptr) const;  // flow stress and hardening slope
   // small-strain moduli used for stable time / hourglass / transverse shear defaults
@@ -131,6 +138,14 @@ struct NodeCoupling {
   bool dof[6] = {true, true, true, true, true, true};  // constrained degrees of freedom
   int weighting = 0;             // DISTRIBUTING: UNIFORM 0, LINEAR 1, QUADRATIC 2, CUBIC 3
   std::vector<int> rigid_elems;  // *RIGID BODY: elements moving rigidly (mass only, not evaluated)
+  std::string analytic;          // *RIGID BODY, ANALYTICAL SURFACE=: surface discretised into rigid facets
+};
+// analytical rigid surface (*SURFACE, TYPE=CYLINDER): profile in the local (x, y) plane swept along local z
+struct AnalyticSurface {
+  std::string name;
+  Vec3 a, b, c;  // origin, point on local x, point in the local (x, y) plane
+  struct Seg { int kind; double x, y, cx, cy; };  // kind 0 START, 1 LINE, 2 CIRCL (end point, centre)
+  std::vector<Seg> segs;
 };
 // *EQUATION: sum coef_i u(node_i, dof_i) = 0, the first term is eliminated
 struct LinearConstraint {
@@ -246,6 +261,7 @@ struct Model {
   std::map<std::string, int> interaction_index;
   std::vector<SurfaceTie> surface_ties;
   std::vector<NodeCoupling> couplings;
+  std::map<std::string, AnalyticSurface> analytic_surfaces;
   std::vector<LinearConstraint> equations;
   std::vector<NodePairMpc> mpcs;
   // initial / model-level data

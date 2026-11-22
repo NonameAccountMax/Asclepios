@@ -10,6 +10,24 @@ inline double ddot(const Sym6& a, const Sym6& b) {
 }
 }  // namespace
 
+double hgo_fibre_modulus(const Material& m, const Mat3& F, const double* fib) {
+  if (!m.hgo || !fib) return 0;
+  const Mat3 C = F.T() * F;
+  const double J = std::max(F.det(), 1e-12), Jm23 = std::pow(J, -2.0 / 3.0);
+  const double I1b = Jm23 * (C.m[0][0] + C.m[1][1] + C.m[2][2]), ka = m.hgo_kappa;
+  double kmax = 0;
+  for (int f = 0; f < m.hgo_nfib; ++f) {
+    const Vec3 a(fib[3 * f], fib[3 * f + 1], fib[3 * f + 2]);
+    const double I4 = Jm23 * dot(a, C * a);
+    const double E = std::max(0.0, ka * (I1b - 3) + (1 - 3 * ka) * (I4 - 1));
+    const double ex = std::exp(std::min(m.hgo_k2 * E * E, 600.0));
+    // d2U/dE2 (dE/deps)^2 + dU/dE d2E/deps2 along the fibre, dE/deps = 2 (1 - 3 kappa) I4
+    const double c = 2 * (1 - 3 * ka) * I4;
+    kmax = std::max(kmax, m.hgo_k1 * ex * (1 + 2 * m.hgo_k2 * E * E) * c * c + 2 * m.hgo_k1 * E * ex * c);
+  }
+  return kmax;
+}
+
 double dilatational_modulus(const Material& m) {
   if (m.elastic) {
     double E = m.E, nu = m.nu;
@@ -139,7 +157,7 @@ double j2_update_beam(const Material& m, double G, double d11, double dg12, doub
 namespace {
 
 // 2nd Piola-Kirchhoff stress (tensor components, material basis) from C (Sym6).
-void hyper_pk2(const Material& m, const Sym6& C, Sym6& S, double* energy) {
+void hyper_pk2(const Material& m, const Sym6& C, Sym6& S, double* energy, const double* fib = nullptr) {
   Mat3 Cm = C.full();
   double J2 = Cm.det();
   double J = std::sqrt(std::max(J2, 1e-300));
@@ -165,6 +183,37 @@ void hyper_pk2(const Material& m, const Sym6& C, Sym6& S, double* energy) {
     for (int I = 0; I < 6; ++I) Sb[I] = m.fung_c * eQ * bE[I];
     Udev = 0.5 * m.fung_c * (eQ - 1);
     double D = m.fung_D > 0 ? m.fung_D : 1.0 / (10.0 * std::max(m.shear_modulus(), 1e-30));
+    dUdJ = (J - 1.0 / J) / D;
+    Uvol = ((J * J - 1) * 0.5 - std::log(J)) / D;
+  } else if (m.hgo) {
+    // U = C10 (I1b - 3) + k1 / (2 k2) sum (exp(k2 <E_a>^2) - 1) + ((J^2 - 1) / 2 - ln J) / D,
+    // E_a = kappa (I1b - 3) + (1 - 3 kappa)(I4b_a - 1); a fibre family acts in tension only (E_a > 0)
+    const double I1b = Jm23 * (C[0] + C[1] + C[2]);
+    const double ka = m.hgo_kappa;
+    double dI1 = m.hgo_C10;
+    double Ufib = 0;
+    double dI4[3] = {0, 0, 0};
+    for (int f = 0; f < m.hgo_nfib && fib; ++f) {
+      const double* a = fib + 3 * f;
+      const double aCa = C[0] * a[0] * a[0] + C[1] * a[1] * a[1] + C[2] * a[2] * a[2] +
+                         2 * (C[3] * a[0] * a[1] + C[4] * a[0] * a[2] + C[5] * a[1] * a[2]);
+      const double E = ka * (I1b - 3) + (1 - 3 * ka) * (Jm23 * aCa - 1);
+      if (E <= 0) continue;
+      const double ex = std::exp(std::min(m.hgo_k2 * E * E, 600.0));
+      Ufib += m.hgo_k1 / (2 * m.hgo_k2) * (ex - 1);
+      const double dUdE = m.hgo_k1 * E * ex;
+      dI1 += dUdE * ka;
+      dI4[f] = dUdE * (1 - 3 * ka);
+    }
+    for (int i = 0; i < 3; ++i) Sb[i] = 2 * dI1;
+    for (int i = 3; i < 6; ++i) Sb[i] = 0;
+    for (int f = 0; f < m.hgo_nfib && fib; ++f) {
+      const double* a = fib + 3 * f;
+      Sb[0] += 2 * dI4[f] * a[0] * a[0]; Sb[1] += 2 * dI4[f] * a[1] * a[1]; Sb[2] += 2 * dI4[f] * a[2] * a[2];
+      Sb[3] += 2 * dI4[f] * a[0] * a[1]; Sb[4] += 2 * dI4[f] * a[0] * a[2]; Sb[5] += 2 * dI4[f] * a[1] * a[2];
+    }
+    Udev = m.hgo_C10 * (I1b - 3) + Ufib;
+    const double D = m.hgo_D > 0 ? m.hgo_D : 1.0 / (10.0 * std::max(m.hgo_C10, 1e-30));
     dUdJ = (J - 1.0 / J) / D;
     Uvol = ((J * J - 1) * 0.5 - std::log(J)) / D;
   } else if (m.neohooke) {
@@ -237,10 +286,10 @@ inline void fung_ps(const Material& m, const double C2[3], double x, FungPS& r, 
 
 }  // namespace
 
-void hyper_cauchy_3d(const Material& m, const Mat3& F, Sym6& sigma, double* energy) {
+void hyper_cauchy_3d(const Material& m, const Mat3& F, Sym6& sigma, double* energy, const double* fib) {
   Sym6 C = Sym6::from(F.T() * F);
   Sym6 S;
-  hyper_pk2(m, C, S, energy);
+  hyper_pk2(m, C, S, energy, fib);
   double J = F.det();
   sigma = Sym6::from(F * S.full() * F.T() * (1.0 / J));
 }

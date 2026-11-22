@@ -24,6 +24,8 @@ const char* eltype_name(ElType t) {
     case ElType::B31: return "B31";
     case ElType::T3D2: return "T3D2";
     case ElType::CONN3D2: return "CONN3D2";
+    case ElType::R3D4: return "R3D4";
+    case ElType::R3D3: return "R3D3";
     default: return "UNKNOWN";
   }
 }
@@ -41,6 +43,8 @@ ElType eltype_from(const std::string& n0, int& nn) {
   if (n == "B31" || n == "B31H") { nn = 2; return ElType::B31; }
   if (n == "T3D2") { nn = 2; return ElType::T3D2; }
   if (n == "CONN3D2") { nn = 2; return ElType::CONN3D2; }
+  if (n == "R3D4") { nn = 4; return ElType::R3D4; }
+  if (n == "R3D3") { nn = 3; return ElType::R3D3; }
   nn = 0;
   return ElType::UNKNOWN;
 }
@@ -79,12 +83,14 @@ double Material::shear_modulus() const {
     return fung_c * g;
   }
   if (neohooke) return 2 * C10;
+  if (hgo) return 2 * hgo_C10;
   return 0;
 }
 double Material::bulk_modulus() const {
   if (elastic) return E / (3 * (1 - 2 * nu));
   if (fung) return fung_D > 0 ? 2.0 / fung_D : 20 * shear_modulus();
   if (neohooke) return D1 > 0 ? 2.0 / D1 : 20 * shear_modulus();
+  if (hgo) return hgo_D > 0 ? 2.0 / hgo_D : 20 * shear_modulus();
   return 0;
 }
 
@@ -385,6 +391,36 @@ class Builder {
     Surface s;
     s.name = sc.prefix + upper(c.get("NAME"));
     std::string type = c.getu("TYPE", "ELEMENT");
+    if (type == "CYLINDER") {
+      AnalyticSurface as;
+      as.name = s.name;
+      size_t r = 0;
+      auto num = [&](const std::vector<std::string>& d, size_t i) { return i < d.size() && !trim(d[i]).empty() ? to_double(d[i], &c) : 0.0; };
+      as.a = Vec3(0, 0, 0); as.b = Vec3(1, 0, 0); as.c = Vec3(0, 1, 0);
+      if (r < c.data.size() && !c.data[r].empty() && is_number(trim(c.data[r][0]))) {
+        const auto& d = c.data[r++];
+        as.a = Vec3(num(d, 0), num(d, 1), num(d, 2)); as.b = Vec3(num(d, 3), num(d, 4), num(d, 5));
+        if (r < c.data.size() && !c.data[r].empty() && is_number(trim(c.data[r][0]))) {
+          const auto& e = c.data[r++];
+          as.c = Vec3(num(e, 0), num(e, 1), num(e, 2));
+        }
+      }
+      for (; r < c.data.size(); ++r) {
+        const auto& d = c.data[r];
+        if (d.empty() || trim(d[0]).empty()) continue;
+        const std::string k = upper(trim(d[0]));
+        AnalyticSurface::Seg g{k == "START" ? 0 : k == "LINE" ? 1 : k == "CIRCL" ? 2 : -1, num(d, 1), num(d, 2), num(d, 3), num(d, 4)};
+        if (g.kind < 0) throw std::runtime_error("*SURFACE TYPE=CYLINDER: unknown segment " + k + " at " + c.where());
+        as.segs.push_back(g);
+      }
+      if (as.segs.empty() || as.segs[0].kind != 0) throw std::runtime_error("*SURFACE TYPE=CYLINDER without START at " + c.where());
+      m.analytic_surfaces[as.name] = as;
+      return;
+    }
+    if (type != "ELEMENT" && type != "NODE") {
+      warn_once("SURFTYPE" + type, "*SURFACE TYPE=" + type + " not supported: surface " + s.name + " ignored");
+      return;
+    }
     if (type == "NODE") {
       s.node_based = true;
       for (auto& d : c.data) {
@@ -434,6 +470,13 @@ class Builder {
       Vec3 e3 = normalized(cross(a - orig, b - orig));
       Vec3 e2 = cross(e3, e1);
       o.R = Mat3::rows(e1, e2, e3);
+      // LOCAL DIRECTIONS=n: n direction lines after the rotation line, in the local axes
+      const int nd = c.has("LOCAL DIRECTIONS") ? to_int(c.get("LOCAL DIRECTIONS"), &c) : 0;
+      for (int k = 0; k < nd && 2 + k < (int)c.data.size(); ++k) {
+        const auto& d2 = c.data[2 + k];
+        if (d2.size() < 3) continue;
+        o.local_dirs.push_back(normalized(Vec3(to_double(d2[0]), to_double(d2[1]), to_double(d2[2]))));
+      }
       if (c.data.size() > 1 && c.data[1].size() >= 2 && !c.data[1][1].empty()) {
         int ax = to_int(c.data[1][0]);
         double ang = to_double(c.data[1][1]) * M_PI / 180.0;
@@ -516,9 +559,16 @@ class Builder {
     } else if (k == "DAMPING") {
       mat.damp_alpha = c.getd("ALPHA", 0);
       mat.damp_beta = c.getd("BETA", 0);
+    } else if (k == "ANISOTROPIC HYPERELASTIC" && c.has("HOLZAPFEL")) {
+      std::vector<double> v;
+      for (auto& d : c.data) for (auto& t : d) if (!trim(t).empty()) v.push_back(to_double(t, &c));
+      if (v.size() < 5) throw std::runtime_error("*ANISOTROPIC HYPERELASTIC, HOLZAPFEL: C10, D, k1, k2, kappa expected at " + c.where());
+      mat.hgo = true;
+      mat.hgo_C10 = v[0]; mat.hgo_D = v[1]; mat.hgo_k1 = v[2]; mat.hgo_k2 = v[3]; mat.hgo_kappa = v[4];
+      mat.hgo_nfib = std::clamp(c.has("LOCAL DIRECTIONS") ? to_int(c.get("LOCAL DIRECTIONS"), &c) : 1, 1, 3);
     } else if (k == "ANISOTROPIC HYPERELASTIC") {
       if (!c.has("FUNG-ANISOTROPIC") && !c.has("FUNG-ORTHOTROPIC"))
-        throw std::runtime_error("only FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC supported at " + c.where());
+        throw std::runtime_error("only FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL supported at " + c.where());
       std::vector<double> v;
       for (auto& d : c.data) for (auto& t : d) if (!t.empty()) v.push_back(to_double(t, &c));
       mat.fung = true;
@@ -1005,6 +1055,11 @@ class Builder {
         for (const char* key : {"PIN NSET", "TIE NSET"})
           if (c.has(key)) for (int n : nodes_of(c.get(key), "", c)) ns.insert(n);
         if (c.has("PIN NSET")) warn_once("RBPIN", "*RIGID BODY PIN NSET: rotations of the pinned nodes tied too");
+        if (c.has("ANALYTICAL SURFACE")) {
+          cp.analytic = resolve_name(c.get("ANALYTICAL SURFACE"), "");
+          if (!m.analytic_surfaces.count(cp.analytic))
+            throw std::runtime_error("*RIGID BODY: unknown analytical surface " + c.get("ANALYTICAL SURFACE") + " at " + c.where());
+        }
         ns.erase(cp.ref);
         cp.nodes.assign(ns.begin(), ns.end());
         m.couplings.push_back(cp);
@@ -1052,6 +1107,68 @@ class Builder {
       }
     }
     assign_sections();
+    for (auto& cp : m.couplings) if (!cp.analytic.empty()) facet_analytic_surface(cp);
+  }
+
+  // analytical rigid surface replaced by one-sided rigid facets (R3D4): the profile cut into arcs of at most 2
+  // degrees, swept along the generator over the extent of the model plus a margin; the facet normal is the local
+  // z axis times the profile direction (to the left of the direction of travel along the profile)
+  void facet_analytic_surface(NodeCoupling& cp) {
+    const AnalyticSurface& as = m.analytic_surfaces.at(cp.analytic);
+    const Vec3 ex = normalized(as.b - as.a);
+    Vec3 ey = as.c - as.a;
+    ey = normalized(ey - ex * dot(ey, ex));
+    const Vec3 ez = cross(ex, ey);
+    std::vector<std::pair<double, double>> prof;
+    for (const auto& g : as.segs) {
+      if (g.kind == 0) { prof.push_back({g.x, g.y}); continue; }
+      const auto p0 = prof.back();
+      if (g.kind == 1) { prof.push_back({g.x, g.y}); continue; }
+      const double vx0 = p0.first - g.cx, vy0 = p0.second - g.cy, vx1 = g.x - g.cx, vy1 = g.y - g.cy;
+      double sweep = std::atan2(vx0 * vy1 - vy0 * vx1, vx0 * vx1 + vy0 * vy1);
+      if (std::fabs(std::fabs(sweep) - M_PI) < 1e-9) sweep = M_PI;
+      const double r0 = std::hypot(vx0, vy0), r1 = std::hypot(vx1, vy1), a0 = std::atan2(vy0, vx0);
+      const int n = std::max(1, (int)std::ceil(std::fabs(sweep) / (M_PI / 90) - 1e-9));
+      for (int i = 1; i <= n; ++i) {
+        const double t = (double)i / n, r = r0 + (r1 - r0) * t, ang = a0 + sweep * t;
+        prof.push_back({g.cx + r * std::cos(ang), g.cy + r * std::sin(ang)});
+      }
+    }
+    double zmin = 1e300, zmax = -1e300, lseg = 0;
+    for (int i = 0; i < m.nn(); ++i) {
+      if (i == cp.ref) continue;
+      const double z = dot(m.X[i] - as.a, ez);
+      zmin = std::min(zmin, z); zmax = std::max(zmax, z);
+    }
+    for (size_t i = 1; i < prof.size(); ++i) lseg += std::hypot(prof[i].first - prof[i - 1].first, prof[i].second - prof[i - 1].second);
+    lseg /= std::max<size_t>(1, prof.size() - 1);
+    const double span = std::max(zmax - zmin, lseg), margin = 0.1 * span + lseg;
+    zmin -= margin; zmax += margin;
+    const int nz = std::clamp((int)std::ceil((zmax - zmin) / (4 * lseg)), 1, 200);
+    int lab = 0, elab = 0;
+    for (int l : m.node_label) lab = std::max(lab, l);
+    for (const auto& e : m.elems) elab = std::max(elab, e.label);
+    std::vector<int> ids;
+    for (size_t i = 0; i < prof.size(); ++i)
+      for (int j = 0; j <= nz; ++j) {
+        const double z = zmin + (zmax - zmin) * j / nz;
+        m.X.push_back(as.a + ex * prof[i].first + ey * prof[i].second + ez * z);
+        m.node_label.push_back(++lab);
+        m.node_instance.push_back(-1);
+        ids.push_back(m.nn() - 1);
+        cp.nodes.push_back(m.nn() - 1);
+      }
+    auto id = [&](size_t i, int j) { return ids[i * (nz + 1) + j]; };
+    for (size_t i = 0; i + 1 < prof.size(); ++i)
+      for (int j = 0; j < nz; ++j) {
+        Element e;
+        e.type = ElType::R3D4;
+        e.label = ++elab;
+        e.nodes = {id(i, j), id(i, j + 1), id(i + 1, j + 1), id(i + 1, j)};  // normal ez x tangent: left of the profile
+        cp.rigid_elems.push_back(m.ne());
+        m.elems.push_back(e);
+      }
+    info("  analytical surface %s: %zu x %d rigid facets", as.name.c_str(), prof.size() - 1, nz);
   }
 
   void assign_sections() {
@@ -1087,7 +1204,7 @@ class Builder {
       for (int e : *es) m.elems[e].section = idx;
     }
     int missing = 0;
-    for (auto& e : m.elems) if (e.section < 0) ++missing;
+    for (auto& e : m.elems) if (e.section < 0 && !is_rigid_type(e.type)) ++missing;
     if (missing) warn("%d elements have no section and will be ignored", missing);
   }
 };

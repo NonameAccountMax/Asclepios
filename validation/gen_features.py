@@ -173,7 +173,7 @@ def contact_features():
     d.steps += explicit_step('Impact', 1e-3, ['*Boundary', '%d, ENCASTRE' % rp] + general_contact(d), rot=True)
     register(d, 'explicit', 'R3D4 + S4R', 'contact with rigid surface', 'Sheet dropped at 2 m/s on a rigid R3D4 '
              'surface (rigid body with a reference node).', [sids[1, 1], sids[0, 0]], [rp], True, 'contact',
-             category='feature', group='contact', supported=False, reason=NS + 'R3D4 rigid elements, *RIGID BODY')
+             category='feature', group='contact', supported=True)
 
 
 # -------------------------------------------------------------------------------------------- constraints
