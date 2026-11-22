@@ -9,7 +9,7 @@
 
 namespace abq {
 
-enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, R3D4, R3D3, UNKNOWN };
+enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, R3D4, R3D3, SPRINGA, DASHPOTA, MASS, UNKNOWN };
 const char* eltype_name(ElType t);
 inline bool is_rigid_type(ElType t) { return t == ElType::R3D4 || t == ElType::R3D3; }
 inline bool is_solid_type(ElType t) { return t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4; }
@@ -86,6 +86,7 @@ struct ConnectorComponent {
   std::vector<double> kf;          // linear elasticity depending on field variable 1: stiffness per row (with fv)
   bool has_ref = false;
   double ref = 0;                  // constitutive reference (e.g. free length)
+  double damping = 0;              // *CONNECTOR DAMPING: linear coefficient on the relative velocity
   double force(double urel, double fv1, double* dFdu) const;
 };
 struct ConnectorBehavior {
@@ -94,7 +95,11 @@ struct ConnectorBehavior {
 };
 
 struct Section {
-  enum Kind { SOLID, SHELL, BEAM, CONNECTOR } kind = SOLID;
+  enum Kind { SOLID, SHELL, BEAM, CONNECTOR, DISCRETE } kind = SOLID;
+  // discrete elements (*SPRING, *DASHPOT, *MASS): stiffness or table (force, relative displacement), damping
+  // coefficient, point mass
+  double spring_k = 0, dashpot_c = 0, point_mass = 0;
+  std::vector<double> spring_F, spring_u;
   std::string elset;
   int material = -1;
   int orientation = -1;
@@ -112,7 +117,7 @@ struct Section {
   double poisson = -1;
   bool rotary_isotropic = false;  // *BEAM SECTION, ROTARY INERTIA=ISOTROPIC (default EXACT)
   // connector
-  enum ConnType { AXIAL, CARTESIAN, JOIN, OTHER } ctype = AXIAL;
+  enum ConnType { AXIAL, CARTESIAN, JOIN, HINGE, BEAM_LINK, BUSHING, OTHER } ctype = AXIAL;
   int behavior = -1;
   // hourglass control (from *SECTION CONTROLS): scale of the default stiffness, 1 = default; enhanced = stiffness
   // of the hourglass modes from the physical (enhanced strain) element instead of the default 0.005 G

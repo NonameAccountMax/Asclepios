@@ -50,7 +50,7 @@ int vtk_type(ElType t, int nen) {
     case ElType::C3D4: return 10;
     case ElType::S4R: case ElType::S4: return 9;
     case ElType::S3R: case ElType::S3RS: return 5;
-    default: return 3;  // line
+    default: return nen == 1 ? 1 : 3;  // vertex (point mass), line
   }
 }
 

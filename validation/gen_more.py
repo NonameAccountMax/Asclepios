@@ -735,7 +735,7 @@ def more_features():
         d.steps += explicit_step('Oscillate', 0.01, ['*Boundary', 'GROUND, 1, 3', 'CUBE, 2, 3'])
         register(d, 'explicit', 'CONN3D2', 'connector %s' % title, 'Block on four axial connectors with %s, released '
                  'with 100 mm/s.' % title, cube[:2], ground, False, 'dynamic', category='feature', group='constraint',
-                 supported=False, reason=NS + reason, twin=False)
+                 supported=name != 'connector_stop', reason=None if name != 'connector_stop' else NS + reason, twin=False)
 
     for name, ctype, title in (('connector_beam', 'BEAM', 'rigid BEAM connector'),
                                ('connector_bushing', 'BUSHING', 'BUSHING connector')):
@@ -755,7 +755,7 @@ def more_features():
                                         '%d, 2, 0.5' % b2[-1]], False, rot=True, nframes=1)
         register(d, 'static', 'B31 + CONN3D2', title, 'Two cantilever segments joined across a 1 mm gap by a %s.'
                  % title, [b2[-1], b1[-1], b2[0]], [b1[0]], True, 'linear', 'linear', category='feature',
-                 group='constraint', supported=False, reason=NS + '%s connection type' % ctype, twin=False)
+                 group='constraint', supported=True, twin=False)
 
     d = Deck('spring_nonlinear', 'Point mass on a nonlinear SPRINGA spring (explicit)')
     g, m = d.node(0.0, 0.0, 0.0), d.node(10.0, 0.0, 0.0)
@@ -767,7 +767,7 @@ def more_features():
     d.steps += explicit_step('Oscillate', 0.03, ['*Boundary', '%d, 1, 3' % g, '%d, 2, 3' % m], fixed_dt=1e-05)
     register(d, 'explicit', 'SPRINGA + MASS', 'nonlinear spring', 'Point mass on a spring stiffer in tension than in '
              'compression, released with 150 mm/s.', [m], [g], False, 'dynamic', category='feature', group='element',
-             supported=False, reason=NS + 'SPRINGA and MASS elements', twin=False)
+             supported=True, twin=False)
 
     # contact options
     def sheet_on_plate(name, title, step_extra=None, model_extra=None, gap=1.0, sheet_offset=None):

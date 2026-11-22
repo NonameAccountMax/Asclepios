@@ -13,7 +13,7 @@ replacement for a commercial package.
 | Area | Supported |
 |---|---|
 | Input | `*INCLUDE`, `*PARAMETER` (expressions), `*PART` / `*ASSEMBLY` / `*INSTANCE` (translation, rotation), `Assembly.Instance.set` names, `*NODE`, `*ELEMENT`, `*NSET` / `*ELSET` (GENERATE, INSTANCE, `*NSET, ELSET=`), `*SURFACE` (ELEMENT SPOS/SNEG/S1…S6, NODE, CYLINDER), `*ORIENTATION` (rectangular, LOCAL DIRECTIONS) |
-| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN, JOIN), T3D2 (truss), R3D4 / R3D3 (rigid) |
+| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN, JOIN, HINGE, BEAM, BUSHING; linear damping), T3D2 (truss), SPRINGA / DASHPOTA / MASS, R3D4 / R3D3 (rigid) |
 | Materials | isotropic `*ELASTIC` (temperature-dependent rows), `*ELASTIC, TYPE=ENGINEERING CONSTANTS` (orthotropic, solids), tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), linear `HARDENING=KINEMATIC` (solids), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL (solids; fibre directions from `*ORIENTATION, LOCAL DIRECTIONS`), `*HYPERELASTIC` NEO HOOKE / MOONEY-RIVLIN / YEOH / OGDEN (Ogden: solids), superelastic shape memory alloys (material named `ABQ_SUPER_ELASTIC…` with its `*USER MATERIAL` constants; solids), linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
@@ -174,6 +174,10 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   composed increment by increment); prescribed accelerations integrated into the velocities, their reactions include
   the inertia of the node; temperature-dependent linear elasticity in total form, σ = C(T) (ε − α (T − T_initial)),
   so that a loaded bar lengthens when its modulus drops; initial stresses of solids released by the first step.
+- **Connectors**: CARTESIAN and BUSHING measure the position of node b in the axes that follow node a (with
+  NLGEOM; without, u_b − u_a − θ_a × d), and the moment of the force pair across the offset goes to node a, so that
+  the element is in equilibrium; HINGE (relative rotation about the local axis 1 only) and BEAM (rigid link) are
+  linear dependencies.
 - **Superelasticity** (Auricchio-Taylor): one martensite fraction, elastic moduli mixed linearly between austenite and
   martensite, Drucker-Prager loading function (tension-compression asymmetry from the start stresses), transformation
   strain along its gradient scaled to the uniaxial transformation strain, linear kinetics integrated in closed form over
@@ -188,7 +192,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-219 small decks, run after every change of the solver:
+226 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
@@ -260,9 +264,9 @@ Features exercised by the validation suite and not supported yet:
 
 - Contact: beam-to-beam edge contact, contact pairs (`*CONTACT PAIR`), contact in implicit procedures, one-sided
   SPOS/SNEG contact, analytical surfaces other than CYLINDER (REVOLUTION, SEGMENTS).
-- Constraints: connector types other than AXIAL, CARTESIAN and JOIN (HINGE, ...); rigid links that follow large
-  rotations exactly (the dependencies are linear in the rotations).
-- Elements: C3D10M, C3D6, M3D4R, B32, SPRINGA, DASHPOTA, MASS.
+- Constraints: connector stops; rigid links that follow large rotations exactly (the dependencies are linear in the
+  rotations).
+- Elements: C3D10M, C3D6, M3D4R, B32; beam sections BOX and I; shell offsets and composite sections.
 - Loads and conditions: initial stresses in shells and beams; non-zero boundary conditions in transformed axes;
   output in transformed axes; follower loads in restart files.
 - Materials: viscoelasticity, rate dependence, damage, user materials (UMAT/VUMAT), Holzapfel-Gasser-Ogden

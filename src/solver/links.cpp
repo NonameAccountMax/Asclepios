@@ -433,6 +433,31 @@ void Analysis::build_constraints() {
     }
     for (int e : cp.rigid_elems) elem_rigid[e] = 1;
   }
+  // HINGE and BEAM connectors: rigid joints between their two nodes (node b follows node a)
+  for (const Element& el : m.elems) {
+    if (el.type != ElType::CONN3D2 || el.section < 0 || el.nodes.size() != 2) continue;
+    const Section& sc = m.sections[el.section];
+    if (sc.ctype != Section::HINGE && sc.ctype != Section::BEAM_LINK) continue;
+    const int a = el.nodes[0], b = el.nodes[1];
+    if (sc.ctype == Section::BEAM_LINK) {
+      const Vec3 d = m.X[b] - m.X[a];
+      for (int k = 0; k < 3; ++k) push(6 * b + k, rigid_terms(a, d, k));
+      for (int k = 3; k < 6; ++k) push(6 * b + k, {{6 * a + k, 1.0, 1.0}});
+    } else {
+      // translations shared; relative rotation only about the local axis 1: theta_b - theta_a = s e1
+      for (int k = 0; k < 3; ++k) push(6 * b + k, {{6 * a + k, 1.0, 1.0}});
+      const Vec3 e1 = sc.orientation >= 0 ? m.orients[sc.orientation].R.row(0) : Vec3(1, 0, 0);
+      int mx = 0;
+      for (int k = 1; k < 3; ++k) if (std::fabs(e1[k]) > std::fabs(e1[mx])) mx = k;
+      for (int k = 0; k < 3; ++k) {
+        if (k == mx) continue;
+        const double r = e1[k] / e1[mx];
+        std::vector<LinkTerm> t{{6 * a + 3 + k, 1.0, 1.0}};
+        if (r != 0) { t.push_back({6 * b + 3 + mx, r, std::fabs(r)}); t.push_back({6 * a + 3 + mx, -r, std::fabs(r)}); }
+        push(6 * b + 3 + k, t);
+      }
+    }
+  }
   for (const LinearConstraint& eq : m.equations) {
     if (eq.node.size() < 2 || eq.coef[0] == 0) continue;
     std::vector<LinkTerm> t;
@@ -589,6 +614,10 @@ void Analysis::link_accelerations(const std::vector<double>& r) {
   link_m.resize(6 * nn);
   for (int n = 0; n < nn; ++n)
     for (int k = 0; k < 6; ++k) link_m[6 * n + k] = k < 3 ? mt[n] : mr[n];
+  // anisotropic rotary inertia (beams): its diagonal for the linked rotational dofs
+  if (any_aniso)
+    for (int n = 0; n < nn; ++n)
+      if (node_aniso[n]) for (int k = 0; k < 3; ++k) link_m[6 * n + 3 + k] += jrot[6 * (size_t)n + k];
   for (const DofLink& L : links) {
     const double rs = link_r[L.dof], ms = link_m[L.dof];
     for (int t = L.first; t < L.first + L.count; ++t) {

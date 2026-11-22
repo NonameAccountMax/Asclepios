@@ -26,6 +26,9 @@ const char* eltype_name(ElType t) {
     case ElType::CONN3D2: return "CONN3D2";
     case ElType::R3D4: return "R3D4";
     case ElType::R3D3: return "R3D3";
+    case ElType::SPRINGA: return "SPRINGA";
+    case ElType::DASHPOTA: return "DASHPOTA";
+    case ElType::MASS: return "MASS";
     default: return "UNKNOWN";
   }
 }
@@ -45,6 +48,9 @@ ElType eltype_from(const std::string& n0, int& nn) {
   if (n == "CONN3D2") { nn = 2; return ElType::CONN3D2; }
   if (n == "R3D4") { nn = 4; return ElType::R3D4; }
   if (n == "R3D3") { nn = 3; return ElType::R3D3; }
+  if (n == "SPRINGA") { nn = 2; return ElType::SPRINGA; }
+  if (n == "DASHPOTA") { nn = 2; return ElType::DASHPOTA; }
+  if (n == "MASS") { nn = 1; return ElType::MASS; }
   nn = 0;
   return ElType::UNKNOWN;
 }
@@ -514,6 +520,33 @@ class Builder {
     m.orients.push_back(o);
   }
 
+  // *SPRING (SPRINGA: blank line, then the stiffness or, NONLINEAR, rows force, relative displacement), *DASHPOT
+  // (blank line, coefficient), *MASS (mass)
+  void card_discrete(const Card& c, const Scope& sc) {
+    PendingSection p;
+    p.prefix = sc.prefix;
+    p.where = c.where();
+    Section& s = p.s;
+    s.kind = Section::DISCRETE;
+    s.elset = upper(c.get("ELSET"));
+    std::vector<std::vector<double>> rows;
+    for (auto& d : c.data) {
+      std::vector<double> r;
+      for (auto& t : d) if (!trim(t).empty()) r.push_back(to_double(t, &c));
+      if (!r.empty()) rows.push_back(r);
+    }
+    if (rows.empty()) throw std::runtime_error("*" + c.keyword + " without data at " + c.where());
+    if (c.keyword == "SPRING") {
+      if (c.has("NONLINEAR")) {
+        for (auto& r : rows) if (r.size() >= 2) { s.spring_F.push_back(r[0]); s.spring_u.push_back(r[1]); }
+      } else s.spring_k = rows.back()[0];
+    } else if (c.keyword == "DASHPOT") {
+      if (c.has("NONLINEAR")) warn_once("DASHNL", "nonlinear *DASHPOT: first row coefficient used");
+      s.dashpot_c = rows.back()[0];
+    } else s.point_mass = rows[0][0];
+    pend_sections.push_back(p);
+  }
+
   void card_section(const Card& c, const Scope& sc) {
     PendingSection p;
     p.prefix = sc.prefix;
@@ -550,6 +583,9 @@ class Builder {
       if (t == "AXIAL") s.ctype = Section::AXIAL;
       else if (t == "CARTESIAN") s.ctype = Section::CARTESIAN;
       else if (t == "JOIN") s.ctype = Section::JOIN;
+      else if (t == "HINGE") s.ctype = Section::HINGE;
+      else if (t == "BEAM") s.ctype = Section::BEAM_LINK;
+      else if (t == "BUSHING") s.ctype = Section::BUSHING;
       else { s.ctype = Section::OTHER; warn_once("CONN" + t, "connector type " + t + " not supported (" + c.where() + ")"); }
       if (c.data.size() > 1 && !c.data[1].empty() && !c.data[1][0].empty()) p.orient_name = upper(c.data[1][0]);
     }
@@ -697,6 +733,13 @@ class Builder {
           cc.fv.push_back(cc.ndep > 0 && d.size() > 3 ? to_double(d[3], &c) : 0.0);
         }
       }
+    } else if (c.keyword == "CONNECTOR DAMPING") {
+      const int comp = c.geti("COMPONENT", 1);
+      if (comp < 1 || comp > 6 || c.data.empty()) return;
+      if (c.has("NONLINEAR") || c.data.size() > 1) warn_once("CONNDAMPNL", "*CONNECTOR DAMPING: linear coefficient of the first row used");
+      b.comp[comp - 1].damping = to_double(c.data.at(0).at(0), &c);
+    } else if (c.keyword == "CONNECTOR STOP") {
+      warn_once("CONNSTOP", "*CONNECTOR STOP not supported: ignored");
     } else if (c.keyword == "CONNECTOR CONSTITUTIVE REFERENCE") {
       if (!c.data.empty())
         for (size_t i = 0; i < c.data[0].size() && i < 6; ++i)
@@ -968,6 +1011,7 @@ class Builder {
     else if (k == "SURFACE") card_surface(c, sc);
     else if (k == "ORIENTATION") card_orientation(c, sc);
     else if (k == "SHELL SECTION" || k == "SOLID SECTION" || k == "BEAM SECTION" || k == "CONNECTOR SECTION") card_section(c, sc);
+    else if (k == "SPRING" || k == "DASHPOT" || k == "MASS") card_discrete(c, sc);
     else if (k == "TRANSVERSE SHEAR" || k == "TRANSVERSE SHEAR STIFFNESS") {
       if (!pend_sections.empty() && !c.data.empty()) {
         Section& s = pend_sections.back().s;

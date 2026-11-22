@@ -303,7 +303,7 @@ def constraint_features():
                                     '%d, 2, 0.5' % b2[2], '%d, 3, -1.' % b1[-1]], False, rot=True, nframes=1)
     register(d, 'static', 'CONN3D2 HINGE + B31', 'connector HINGE', 'Two beams joined by a hinge about the global x '
              'axis.', [b1[-1], b2[0], b2[2]], [b1[0], b2[-1]], True, 'linear', 'linear', category='feature',
-             group='constraint', supported=False, reason=NS + 'HINGE connection type')
+             group='constraint', supported=True)
 
 
 # --------------------------------------------------------------------------------------- element types
@@ -430,7 +430,7 @@ def element_features():
     d.steps += explicit_step('Oscillate', 0.02, ['*Boundary', '%d, 1, 3' % g, '%d, 2, 3' % m], fixed_dt=1e-05)
     register(d, 'explicit', 'SPRINGA + DASHPOTA + MASS', 'spring, dashpot, point mass', 'Damped mass-spring oscillator '
              'released with 100 mm/s.', [m], [g], False, 'dynamic', category='feature', group='element',
-             supported=False, reason=NS + 'SPRINGA, DASHPOTA and MASS elements')
+             supported=True)
 
     # single S4R elements, three corners clamped, the fourth loaded: each probe isolates one part of the
     # element stiffness (drilling, transverse shear with its stabilised mode, membrane hourglass, rotation
