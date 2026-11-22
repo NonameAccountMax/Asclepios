@@ -46,6 +46,9 @@ KNOWN_QUANTITIES['contact_block_on_plate'] = (['RM'], 'Total reaction moment of 
 KNOWN_QUANTITIES['contact_rigid_surface'] = (['S'], 'Stresses not compared: a flat sheet stopped uniformly by a flat '
                                                'rigid surface carries no stress in theory (0.5 to 2.5 MPa of noise in '
                                                'the reference)')
+KNOWN_QUANTITIES['b31_vibration_std'] = (['S'], 'Axial force not compared: second order in this bending vibration '
+                                         '(2e-4 N), set by the high-frequency axial modes that the numerical '
+                                         'dissipation of the implicit integration damps according to the increments')
 KNOWN_QUANTITIES['symmetry_bcs_xpl'] = (['RM'], 'Reaction moments not compared: the corner nodes carry both the clamping '
                                         'and the symmetry conditions')
 S3R_XPL_RM = ('Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit '

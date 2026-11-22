@@ -376,7 +376,8 @@ def register(d, procedure, element, mode, description, mon, fix, rot, tol, analy
             tol = 'contact' if tol == 'contact' else 'dynamic'
         else:
             name, procedure, analysis = name + '_std', 'implicit dynamic', 'implicit dynamic'
-            supported, reason = False, 'implicit dynamics (*DYNAMIC) not implemented'
+            if tol == 'contact' or any(l.lower().startswith('*contact') for l in d.steps + d.model):
+                supported, reason = False, 'contact in implicit procedures not implemented'
         known = None
     kq = KNOWN_QUANTITIES.get(name, ([], None))
     entry = {'name': name, 'category': category, 'group': group or element, 'procedure': procedure,

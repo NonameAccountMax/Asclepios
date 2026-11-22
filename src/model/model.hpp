@@ -237,8 +237,11 @@ struct Step {
   bool nlgeom = false;
   int amp_ramp = -1;  // *STEP AMPLITUDE: -1 default (RAMP static, STEP explicit), 0 STEP, 1 RAMP
   double period = 1.0;
-  // static incrementation
+  // static incrementation (also implicit dynamics)
   double dt0 = 1.0, dtmin = 1e-5, dtmax = 1.0;
+  // implicit dynamics (*DYNAMIC without EXPLICIT): HHT-alpha integration in the implicit driver
+  bool implicit_dynamic = false;
+  double hht_alpha = -0.05;
   int maxinc = 100;
   // explicit
   double bv1 = 0.06, bv2 = 1.2;

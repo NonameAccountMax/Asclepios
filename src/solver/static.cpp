@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 
 #include "contact/contact.hpp"
 #include "core/log.hpp"
@@ -53,11 +54,13 @@ void element_tangent(ElementGroup& G, int e, ElemIn in, double* du, int nen, dou
 void run_static_step(Analysis& A, const Step& st, int si) {
   const int nn = A.nn;
   A.nlgeom = st.nlgeom;
-  A.begin_step(st, si, st.amp_ramp != 0);
+  // default amplitude: RAMP in static steps, STEP in dynamic ones
+  A.begin_step(st, si, st.implicit_dynamic ? st.amp_ramp == 1 : st.amp_ramp != 0);
   if (st.contact_defined) warn("general contact is not supported in *STATIC steps: ignored");
   OutputWriter& W = *A.writer;
   W.sta_header(si, st.name, false);
-  info("\n STEP %d  %s  (static, %s)  period %g", si + 1, st.name.c_str(), st.nlgeom ? "nlgeom" : "small displacements", st.period);
+  info("\n STEP %d  %s  (%s, %s)  period %g", si + 1, st.name.c_str(), st.implicit_dynamic ? "implicit dynamic" : "static",
+       st.nlgeom ? "nlgeom" : "small displacements", st.period);
   if (A.total_increments == 0 && si == 0) W.frame(si, st.name, 0.0, A.total_time);
 
   // active dofs: translations of nodes carrying elements, rotations of shell/beam nodes
@@ -103,12 +106,41 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     }
   const double hfd = 1e-7 * lmin;
 
+  // implicit dynamics (HHT-alpha): lumped masses, initial accelerations from equilibrium
+  const bool dyn = st.implicit_dynamic;
+  const double ha = st.hht_alpha, hb = 0.25 * (1 - ha) * (1 - ha), hg = 0.5 - ha;
+  std::vector<double> mdof(6 * nn, 0.0), fint0, fext0;
+  if (dyn) {
+    for (auto& gp : A.groups) gp->physical_rotary = true;
+    A.lump_masses();
+    for (auto& gp : A.groups) gp->physical_rotary = false;
+    for (int n = 0; n < nn; ++n)
+      for (int k = 0; k < 6; ++k)
+        mdof[6 * n + k] = k < 3 ? A.mt[n] : A.mr[n] + (A.node_aniso[n] ? A.jrot[6 * (size_t)n + k - 3] : 0.0);
+    std::fill(A.du.begin(), A.du.end(), 0.0);
+    A.spread_links(A.v);
+    A.eval_elements(0.0, 0, 0, false, false, A.fint);
+    A.external_forces(0.0, A.total_time, A.fext);
+    std::vector<double> r0(6 * nn), m0 = mdof;
+    for (int i = 0; i < 6 * nn; ++i) r0[i] = A.fext[i] - A.fint[i] - (i % 6 < 3 ? A.cdamp[i / 6] * A.v[i] : 0.0);
+    A.gather_links(r0);
+    for (const auto& L : A.links)
+      for (int t = L.first; t < L.first + L.count; ++t) m0[A.link_terms[t].dof] += A.link_terms[t].mc * mdof[L.dof];
+    for (int i = 0; i < 6 * nn; ++i) A.a[i] = (!A.fixed[i] && A.link_of[i] < 0 && m0[i] > 0) ? r0[i] / m0[i] : 0.0;
+    A.spread_links(A.a);
+    fint0 = A.fint; fext0 = A.fext;
+    // mass of each equation (lumped onto the independent dofs)
+    for (const auto& L : A.links)
+      for (int t = L.first; t < L.first + L.count; ++t) mdof[A.link_terms[t].dof] += A.link_terms[t].mc * mdof[L.dof];
+    for (const auto& L : A.links) mdof[L.dof] = 0;
+  }
+
   double t = 0, dt = std::min(st.dt0, st.period);
   int inc = 0, fast = 0;
   double qtilde = 0;
   int nq = 0;
   const double t0wall = wall();
-  std::vector<double> R(6 * nn), du_save;
+  std::vector<double> R(6 * nn), du_save, inert(6 * nn, 0.0);
   // last converged nodal forces, for the work of internal forces, external loads and reactions (trapezoidal rule)
   std::vector<double> fint_c = A.fint, fext_c = A.fext;
   const int nfr = st.output.field_intervals;
@@ -147,7 +179,19 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       rmax = 0;
       std::vector<double> req(dm.neq, 0.0);  // residual per equation (tied dofs summed)
       bool finite = true;
-      for (int i = 0; i < 6 * nn; ++i) R[i] = A.fext[i] - A.fint[i];
+      if (!dyn) for (int i = 0; i < 6 * nn; ++i) R[i] = A.fext[i] - A.fint[i];
+      else {
+        // (1 + a)(fext - fint)_{n+1} - a (fext - fint)_n - M a_{n+1} - C ((1 + a) v_{n+1} - a v_n), Newmark a, v
+        for (int i = 0; i < 6 * nn; ++i) {
+          const double an = (A.du[i] - dt * A.v[i] - dt * dt * (0.5 - hb) * A.a[i]) / (hb * dt * dt);
+          const double vn = A.v[i] + dt * ((1 - hg) * A.a[i] + hg * an);
+          const double c = i % 6 < 3 ? A.cdamp[i / 6] : 0.0;
+          R[i] = (1 + ha) * (A.fext[i] - A.fint[i]) - ha * (fext0[i] - fint0[i]) - c * ((1 + ha) * vn - ha * A.v[i]);
+          inert[i] = (i % 6 < 3 ? A.mt[i / 6] : A.mr[i / 6] + (A.node_aniso[i / 6] ? A.jrot[6 * (size_t)(i / 6) + i % 6 - 3] : 0.0)) * an;
+        }
+        A.gather_links(inert);
+        for (int i = 0; i < 6 * nn; ++i) R[i] -= inert[i];
+      }
       A.gather_links(R);
       for (int i = 0; i < 6 * nn; ++i) {
         finite = finite && std::isfinite(R[i]);
@@ -214,6 +258,14 @@ void run_static_step(Analysis& A, const Step& st, int si) {
         }
         for (auto& l : local) trip.insert(trip.end(), l.begin(), l.end());
       }
+      if (dyn) {
+        for (auto& tr : trip) tr = Eigen::Triplet<double>(tr.row(), tr.col(), (1 + ha) * tr.value());
+        for (int i = 0; i < 6 * nn; ++i) {
+          if (dm.eq[i] < 0) continue;
+          const double c = i % 6 < 3 ? A.cdamp[i / 6] : 0.0;
+          trip.push_back({dm.eq[i], dm.eq[i], mdof[i] / (hb * dt * dt) + (1 + ha) * hg / (hb * dt) * c});
+        }
+      }
       Eigen::SparseMatrix<double> Kg(dm.neq, dm.neq);
       Kg.setFromTriplets(trip.begin(), trip.end());
       // tiny regularisation of dofs without stiffness (e.g. drilling of isolated nodes)
@@ -246,9 +298,13 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     // commit
     Analysis::ElemSum S = A.eval_elements(dt, 0, 0, false, true, A.fint);
     A.en.plastic += S.e_plastic;
+    A.en.viscous += S.e_visc;
     double dWi = 0, dWe = 0;
     std::vector<double> fr(6 * nn);  // nodal reactions, the forces of the dependent dofs moved onto their terms
     for (int i = 0; i < 6 * nn; ++i) fr[i] = A.fint[i] - A.fext[i];
+    // implicit dynamics: reactions of the HHT-weighted equilibrium
+    if (dyn)
+      for (int i = 0; i < 6 * nn; ++i) fr[i] = (1 + ha) * (A.fint[i] - A.fext[i]) - ha * (fint0[i] - fext0[i]);
     A.gather_links(fr);
     for (int i = 0; i < 6 * nn; ++i) {
       const double d = A.du[i];
@@ -259,7 +315,25 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       A.u[i] += A.du[i];
     }
     A.commit_rotations();
-    A.en.internal += dWi;
+    if (dyn) {
+      double ke = 0, dWd = 0;
+      for (int i = 0; i < 6 * nn; ++i) {
+        const double an = (A.du[i] - dt * A.v[i] - dt * dt * (0.5 - hb) * A.a[i]) / (hb * dt * dt);
+        const double vn = A.v[i] + dt * ((1 - hg) * A.a[i] + hg * an);
+        const double c = i % 6 < 3 ? A.cdamp[i / 6] : 0.0;
+        dWd += c * 0.5 * (vn + A.v[i]) * A.du[i];
+        A.a[i] = an; A.v[i] = vn;
+      }
+      A.spread_links(A.v);
+      for (int i = 0; i < 6 * nn; ++i) {
+        const double mm = i % 6 < 3 ? A.mt[i / 6] : A.mr[i / 6] + (A.node_aniso[i / 6] ? A.jrot[6 * (size_t)(i / 6) + i % 6 - 3] : 0.0);
+        ke += 0.5 * mm * A.v[i] * A.v[i];
+      }
+      A.en.kinetic = ke;
+      A.en.damping += dWd;
+      fint0 = A.fint; fext0 = A.fext;
+    }
+    A.en.internal += dWi - S.e_visc;
     A.en.external += dWe;
     fint_c = A.fint;
     fext_c = A.fext;
@@ -272,7 +346,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     ++A.total_increments;
     W.sta_line("%5d %5d %3d %6d %5d %10.3E %10.3E %10.3E", si + 1, inc, 1, 0, it - 1, A.total_time, t, dt);
     info("  increment %4d  t=%.4g  dt=%.4g  iterations %d", inc, t, dt, it - 1);
-    W.history(si, inc, t, A.total_time, dt, 0.0);
+    W.history(si, inc, t, A.total_time, dt, dyn ? A.en.kinetic : 0.0);
     bool last = t >= st.period * (1 - 1e-12);
     const int ffreq = st.output.field_frequency;
     if (ffreq > 0 ? (inc % ffreq == 0 || last) : (nfr <= 0 || t >= next_frame - 1e-9 * st.period || last)) {
@@ -282,7 +356,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     // automatic incrementation
     if (cut_to_frame) dt = dt_auto;
     if (it - 1 <= 4) ++fast; else fast = 0;
-    if (fast >= 2) { dt = std::min(dt * 1.5, st.dtmax); fast = 0; }
+    if (fast >= (dyn ? 1 : 2)) { dt = std::min(dt * 1.5, st.dtmax); fast = 0; }
     else if (it - 1 > 8) dt = std::max(dt * 0.75, st.dtmin);
   }
   std::fill(A.du.begin(), A.du.end(), 0.0);

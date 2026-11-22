@@ -48,6 +48,7 @@ class ElementGroup {
   std::vector<double> dt_last;     // last stable increment estimate (unscaled)
   std::vector<float> out;          // size()*N_OUT output channels
   const Model* model = nullptr;
+  bool physical_rotary = false;    // implicit dynamics: physical rotary inertia (no explicit stability scaling)
 
   virtual ~ElementGroup() = default;
   int size() const { return (int)ids.size(); }

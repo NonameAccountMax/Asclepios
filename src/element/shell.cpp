@@ -625,7 +625,8 @@ class ShellGroup : public ElementGroup {
   void mass(int e, const double* X, double* mt, double* mr) const override {
     double A = ref[e * 9 + 8];
     double m = mat[e]->density * sec[e]->thickness * A;
-    for (int I = 0; I < nen; ++I) { mt[I] = m * mfr[e * nen + I]; mr[I] = irot[e * nen + I]; }
+    const double t2 = sec[e]->thickness * sec[e]->thickness / 12.0;
+    for (int I = 0; I < nen; ++I) { mt[I] = m * mfr[e * nen + I]; mr[I] = physical_rotary ? mt[I] * t2 : irot[e * nen + I]; }
   }
 
   // largest eigenvalue of the plane-stress hyperelastic tangent dS/dE at C (finite differences)

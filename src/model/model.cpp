@@ -872,8 +872,23 @@ class Builder {
           st.dtmin = d.size() > 2 && !d[2].empty() ? to_double(d[2], &c) : std::min(st.dt0, 1e-5 * st.period);
           st.dtmax = d.size() > 3 && !d[3].empty() ? to_double(d[3], &c) : st.period;
         } else { st.dt0 = st.period = st.dtmax = 1.0; st.dtmin = 1e-5; }
+      } else if (k == "DYNAMIC" && !c.has("EXPLICIT")) {
+        // implicit dynamics: same data line as *STATIC; APPLICATION sets the HHT parameter (QUASI-STATIC: strongly
+        // dissipative, MODERATE DISSIPATION: alpha = -0.41421, TRANSIENT FIDELITY and default: -0.05)
+        st.proc = Step::STATIC;
+        st.implicit_dynamic = true;
+        have_proc = true;
+        const std::string app = c.getu("APPLICATION", "TRANSIENT FIDELITY");
+        st.hht_alpha = app == "MODERATE DISSIPATION" ? -0.41421 : app == "QUASI-STATIC" ? -1.0 / 3.0 : -0.05;
+        if (c.has("ALPHA")) st.hht_alpha = c.getd("ALPHA", st.hht_alpha);
+        if (!c.data.empty()) {
+          auto& d = c.data[0];
+          st.dt0 = d.size() > 0 && !d[0].empty() ? to_double(d[0], &c) : 0.01;
+          st.period = d.size() > 1 && !d[1].empty() ? to_double(d[1], &c) : 1.0;
+          st.dtmin = d.size() > 2 && !d[2].empty() ? to_double(d[2], &c) : std::min(st.dt0, 1e-5 * st.period);
+          st.dtmax = d.size() > 3 && !d[3].empty() ? to_double(d[3], &c) : st.period;
+        }
       } else if (k == "DYNAMIC") {
-        if (!c.has("EXPLICIT")) throw std::runtime_error("implicit *DYNAMIC not supported (use EXPLICIT) at " + c.where());
         st.proc = Step::EXPLICIT;
         have_proc = true;
         if (c.has("DIRECT USER CONTROL") || c.has("FIXED TIME INCREMENTATION")) st.fixed_dt = true;
