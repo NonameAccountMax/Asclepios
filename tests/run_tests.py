@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Verification suite: generates small decks, runs asclepios, checks results against closed-form values."""
-import base64, glob, math, os, re, struct, subprocess, sys
+import base64, csv, glob, math, os, re, struct, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from gen_bar import bar
@@ -99,6 +99,35 @@ def fung_membrane():
     fx = RF[3 * 1] + RF[3 * 2]; fy = RF[3 * 2 + 1] + RF[3 * 3 + 1]
     ok &= check('S4R Fung biaxial, orientation without rotation line (axes at 120 deg): sigma_xx', fx / (t * l3 * l2), sxx, 2e-3)
     ok &= check('S4R Fung biaxial, orientation without rotation line (axes at 120 deg): sigma_yy', fy / (t * l3 * l1), syy, 2e-3)
+    return ok
+
+@case
+def fung_shell_flapping():
+    # thin Fung S4R strip clamped on one edge, launched at 2 m/s and left to flap (large stretches, explicit): the
+    # hourglass and drilling stiffnesses of hyperelastic shells use the initial modulus, so the artificial energy
+    # stays positive (a stiffness following the Fung tangent made it negative and the rotations diverged)
+    from gen_fung import FUNG_MAT
+    d = ['*Heading', '*Node']
+    for j in range(3):
+        for i in range(9):
+            d.append('%d, %g, %g, 0.' % (1 + i + 9 * j, i * 1.0, j * 1.0))
+    d += ['*Element, type=S4R, elset=P'] + ['%d, %d, %d, %d, %d' % (1 + i + 8 * j, 1 + i + 9 * j, 2 + i + 9 * j, 11 + i + 9 * j, 10 + i + 9 * j)
+                                           for j in range(2) for i in range(8)]
+    d += ['*Orientation, name=OR', '1., 0., 0., 0., 1., 0.', '3, 0.', '*Shell Section, elset=P, material=M, orientation=OR',
+          '0.2, 5', '*Material, name=M'] + FUNG_MAT.strip().split('\n') + ['*Density', '1.06e-9',
+          '*Nset, nset=FIX', '1, 10, 19', '*Nset, nset=FREE, generate', '2, 27, 1',
+          '*Initial Conditions, type=VELOCITY', 'FREE, 3, 2000.',
+          '*Step, nlgeom=YES', '*Dynamic, Explicit', ', 0.006', '*Boundary', 'FIX, ENCASTRE',
+          '*Output, field, number interval=4', '*Node Output', 'U', '*End Step']
+    open(os.path.join(OUT, 'fung_flap.inp'), 'w').write('\n'.join(d) + '\n')
+    run('fung_flap')
+    rows = list(csv.DictReader(open(os.path.join(OUT, 'fung_flap_history.csv'))))
+    ie = max(float(r['ALLIE']) for r in rows)
+    ae_min = min(float(r['ALLAE']) for r in rows)
+    et = max(abs(float(r['ETOTAL']) - float(rows[0]['ETOTAL'])) for r in rows)
+    ke0 = float(rows[0]['ALLKE'])
+    ok = check('Fung strip flapping: smallest ALLAE / largest ALLIE >= -1e-3', max(ae_min / ie, -1e-3), ae_min / ie, 1e-12)
+    ok &= check('Fung strip flapping: energy balance |dETOTAL| / KE0', 1 + et / ke0, 1.0, 5e-3)
     return ok
 
 @case
