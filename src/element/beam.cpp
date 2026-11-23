@@ -235,8 +235,14 @@ class BeamGroup : public ElementGroup {
         double* s = loc + 4 * k;
         double d11 = de0 - q.y1 * dk2 + q.y2 * dk1 - m.alpha * dtemp;
         double g12 = P.torsion_points ? -q.y2 * dphi : 0.0, g13 = P.torsion_points ? q.y1 * dphi : 0.0;
+        const double so[3] = {s[0], s[1], s[2]};
         double w = j2_update_beam(m, G, d11, g12, g13, s[0], s[1], s[2], s[3]);
         out.e_plastic += w * q.w * L1;
+        {  // internal energy at the point: elastic energy change plus dissipation (thermal strain work removed)
+          auto We = [&](double a, double b, double c) { return a * a / (2 * E) + (b * b + c * c) / (2 * G); };
+          const double trap = 0.5 * ((so[0] + s[0]) * (d11 + m.alpha * dtemp) + (so[1] + s[1]) * g12 + (so[2] + s[2]) * g13);
+          out.e_corr += (We(s[0], s[1], s[2]) - We(so[0], so[1], so[2]) + w - trap) * q.w * L1;
+        }
         N += q.w * s[0];
         M1 += q.w * s[0] * q.y2;
         M2 -= q.w * s[0] * q.y1;

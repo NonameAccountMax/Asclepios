@@ -55,9 +55,11 @@ class TrussGroup : public ElementGroup {
       n = (X1 - X0) / std::max(L, 1e-300);
       dl = dot(load3(in.du + 6) - load3(in.du), n) / L;
     }
-    if (in.temp0 && in.temp1) dl -= m.alpha * 0.5 * (in.temp1[0] + in.temp1[1] - in.temp0[0] - in.temp0[1]);
+    const double dth = in.temp0 && in.temp1 ? m.alpha * 0.5 * (in.temp1[0] + in.temp1[1] - in.temp0[0] - in.temp0[1]) : 0.0;
+    dl -= dth;
     // elastic predictor, uniaxial return mapping
     double s = sig[e] + m.E * dl, p = ep[e];
+    const double s_old = sig[e];
     if (m.plastic()) {
       const double sy = m.yield(p);
       if (std::fabs(s) > sy) {
@@ -76,6 +78,9 @@ class TrussGroup : public ElementGroup {
         p += dp;
       }
     }
+    // internal energy: elastic energy change plus dissipation instead of the trapezoidal work (thermal work removed)
+    out.e_corr = ((s * s - s_old * s_old) / (2 * m.E) + out.e_plastic / (area[e] * L) - 0.5 * (s_old + s) * (dl + dth)) *
+                 area[e] * L;
     const double c = std::sqrt(m.E / std::max(m.density * msf[e], 1e-300));
     double sv = 0;  // linear bulk viscosity on the axial strain rate
     if (in.dynamic && in.dt > 0 && in.bv1 > 0) {

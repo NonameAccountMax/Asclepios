@@ -592,9 +592,13 @@ def hgo_homogeneous():
     return ok
 
 def sma_uniaxial_ref(eps_path, EA=60000., EM=30000., eL=0.05, Rs=520., Rf=600., RsR=300., RfR=200.):
-    # uniaxial response of the superelastic model with linear kinetics, integrated in closed form (log strains)
+    # uniaxial response of the superelastic model (smooth cubic kinetics between the start and finish stresses),
+    # integrated in closed form (log strains)
     xi, sig, out = 0.0, 0.0, []
     E = lambda x: EA + x * (EM - EA)
+    def z(F, s, f):
+        t = max(-1.0, min(1.0, 2 * (F - 0.5 * (s + f)) / (f - s)))
+        return 0.5 + 0.75 * t - 0.25 * t ** 3
     def bis(g, lo, hi):
         glo = g(lo)
         for _ in range(200):
@@ -606,12 +610,12 @@ def sma_uniaxial_ref(eps_path, EA=60000., EM=30000., eL=0.05, Rs=520., Rf=600., 
         S = lambda x: E(x) * (e - eL * x)
         st = S(xi)
         if st > sig and st > Rs and xi < 1:
-            s0, xn = max(sig, Rs), xi
-            g = lambda x: (1 - x) * (Rf - s0) - (1 - xn) * (Rf - min(S(x), Rf))
+            z0, xn = z(sig, Rs, Rf), xi
+            g = lambda x: (1 - x) * (1 - z0) - (1 - xn) * (1 - z(S(x), Rs, Rf))
             xi = bis(g, xn, 1.0) if g(1.0) < 0 else 1.0
         elif st < sig and st < RsR and xi > 0:
-            s0, xn = min(sig, RsR), xi
-            g = lambda x: x * (s0 - RfR) - xn * (max(S(x), RfR) - RfR)
+            z0, xn = z(sig, RsR, RfR), xi
+            g = lambda x: x * (1 - z0) - xn * (1 - z(S(x), RsR, RfR))
             xi = bis(g, 0.0, xn) if g(0.0) < 0 else 0.0
         sig = S(xi)
         out.append((sig, xi))

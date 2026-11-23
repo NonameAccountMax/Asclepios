@@ -252,10 +252,8 @@
   "analysis": "nonlinear",
   "known": null,
   "reference": "analytic",
-  "known_quantities": [
-   "E"
-  ],
-  "known_quantities_note": "ALLIE and ALLWK are the work of the nodal forces integrated with the trapezoidal rule (thermal strain work included, increment-size error across the elastic-plastic transition); the reference is the strain energy plus the plastic dissipation, as Abaqus computes it",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -412,10 +410,8 @@
   "analysis": "linear",
   "known": null,
   "reference": "analytic",
-  "known_quantities": [
-   "E"
-  ],
-  "known_quantities_note": "ALLIE and ALLWK are the work of the nodal forces integrated with the trapezoidal rule (thermal strain work included, increment-size error across the elastic-plastic transition); the reference is the strain energy plus the plastic dissipation, as Abaqus computes it",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -676,10 +672,8 @@
   "analysis": "nonlinear",
   "known": null,
   "reference": "analytic",
-  "known_quantities": [
-   "E"
-  ],
-  "known_quantities_note": "ALLIE and ALLWK are the work of the nodal forces integrated with the trapezoidal rule (thermal strain work included, increment-size error across the elastic-plastic transition); the reference is the strain energy plus the plastic dissipation, as Abaqus computes it",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -2058,10 +2052,8 @@
   "analysis": "linear",
   "known": null,
   "reference": "analytic",
-  "known_quantities": [
-   "E"
-  ],
-  "known_quantities_note": "ALLIE and ALLWK are the work of the nodal forces integrated with the trapezoidal rule (thermal strain work included, increment-size error across the elastic-plastic transition); the reference is the strain energy plus the plastic dissipation, as Abaqus computes it",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -2636,7 +2628,7 @@
    "E": 0.15
   },
   "analysis": "nonlinear",
-  "known": "solid-to-solid impact: reactions 40 % below the reference at the first impact (the base nodes under the block also contact its bottom face, contact in both directions); a single brick dropped on a base face agrees with Abaqus/Explicit increment by increment",
+  "known": null,
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,
@@ -9034,7 +9026,7 @@
    "E": 0.05
   },
   "analysis": "nonlinear",
-  "known": "superelastic model of Auricchio and Taylor with linear kinetics: elasticity (moduli mixed linearly), transformation strain, lateral contraction and the start of both transformations agree, but the reference transforms faster in the middle of the loading plateau and much faster at the end of the reverse one (martensite fraction 0.06 against 0.30 at 231 MPa): reactions within 5.5 %, its kinetic law is to be identified",
+  "known": "superelastic model of Auricchio and Taylor with a smooth cubic kinetics: elasticity (moduli mixed linearly), transformation strain, lateral contraction and the whole loading plateau agree; on unloading the reference reverts faster (martensite fraction decreasing almost in proportion to the strain, plateau 6 to 24 MPa higher), which no kinetic law of the equivalent stress reproduces: reactions within 4.3 %",
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,
@@ -9619,7 +9611,7 @@
    "E": 0.15
   },
   "analysis": "nonlinear",
-  "known": "the profile of the deck runs counterclockwise, so the normal of the analytical surface points into the cylinder and the strip, coming from behind, passes through it without contact in the reference (reproduced: U 0.2 %); the free bending vibration of the strip that remains differs by 19 % on the rotations. The deck is to be reversed so that the strip wraps around the cylinder",
+  "known": "the strip passes through the analytical cylinder without contact in the reference, whatever the orientation of the profile, the axis given by the third point, the inclusion of the surface (all exterior, explicit, contact pair: the pair reports initial overclosures that do not match the expected geometry); asclepios reproduces the free strip (U 0.2 %, one-sided surface seen from behind) but its free bending vibration differs by 19 % on the rotations",
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,
@@ -9675,20 +9667,14 @@
   "procedure": "explicit",
   "element": "S4R + R3D4",
   "mode": "crimping with rigid plates",
-  "description": "Tube of radius 5 crimped by eight rigid plates moving radially from radius 6 to 3.",
+  "description": "Tube of radius 5 crimped by four rigid 5 mm plates moving radially from radius 6 to 4.5 (crimping force of one plate).",
   "mon": [
    4,
-   32
+   11,
+   18
   ],
   "fix": [
-   117,
-   122,
-   127,
-   132,
-   137,
-   142,
-   147,
-   152
+   117
   ],
   "mone": [
    1,
@@ -9704,10 +9690,12 @@
    "E": 0.15
   },
   "analysis": "nonlinear",
-  "known": "the eight 4 mm plates overlap below a radius of 4.83 mm: the reference jams the tube between them (work of the plates 6.4e6 against an internal energy of 8.5e3, mostly penalty energy), the tube escapes in asclepios; energies agree within 2 % up to the overlap. The deck is to use narrower plates",
+  "known": null,
   "reference": "abaqus",
-  "known_quantities": [],
-  "known_quantities_note": null,
+  "known_quantities": [
+   "RM"
+  ],
+  "known_quantities_note": "Reaction moment of the plate about its reference node not compared: 4 N mm against a crimping force of 181 N, i.e. a contact force centred within 0.02 mm of the plate centre (tube held axially at one end only)",
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -16027,7 +16015,7 @@
    "E": 0.06
   },
   "analysis": "quasi-static explicit",
-  "known": "superelastic model of Auricchio and Taylor with linear kinetics: elasticity (moduli mixed linearly), transformation strain, lateral contraction and the start of both transformations agree, but the reference transforms faster in the middle of the loading plateau and much faster at the end of the reverse one (martensite fraction 0.06 against 0.30 at 231 MPa): reactions within 5.5 %, its kinetic law is to be identified",
+  "known": "superelastic model of Auricchio and Taylor with a smooth cubic kinetics: elasticity (moduli mixed linearly), transformation strain, lateral contraction and the whole loading plateau agree; on unloading the reference reverts faster (martensite fraction decreasing almost in proportion to the strain, plateau 6 to 24 MPa higher), which no kinetic law of the equivalent stress reproduces: reactions within 4.3 %",
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,

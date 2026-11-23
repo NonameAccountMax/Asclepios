@@ -348,16 +348,34 @@ class SolidGroup : public ElementGroup {
   static double hex_vol(const double* X) { Vec3 b[8]; return hex_mean_grad(X, b); }
   static double tet_vol(const double* X) { Vec3 b[4]; return tet_grad(X, b); }
 
-  // material update at one point; returns plastic dissipation density
+  // material update at one point; returns plastic dissipation density, adds to ec the internal energy correction
+  // density (ElemOut::e_corr)
   double update_point(const Material& m, PointState& p, const Sym6& deps, const Vec3& w, const Mat3& dF, bool rotate,
-                      double dtemp, const double* fibres = nullptr, double temp1 = 0, double tinit = 0,
-                      const Mat3* Ror = nullptr) {
+                      double dtemp, const double* fibres, double temp1, double tinit, const Mat3* Ror, double& ec) {
     Mat3 Q = rotate ? hughes_winget(w) : Mat3::identity();
     if (rotate) {
       p.sig = abq::rotate(Q, p.sig); p.eps = abq::rotate(Q, p.eps);
       if (m.sma) p.etr = abq::rotate(Q, p.etr);
       if (m.kinematic) p.back = abq::rotate(Q, p.back);
     }
+    const Sym6 s_old = p.sig;
+    // thermal strain work over the increment (removed from the work of the element forces)
+    auto thermal_work = [&]() { return m.alpha != 0 ? 0.5 * (s_old.trace() + p.sig.trace()) * m.alpha * dtemp : 0.0; };
+    // linear isotropic elasticity: change of the elastic strain energy plus the dissipation instead of the
+    // trapezoidal work of the stresses on the strain increment
+    auto elastic_plastic = [&](double wp) {
+      const double G = m.shear_modulus(), K = m.bulk_modulus();
+      auto W = [&](const Sym6& s) {
+        const double pr = s.trace() / 3;
+        double ss = 0;
+        for (int i = 0; i < 6; ++i) { const double d = s[i] - (i < 3 ? pr : 0.0); ss += (i < 3 ? 1.0 : 2.0) * d * d; }
+        return ss / (4 * G) + pr * pr / (2 * K);
+      };
+      double trap = 0;
+      for (int i = 0; i < 6; ++i) trap += (i < 3 ? 0.5 : 1.0) * (s_old[i] + p.sig[i]) * deps[i];
+      ec += W(p.sig) - W(s_old) + wp - trap;
+      return wp;
+    };
     for (int i = 0; i < 6; ++i) p.eps[i] += deps[i];
     if (m.sma) {
       const Sym6 s0 = p.sig;
@@ -381,12 +399,22 @@ class SolidGroup : public ElementGroup {
       Sym6 sl;
       for (int i = 0; i < 6; ++i) { sl[i] = 0; for (int j = 0; j < 6; ++j) sl[i] += m.Cortho[i][j] * el[j]; }
       p.sig = abq::rotate(R.T(), sl);
+      ec -= thermal_work();
       return 0;
     }
     if (m.kinematic && m.plastic()) {
       Sym6 d = deps;
       if (m.alpha != 0) for (int i = 0; i < 3; ++i) d[i] -= m.alpha * dtemp;
-      return j2_kinematic_3d(m, d, p.sig, p.back, p.ep);
+      // plastic work sigma : d(eps_p) = dissipation (sigma - back) : d(eps_p) plus the energy stored in the back
+      // stress, 3/(4C) back : back for the linear Prager rule
+      auto Wk = [&](const Sym6& a) {
+        double aa = 0;
+        for (int i = 0; i < 6; ++i) aa += (i < 3 ? 1.0 : 2.0) * a[i] * a[i];
+        return m.kin_C > 0 ? 0.75 * aa / m.kin_C : 0.0;
+      };
+      const double wk0 = Wk(p.back);
+      const double wd = j2_kinematic_3d(m, d, p.sig, p.back, p.ep);
+      return elastic_plastic(wd + Wk(p.back) - wk0);
     }
     if (!m.el_T.empty() && !m.plastic()) {  // temperature-dependent elasticity: total form C(T) (eps - eps_th)
       double E, nu;
@@ -396,11 +424,12 @@ class SolidGroup : public ElementGroup {
       for (int i = 0; i < 3; ++i) ee[i] -= m.alpha * (temp1 - tinit);
       const double tr = ee[0] + ee[1] + ee[2];
       for (int i = 0; i < 6; ++i) p.sig[i] = 2 * mu * ee[i] + (i < 3 ? lam * tr : 0.0);
+      ec -= thermal_work();
       return 0;
     }
     Sym6 d = deps;
     if (m.alpha != 0) for (int i = 0; i < 3; ++i) d[i] -= m.alpha * dtemp;
-    return j2_update_3d(m, d, p.sig, p.ep);
+    return elastic_plastic(j2_update_3d(m, d, p.sig, p.ep));
   }
 
   void compute(int e, const ElemIn& in, ElemOut& out, bool commit) override {
@@ -464,8 +493,10 @@ class SolidGroup : public ElementGroup {
             for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[I][j];
       }
       PointState p = st[e];
+      double ec = 0;
       double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
-                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr);
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec);
+      out.e_corr += ec * V1;
       // explicit: while the point flows plastically, the increments of the applied hourglass forces are scaled by
       // max(0.1, H / (3 G + H)) (single-element Abaqus/Explicit runs: 0.1 for perfect plasticity and for a slope H
       // of 0.08 E, with HOURGLASS=STIFFNESS and RELAX STIFFNESS alike: an hourglass deformation added during the
@@ -690,9 +721,11 @@ class SolidGroup : public ElementGroup {
           for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j) dF.m[i][j] += L.m[i][j];
         PointState p = st[e * 8 + g];
+        double ec = 0;
         double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
-                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr);
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec);
         out.e_plastic += wp * d1[g];
+        out.e_corr += ec * d1[g];
         const Sym6& s = p.sig;
         for (int I = 0; I < 8; ++I) {
           const Vec3& b = b1[g][I];
@@ -764,9 +797,11 @@ class SolidGroup : public ElementGroup {
               for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[I][j];
         }
         PointState p = st[e * 8 + g];
+        double ec = 0;
         double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
-                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr);
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec);
         out.e_plastic += wp * d1[g];
+        out.e_corr += ec * d1[g];
         const Sym6& s = p.sig;
         double trs = s.trace() / 3.0;
         for (int I = 0; I < 8; ++I) {

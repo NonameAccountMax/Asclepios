@@ -146,11 +146,16 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   a contact pair gets the frequency Ω² = max(1/(3Δt²), 1.1·max Ω_i²) of its nodes, nodal springs that keep each
   node stable at 1/Ω, and the softer of the slave and master springs (0.3·m/Δt² between two critical nodes,
   stiffer for light nodes of soft elements), never stiffened during a contact and shared between the contacts of
-  a node; the increment is bounded by 1/Ω of the active contacts. The master stiffness and its sharing use the
+  a node; the increment is bounded by 1/Ω of the active contacts. Solid elements running under the global estimate
+  of the increment (longer than their own bound by a ratio g): a slave node keeps the bound of its elements, the
+  nodes of a master facet take the global one, and a contact whose frequency is set by the slave bounds the
+  increment by g/Ω. The master stiffness and its sharing use the
   triangle of the facet under the contact point; the force goes to the four nodes of a quadrilateral facet with
   the bilinear weights of the point (coordinates taken on the facet of the nodes, not the one drawn in by the
-  rounding of free edges). Exterior faces of solids are one-sided facets without thickness (outward normal, a node
-  inside a solid contacts the nearest face). Beam nodes contact shell facets and beam segments; shell nodes do not contact beam
+  rounding of free edges). Exterior faces of solids are one-sided facets without thickness (outward normal); a node
+  inside a solid contacts the face of its contact at the previous increment while it is still hit, else a face it
+  crossed during the increment, else the nearest one; a node under a concave fold of the surface (a face bent into
+  a valley, both triangles behind it) contacts the fold line or vertex. Beam nodes contact shell facets and beam segments; shell nodes do not contact beam
   segments, the free shell edges do (edge to segment: closest points of the two segments, edge stiffness from its
   two nodes weighted by the contact point, a vertex held by one of its edges). Normal viscous damping of 3 % of critical
   (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL),
@@ -180,8 +185,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   linear dependencies.
 - **Superelasticity** (Auricchio-Taylor): one martensite fraction, elastic moduli mixed linearly between austenite and
   martensite, Drucker-Prager loading function (tension-compression asymmetry from the start stresses), transformation
-  strain along its gradient scaled to the uniaxial transformation strain, linear kinetics integrated in closed form over
-  each increment, thresholds shifted with temperature.
+  strain along its gradient scaled to the uniaxial transformation strain, thresholds shifted with temperature; the
+  fraction still to transform follows a smooth cubic step between the start and finish thresholds (zero rate at both
+  ends), integrated in closed form over each increment.
 - **Rigid surfaces** (explicit general contact): R3D4 / R3D3 elements of a rigid body are two-sided contact facets
   without thickness; analytical surfaces (`TYPE=CYLINDER`) are cut into one-sided rigid facets (2° arcs, normal to the
   left of the profile direction) and a node coming from behind never contacts them. Rigid facet nodes carry no mass
@@ -193,7 +199,11 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   the reactions are those of the HHT-weighted equilibrium, (1 + α) f(t_{n+1}) − α f(t_n), as Abaqus/Standard reports
   them.
 - **Static implicit**: Newton-Raphson; element tangents by central finite differences of the internal force
-  routine, so the same element code serves both procedures. Double precision throughout.
+  routine, so the same element code serves both procedures; each increment starts from the linear extrapolation of
+  the previous one. Double precision throughout.
+- **Energies**: ALLIE is accumulated at the material points as Abaqus does: the work of the element forces minus
+  the work of the thermal strains, and for linear elasticity with J2 plasticity the elastic strain energy plus the
+  plastic work (back stress included) instead of the trapezoidal rule.
 
 ## Validation (`make validate`, `make parallel`)
 
@@ -275,23 +285,20 @@ Features exercised by the validation suite and not supported yet:
 - Loads and conditions: initial stresses in shells and beams; non-zero boundary conditions in transformed axes;
   output in transformed axes; follower loads in restart files.
 - Materials: viscoelasticity, rate dependence, damage, user materials (UMAT/VUMAT), Holzapfel-Gasser-Ogden
-  and superelasticity in shells and beams; transformation kinetics of the superelastic reference (plateau ends).
-- Procedures: implicit dynamics (`*DYNAMIC`), arc length (`*STATIC, RIKS`), natural frequencies (`*FREQUENCY`), linear
+  and superelasticity in shells and beams; reverse transformation of the superelastic reference (unloading plateau
+  up to 24 MPa higher).
+- Procedures: arc length (`*STATIC, RIKS`), natural frequencies (`*FREQUENCY`), linear
   buckling (`*BUCKLE`).
 
 Accuracy and performance:
 
 - Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
   formulation.
-- Dynamics: solid-to-solid impact (reactions 40 % below the reference at the first impact when nodes of both bodies
-  lie in the contact area); beam-to-solid impact (displacements within 11 %, stresses 15 %); beam-to-shell impact
+- Dynamics: beam-to-solid impact (displacements within 11 %, stresses 15 %); beam-to-shell impact
   (reactions within 14 %, energy 6 %, beam end rotations 13 %); a shell sheet dropped
   on a beam stops like the reference at the first contact increment, then its contact force stays up to 25 % lower; self-contact of a coiled strip (first contact within 7 %; the later chatter of the coil on the clamped edge, which
-  goes straight into the reactions, is not compared); viscous dissipation of
-  shell bulk viscosity on strongly tapered quadrilaterals (up to 15 % high); stability of thin Fung shells closing with contact (valve model).
-- Static: predictor from the previous increment and line search (plastic shells need many small increments).
-- Energies: ALLIE from material-point quantities (strain energy plus plastic dissipation) instead of the work of nodal
-  forces.
+  goes straight into the reactions, is not compared); stability of thin Fung shells closing face to face with contact (valve model: the leaflets bend after the contact
+  where the reference stays nearly flat, then the rotations diverge).
 - Performance: vectorisation of the constitutive updates; parallel linear solver for the implicit procedure (speed-up
   1.4 on 8 threads); fewer threads on small models (OpenMP overhead).
 

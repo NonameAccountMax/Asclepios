@@ -141,6 +141,10 @@ void run_static_step(Analysis& A, const Step& st, int si) {
   int nq = 0;
   const double t0wall = wall();
   std::vector<double> R(6 * nn), du_save, inert(6 * nn, 0.0);
+  // converged increment of the free dofs and its length: linear extrapolation in time of the previous increment
+  // starts the Newton iterations (static procedure, as the default EXTRAPOLATION=LINEAR of Abaqus/Standard)
+  std::vector<double> du_last;
+  double dt_last = 0;
   // last converged nodal forces, for the work of internal forces, external loads and reactions (trapezoidal rule)
   std::vector<double> fint_c = A.fint, fext_c = A.fext;
   const int nfr = st.output.field_intervals;
@@ -162,6 +166,10 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     for (auto& b : A.loads.bcs) {
       double target = A.loads.value(b, tn, ttn, A.m);
       A.du[6 * b.node + b.dof] = b.velocity ? target * dt : target - A.u[6 * b.node + b.dof];
+    }
+    if (!dyn && !du_last.empty() && dt_last > 0) {
+      const double r = dt / dt_last;
+      for (int i = 0; i < 6 * nn; ++i) if (!A.fixed[i] && dm.eq[i] >= 0) A.du[i] = r * du_last[i];
     }
     A.spread_links(A.du);
     A.temp_prev = A.temp;
@@ -314,6 +322,8 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       A.rf[i] = A.fixed[i] ? fr[i] : (A.report_rf[i] ? A.fint[i] - A.fext[i] : 0.0);
       A.u[i] += A.du[i];
     }
+    du_last = A.du;
+    dt_last = dt;
     A.commit_rotations();
     if (dyn) {
       double ke = 0, dWd = 0;
@@ -333,7 +343,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       A.en.damping += dWd;
       fint0 = A.fint; fext0 = A.fext;
     }
-    A.en.internal += dWi - S.e_visc;
+    A.en.internal += dWi - S.e_visc + S.e_corr;
     A.en.external += dWe;
     fint_c = A.fint;
     fext_c = A.fext;

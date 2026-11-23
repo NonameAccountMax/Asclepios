@@ -34,6 +34,10 @@ struct ElemOut {
   double e_visc = 0;       // viscous (bulk viscosity) dissipation increment
   double e_plastic = 0;    // plastic dissipation increment
   double e_art = 0;        // artificial (hourglass/drill) energy increment
+  // internal energy at the material points minus the work of the element forces over the increment: the thermal
+  // strain work is removed, and for linear elasticity with J2 plasticity the change of the elastic strain energy
+  // plus the plastic dissipation replaces the trapezoidal sigma : d(eps) (as ALLIE = ALLSE + ALLPD)
+  double e_corr = 0;
   bool failed = false;     // material point did not converge
 };
 

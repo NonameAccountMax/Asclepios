@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "material/material.hpp"
 
 #include <cmath>
@@ -191,8 +192,11 @@ double j2_update_beam(const Material& m, double G, double d11, double dg12, doub
 //    shifted by the stress-temperature slopes;
 //  - transformation strain along dF/dsigma, scaled to eps_L in uniaxial tension; the reverse transformation retraces
 //    the transformation strain;
-//  - linear kinetics integrated exactly over the increment: forward dxi / (1 - xi) = dF / (R_f - F), reverse
-//    dxi / xi = dF / (F - R_f).
+//  - kinetics: the fraction still to transform follows a smooth cubic step z(F) between the start and finish
+//    thresholds (z = 1/2 + 3/4 t - 1/4 t^3, t = 2 (F - (R_s + R_f)/2) / (R_f - R_s) clamped to [-1, 1]), integrated
+//    exactly over the increment: forward (1 - xi) / (1 - xi_n) = (1 - z(F)) / (1 - z(F_n)), reverse
+//    xi / xi_n = (1 - z(F)) / (1 - z(F_n)) (the transformation starts and ends with zero rate, as in
+//    Abaqus/Standard's superelastic user material).
 namespace {
 
 struct SmaState {
@@ -207,6 +211,12 @@ inline void sma_stress(const Material& m, double xi, const Sym6& ee, Sym6& sig) 
   const double tr = ee[0] + ee[1] + ee[2];
   for (int i = 0; i < 6; ++i) sig[i] = 2 * k.mu * ee[i];
   for (int i = 0; i < 3; ++i) sig[i] += k.lam * tr;
+}
+// smooth cubic step from 0 at the start threshold rs to 1 at the finish threshold rf (either order)
+inline double sma_step(double F, double rs, double rf) {
+  if (rf == rs) return (rf > rs ? F >= rf : F <= rf) ? 1.0 : 0.0;
+  const double t = std::clamp(2 * (F - 0.5 * (rs + rf)) / (rf - rs), -1.0, 1.0);
+  return 0.5 + 0.75 * t - 0.25 * t * t * t;
 }
 inline double sma_F(const Sym6& s, double tb) {
   const double p = (s[0] + s[1] + s[2]) / 3;
@@ -261,11 +271,11 @@ void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, doubl
     for (int i = 0; i < 3; ++i) N[i] += tb / 3 / k;
     Sym6 nd;
     if (!unit_dev(s_tr, nd)) return;
-    const double F0 = std::max(Fn, RsAS);
+    const double z0 = sma_step(Fn, RsAS, RfAS);
     auto g = [&](double x) {
       Sym6 e, s;
-      const double F = std::min(state(x, N, m.sma_epsL, e, s, &nd), RfAS);
-      return (1 - x) * (RfAS - F0) - (1 - xin) * (RfAS - F);
+      const double z = sma_step(state(x, N, m.sma_epsL, e, s, &nd), RsAS, RfAS);
+      return (1 - x) * (1 - z0) - (1 - xin) * (1 - z);
     };
     double lo = xin, hi = 1.0;  // g decreases from g(xi_n) > 0
     if (g(hi) >= 0) lo = hi;
@@ -284,11 +294,11 @@ void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, doubl
     for (int i = 0; i < 6; ++i) D[i] = etr_n[i] / xin;
     Sym6 nd;
     if (!unit_dev(etr_n, nd)) return;
-    const double F0 = std::min(Fn, RsSA);
+    const double z0 = sma_step(Fn, RsSA, RfSA);
     auto g = [&](double x) {
       Sym6 e, s;
-      const double F = std::max(state(x, D, 1.0, e, s, &nd), RfSA);
-      return x * (F0 - RfSA) - xin * (F - RfSA);
+      const double z = sma_step(state(x, D, 1.0, e, s, &nd), RsSA, RfSA);
+      return x * (1 - z0) - xin * (1 - z);
     };
     double lo = 0.0, hi = xin;  // g increases with xi up to g(xi_n) > 0
     if (g(lo) >= 0) hi = lo;

@@ -16,33 +16,25 @@ import gen_features
 import gen_more
 import gen_literature
 
-SMA_NOTE = ('superelastic model of Auricchio and Taylor with linear kinetics: elasticity (moduli mixed linearly), '
-            'transformation strain, lateral contraction and the start of both transformations agree, but the reference '
-            'transforms faster in the middle of the loading plateau and much faster at the end of the reverse one '
-            '(martensite fraction 0.06 against 0.30 at 231 MPa): reactions within 5.5 %, its kinetic law is to be identified')
+SMA_NOTE = ('superelastic model of Auricchio and Taylor with a smooth cubic kinetics: elasticity (moduli mixed '
+            'linearly), transformation strain, lateral contraction and the whole loading plateau agree; on unloading '
+            'the reference reverts faster (martensite fraction decreasing almost in proportion to the strain, plateau '
+            '6 to 24 MPa higher), which no kinetic law of the equivalent stress reproduces: reactions within 4.3 %')
 KNOWN.update({
-    'contact_solid_on_solid': 'solid-to-solid impact: reactions 40 % below the reference at the first impact (the base '
-                              'nodes under the block also contact its bottom face, contact in both directions); a '
-                              'single brick dropped on a base face agrees with Abaqus/Explicit increment by increment',
-    'contact_analytical_cylinder': 'the profile of the deck runs counterclockwise, so the normal of the analytical '
-                                   'surface points into the cylinder and the strip, coming from behind, passes through '
-                                   'it without contact in the reference (reproduced: U 0.2 %); the free bending '
-                                   'vibration of the strip that remains differs by 19 % on the rotations. The deck is '
-                                   'to be reversed so that the strip wraps around the cylinder',
+    'contact_analytical_cylinder': 'the strip passes through the analytical cylinder without contact in the '
+                                   'reference, whatever the orientation of the profile, the axis given by the third '
+                                   'point, the inclusion of the surface (all exterior, explicit, contact pair: the '
+                                   'pair reports initial overclosures that do not match the expected geometry); '
+                                   'asclepios reproduces the free strip (U 0.2 %, one-sided surface seen from '
+                                   'behind) but its free bending vibration differs by 19 % on the rotations',
     'mat_superelastic': SMA_NOTE,
     'mat_superelastic_xpl': SMA_NOTE,
-    'crimp_rigid_plates': 'the eight 4 mm plates overlap below a radius of 4.83 mm: the reference jams the tube between '
-                          'them (work of the plates 6.4e6 against an internal energy of 8.5e3, mostly penalty energy), '
-                          'the tube escapes in asclepios; energies agree within 2 % up to the overlap. The deck is to '
-                          'use narrower plates',
 })
-ENERGY_NOTE = ('ALLIE and ALLWK are the work of the nodal forces integrated with the trapezoidal rule (thermal strain '
-               'work included, increment-size error across the elastic-plastic transition); the reference is the '
-               'strain energy plus the plastic dissipation, as Abaqus computes it')
-KNOWN_QUANTITIES.update({name: (['E'], ENERGY_NOTE) for name in ('c3d8r_thermal', 'b31_thermal', 'c3d8r_plastic',
-                                                                  'c3d8_plastic')})
 KNOWN_QUANTITIES['contact_block_on_plate'] = (['RM'], 'Total reaction moment of the clamped edges zero by symmetry '
                                               '(peak 1.3e-3 N mm against reactions of 129 N): numerical noise')
+KNOWN_QUANTITIES['crimp_rigid_plates'] = (['RM'], 'Reaction moment of the plate about its reference node not compared: '
+                                          '4 N mm against a crimping force of 181 N, i.e. a contact force centred '
+                                          'within 0.02 mm of the plate centre (tube held axially at one end only)')
 KNOWN_QUANTITIES['contact_rigid_surface'] = (['S'], 'Stresses not compared: a flat sheet stopped uniformly by a flat '
                                                'rigid surface carries no stress in theory (0.5 to 2.5 MPa of noise in '
                                                'the reference)')

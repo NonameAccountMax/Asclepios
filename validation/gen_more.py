@@ -850,14 +850,17 @@ def more_features():
              'of surface elements shrinking from radius 6 to 3.', [tids[0, 3], tids[4, 3]], [], True, 'contact',
              category='feature', group='contact', supported=False, reason=NS + 'SFM3D4R surface elements', twin=False)
 
-    d = Deck('crimp_rigid_plates', 'S4R tube crimped by eight rigid R3D4 plates moving radially (explicit)')
+    d = Deck('crimp_rigid_plates', 'S4R tube crimped by four rigid R3D4 plates moving radially (explicit)')
     tids = tube(d)
     rps = []
-    for p in range(8):
-        a = 2 * math.pi * p / 8
+    # four 5 mm plates moving from the radius 6 to 4.5: the tube is pressed into four lobes that bulge freely between
+    # the plates (eight plates leave narrow slots at the corners of the octagon, through which the tube escapes in a
+    # way that depends on round-off)
+    for p in range(4):
+        a = 2 * math.pi * p / 4
         cx, cy = math.cos(a), math.sin(a)
         tx, ty = -cy, cx
-        corners = [d.node(6.0 * cx + s * 2.0 * tx, 6.0 * cy + s * 2.0 * ty, z) for s, z in
+        corners = [d.node(6.0 * cx + s * 2.5 * tx, 6.0 * cy + s * 2.5 * ty, z) for s, z in
                    ((-1, -1.0), (1, -1.0), (1, 11.0), (-1, 11.0))]
         d.elements('R3D4', 'PLATE%d' % p, [corners[::-1]])
         rp = d.node(6.0 * cx, 6.0 * cy, 5.0)
@@ -866,12 +869,13 @@ def more_features():
     d.model += ['*Amplitude, name=CRIMP, definition=SMOOTH STEP', '0., 0., 0.002, 1.']
     body = ['*Boundary, amplitude=CRIMP']
     for rp, cx, cy in rps:
-        body += ['%d, 1, 1, %s' % (rp, fmt(-3.0 * cx)), '%d, 2, 2, %s' % (rp, fmt(-3.0 * cy)), '%d, 3, 6, 0.' % rp]
+        body += ['%d, 1, 1, %s' % (rp, fmt(-1.5 * cx)), '%d, 2, 2, %s' % (rp, fmt(-1.5 * cy)), '%d, 3, 6, 0.' % rp]
     d.nset('TUBEZ0', [tids[i, 0] for i in range(16)])
     d.steps += explicit_step('Crimp', 0.0025, body + ['*Boundary', 'TUBEZ0, 3, 3'] + general_contact(d, 0.1), rot=True)
-    register(d, 'explicit', 'S4R + R3D4', 'crimping with rigid plates', 'Tube of radius 5 crimped by eight rigid '
-             'plates moving radially from radius 6 to 3.', [tids[0, 3], tids[4, 3]], [r[0] for r in rps], True,
-             'contact', category='feature', group='contact', supported=True, twin=False)
+    register(d, 'explicit', 'S4R + R3D4', 'crimping with rigid plates', 'Tube of radius 5 crimped by four rigid '
+             '5 mm plates moving radially from radius 6 to 4.5 (crimping force of one plate).',
+             [tids[0, 3], tids[1, 3], tids[2, 3]], [rps[0][0]], True, 'contact', category='feature', group='contact',
+             supported=True, twin=False)
 
     # shell section options
     d = Deck('shell_offset', 'S4R cantilever strip with the reference surface on its bottom face (OFFSET=SPOS)')

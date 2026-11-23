@@ -128,7 +128,7 @@ struct Analysis {
     double dt_min = 1e30;
     int dt_elem = -1;
     double dt_solid = 1e30, dt_other = 1e30;  // smallest increment of the solid elements and of all the others
-    double e_visc = 0, e_plastic = 0, e_art = 0;
+    double e_visc = 0, e_plastic = 0, e_art = 0, e_corr = 0;
     int failed = 0;
   };
   ElemSum eval_elements(double dt, double bv1, double bv2, bool dynamic, bool commit, std::vector<double>& f);

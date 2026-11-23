@@ -303,14 +303,14 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
     ElementGroup& G = *groups[g];
     const int nen = G.nen;
     double* EF = efor[g].data();
-    double dtmin = 1e30, ev = 0, ep = 0, ea = 0;
+    double dtmin = 1e30, ev = 0, ep = 0, ea = 0, ec = 0;
     int dte = -1, nfail = 0;
 #pragma omp parallel num_threads(nthreads)
     {
       double Xe[3 * 8], xo[3 * 8], due[6 * 8], t0[8], t1[8], fve[8];
       double my_dt = 1e30;
       int my_e = -1;
-#pragma omp for reduction(+ : ev, ep, ea, nfail) schedule(static)
+#pragma omp for reduction(+ : ev, ep, ea, ec, nfail) schedule(static)
       for (int e = 0; e < G.size(); ++e) {
         const int* cn = &G.conn[e * nen];
         if (!group_rigid[g].empty() && group_rigid[g][e]) {  // element of a rigid body: mass only
@@ -331,7 +331,7 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
         ElemOut out;
         out.f = EF + (size_t)e * nen * 6;
         G.compute(e, in, out, commit);
-        ev += out.e_visc; ep += out.e_plastic; ea += out.e_art;
+        ev += out.e_visc; ep += out.e_plastic; ea += out.e_art; ec += out.e_corr;
         if (out.failed) ++nfail;
         double dte_e = out.dt_stable;
         if (dte_e < 0) {  // spring-like element: stiffness handled per node below
@@ -358,7 +358,7 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
         for (int k = 0; k < 6; ++k) fn[k] += fe[6 * I + k];
       }
     }
-    S.e_visc += ev; S.e_plastic += ep; S.e_art += ea; S.failed += nfail;
+    S.e_visc += ev; S.e_plastic += ep; S.e_art += ea; S.e_corr += ec; S.failed += nfail;
     if (dtmin < S.dt_min) { S.dt_min = dtmin; S.dt_elem = dte >= 0 ? G.ids[dte] : -1; }
     double& dcl = is_solid_type(G.type) ? S.dt_solid : S.dt_other;
     dcl = std::min(dcl, dtmin);

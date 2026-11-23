@@ -435,7 +435,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     A.en.viscous += S.e_visc;
     A.en.plastic += S.e_plastic;
     A.en.artificial += S.e_art;
-    A.en.internal += dWi - S.e_visc;
+    A.en.internal += dWi - S.e_visc + S.e_corr;
     A.en.external += dWe;
     A.en.contact += -dWc;  // work absorbed by contact (penalty energy + friction)
     A.en.damping += dWd;

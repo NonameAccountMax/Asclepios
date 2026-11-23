@@ -795,9 +795,19 @@ class ShellGroup : public ElementGroup {
         double d22 = de[1] + z * dk[1] - m.alpha * dtemp;
         double d12 = 0.5 * (de[2] + z * dk[2]);
         double d33;
+        const double so[3] = {p.s[0], p.s[1], p.s[2]};
         double w = j2_update_ps(m, d11, d22, d12, p.s, p.ep, d33);
         p.e33 += d33 + m.alpha * dtemp;
         out.e_plastic += w * wk[k] * tc * g1.A;
+        {  // internal energy at the point: elastic energy change plus dissipation (thermal strain work removed)
+          const double Ey = m.E, nu = m.nu, Gs = Ey / (2 * (1 + nu));
+          auto We = [&](const double* s3) {
+            return (s3[0] * s3[0] + s3[1] * s3[1] - 2 * nu * s3[0] * s3[1]) / (2 * Ey) + s3[2] * s3[2] / (2 * Gs);
+          };
+          const double trap = 0.5 * ((so[0] + p.s[0]) * (d11 + m.alpha * dtemp) + (so[1] + p.s[1]) * (d22 + m.alpha * dtemp) +
+                                     2 * (so[2] + p.s[2]) * d12);
+          out.e_corr += (We(p.s) - We(so) + w - trap) * wk[k] * tc * g1.A;
+        }
         if (k == 0 || k == np - 1) epm = std::max(epm, p.ep);  // output at the bottom and top section points
         double e11 = S.em[0] + z * S.kap[0], e22 = S.em[1] + z * S.kap[1], e12 = 0.5 * (S.em[2] + z * S.kap[2]);
         double l1, l2, cs, sn;
@@ -832,6 +842,12 @@ class ShellGroup : public ElementGroup {
     double lam = max_eig_DG(D, g1, n);
     double BB = 0;
     for (int I = 0; I < n; ++I) BB += g1.B1[I] * g1.B1[I] + g1.B2[I] * g1.B2[I];
+    double quad_len2 = 1e300;  // quadrilaterals: (area / longest edge)^2, bound of the element length
+    if (n == 4) {
+      double emax = 0;
+      for (int I = 0; I < 4; ++I) emax = std::max(emax, std::hypot(g1.xl[(I + 1) % 4][0] - g1.xl[I][0], g1.xl[(I + 1) % 4][1] - g1.xl[I][1]));
+      if (emax > 0) quad_len2 = (g1.A / emax) * (g1.A / emax);
+    }
     double kts = std::max(ts_stiff(e, 0), ts_stiff(e, 1));
     const double mtr = rho * t0 * g1.A / n;
     double Imin = 1e300;
@@ -941,10 +957,11 @@ class ShellGroup : public ElementGroup {
     //  - c: plate wave speed sqrt(M / rho), M the effective in-plane modulus; for nearly incompressible materials
     //    the Poisson ratio is limited to 0.49 at fixed bulk modulus, M >= 3K (1 - 2 x 0.49) / (1 - 0.49^2);
     //  - L_m: element length of the stable increment, L_m^2 = max(1 / sum|B|^2, 0.92 L_e^2) for quadrilaterals and
-    //    max(4/3 / sum|B|^2, 0.97 L_e^2) for triangles, L_e = 2 c / omega of the one-point membrane eigenvalue;
+    //    max(4/3 / sum|B|^2, 0.97 L_e^2) for triangles, L_e = 2 c / omega of the one-point membrane eigenvalue,
+    //    at most area / longest edge on quadrilaterals (tapered and kite-shaped quadrilaterals);
     //  - L_b: area / longest midline (quadrilaterals), shortest edge (triangles), independent of the material.
     // (single-element Abaqus/Explicit runs with prescribed nodal velocities: viscous dissipation rate within
-    // 1e-4 for 18 shapes, nu = 0 to 0.499, elastic, neo-Hooke and Fung; 10 % on a kite-shaped quadrilateral)
+    // 1e-4 for 18 shapes, nu = 0 to 0.499, elastic, neo-Hooke and Fung; 0.3 % on a kite-shaped quadrilateral)
     // The damping enters the stable increment through dt = 2/omega (sqrt(1 + xi^2) - xi), xi = nu / (2 omega).
     double dtm, dtb;
     {
@@ -964,7 +981,7 @@ class ShellGroup : public ElementGroup {
         c = std::sqrt(Mw / rho);
         double Dn[3][3];
         iso_plane_stress_D(1.0, nu_m, Dn);
-        const double Le2 = 4.0 / std::max(n * max_eig_DG(Dn, g1, n), 1e-300);
+        const double Le2 = std::min(4.0 / std::max(n * max_eig_DG(Dn, g1, n), 1e-300), quad_len2);
         Lm = std::sqrt(n == 4 ? std::max(1.0 / std::max(BB, 1e-300), 0.92 * Le2)
                               : std::max(4.0 / 3.0 / std::max(BB, 1e-300), 0.97 * Le2));
       }
@@ -1063,7 +1080,7 @@ class ShellGroup : public ElementGroup {
       if (in.dynamic && sc.hg_relax && !sc.hg_enhanced && type != ElType::S4) {
         double rb = 0, ra = 0;
         if (in.dt > 0) {
-          const double L2 = std::max(1.0 / std::max(BB, 1e-300), 0.92 * 4.0 * Me / std::max(n * lam, 1e-300));
+          const double L2 = std::max(1.0 / std::max(BB, 1e-300), 0.92 * std::min(4.0 * Me / std::max(n * lam, 1e-300), quad_len2));
           const double tau = 500.0 * std::sqrt(L2 * rho / Me), x = in.dt / tau;
           rb = x < 1e-3 ? x * (1.0 - x * (0.5 - x / 6.0)) : 1.0 - std::exp(-x);
           ra = 1.0 - rb / x;
