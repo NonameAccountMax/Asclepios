@@ -19,6 +19,9 @@ struct Orientation {
   std::string name;
   Mat3 R = Mat3::identity();  // rows = local axes 1, 2, 3 in global coordinates
   std::vector<Vec3> local_dirs;  // LOCAL DIRECTIONS (e.g. fibre directions), in the local axes
+  // axis of the additional rotation (second data line, default the local 1-axis): on shells and membranes the
+  // following axis in the cyclic order 1 -> 2 -> 3 -> 1 is projected onto the surface as the material 1-direction
+  int rot_axis = 1;
 };
 
 struct Amplitude {
@@ -123,6 +126,8 @@ struct Section {
   // of the hourglass modes from the physical (enhanced strain) element instead of the default 0.005 G
   double hg_scale = 1.0;
   bool hg_enhanced = false;
+  // no HOURGLASS= given: enhanced control for hyperelastic materials (the Abaqus/Explicit and Abaqus/Standard default)
+  bool hg_default = true;
   // explicit procedures: the hourglass stiffness relaxes (HOURGLASS=RELAX STIFFNESS, the Abaqus/Explicit default);
   // HOURGLASS=STIFFNESS keeps it constant
   bool hg_relax = true;
@@ -170,10 +175,10 @@ struct NodeCoupling {
   std::vector<int> rigid_elems;  // *RIGID BODY: elements moving rigidly (mass only, not evaluated)
   std::string analytic;          // *RIGID BODY, ANALYTICAL SURFACE=: surface discretised into rigid facets
 };
-// analytical rigid surface (*SURFACE, TYPE=CYLINDER): profile in the local (x, y) plane swept along local z
+// analytical rigid surface (*SURFACE, TYPE=CYLINDER): profile in the local (x, y) plane swept along the generator
 struct AnalyticSurface {
   std::string name;
-  Vec3 a, b, c;  // origin, point on local x, point in the local (x, y) plane
+  Vec3 a, b, c;  // origin, point on local x, point on the generator (local y = x cross generator)
   struct Seg { int kind; double x, y, cx, cy; };  // kind 0 START, 1 LINE, 2 CIRCL (end point, centre)
   std::vector<Seg> segs;
 };

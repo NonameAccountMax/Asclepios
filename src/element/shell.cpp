@@ -470,6 +470,8 @@ class ShellGroup : public ElementGroup {
   }
 
   bool hyper(int e) const { return mat[e]->fung || mat[e]->neohooke; }
+  // enhanced hourglass control: requested, or by default for hyperelastic materials (as Abaqus)
+  bool enhanced_hg(int e) const { return sec[e]->hg_enhanced || (sec[e]->hg_default && hyper(e)); }
   double nu_eff(int e) const { return mat[e]->elastic ? mat[e]->nu : (hyper(e) ? 0.49 : 0.3); }
 
   std::vector<double> ts_factor;  // transverse shear stiffness factor (thin elements)
@@ -546,13 +548,17 @@ class ShellGroup : public ElementGroup {
       Geo g;
       geometry(X, nen, g);
       if (g.A <= 0) throw std::runtime_error("element " + m.elem_name(ids[e]) + ": zero or negative area");
-      if (nen == 4 && (s.hg_enhanced || type == ElType::S4)) qm6_hourglass(g.xl, nu_eff(e), &khg[e * 3]);
+      if (nen == 4 && (enhanced_hg(e) || type == ElType::S4)) qm6_hourglass(g.xl, nu_eff(e), &khg[e * 3]);
       Vec3 m1 = g.e1;
       if (s.orientation >= 0) {
-        Vec3 a1 = m.orients[s.orientation].R.row(0);
+        // the axis following the axis of the additional rotation (default the local 1-axis, so the 2-axis) is
+        // projected onto the surface as the material 1-direction, the 2-direction is normal x 1 (Abaqus rule for
+        // shells and membranes)
+        const Orientation& o = m.orients[s.orientation];
+        const Vec3 a1 = o.R.row(o.rot_axis % 3);
         Vec3 p = a1 - g.e3 * dot(a1, g.e3);
-        if (norm(p) < 1e-6 * norm(a1)) {  // axis 1 normal to the shell: use axis 2 rotated
-          Vec3 a2 = m.orients[s.orientation].R.row(1);
+        if (norm(p) < 1e-6 * norm(a1)) {  // projected axis normal to the shell: the next one, turned by 90 degrees
+          const Vec3 a2 = o.R.row((o.rot_axis + 1) % 3);
           p = cross(a2 - g.e3 * dot(a2, g.e3), g.e3);
         }
         m1 = normalized(p);
@@ -873,11 +879,16 @@ class ShellGroup : public ElementGroup {
     // transverse shear of quads (edge strains): kv = stiffness of the two variations, hv = sum over the dofs of
     // (derivative^2 / nodal mass), hq = the same for the uniform shear (bounds on the element frequency)
     double kv[2] = {0, 0}, hv[2] = {0, 0}, hq = 0, hqab[3] = {0, 0, 0};
-    const double Eh = Me * (1 - nu * nu), Em = Eh * tcur, Db = Eh * tcur * tcur * tcur / 12.0;
+    // hourglass and drilling stiffnesses: modulus of the element, the initial one for hyperelastic materials (as
+    // Abaqus, "a typical value of the initial shear modulus"): incremental forces with a stiffness that follows the
+    // tangent keep a residual force when it drops and create energy (Fung leaflets relaxing after a large stretch;
+    // a total form would create it when the tangent rises)
+    const double Mhg = hyper(e) ? plane_stress_modulus(m) : Me;
+    const double Eh = Mhg * (1 - nu * nu), Em = Eh * tcur, Db = Eh * tcur * tcur * tcur / 12.0;
     if (n == 4) {
       const double r = sc.hg_scale;
       for (int I = 0; I < 4; ++I) gg += gm.gam[I] * gm.gam[I];
-      if (sc.hg_enhanced || type == ElType::S4) {  // S4 (full integration): stiffness of a physical element
+      if (enhanced_hg(e) || type == ElType::S4) {  // S4 (full integration): stiffness of a physical element
         const double f = r * (1 - nu * nu);
         kxx = kbx = f * khg[e * 3]; kyy = kby = f * khg[e * 3 + 1]; kxy = kbxy = f * khg[e * 3 + 2];
       } else {
@@ -1077,7 +1088,7 @@ class ShellGroup : public ElementGroup {
       // element, L / c_p with L^2 = max(1 / sum|B|^2, 0.92 L_m^2), L_m from the one-point membrane eigenvalue (the
       // Abaqus element increment); transverse shear does not relax (single-element Abaqus/Explicit runs)
       double hf[4] = {S.hgm[0], S.hgm[1], S.hgb[0], S.hgb[1]}, hfo[4] = {o[0], o[1], o[2], o[3]};
-      if (in.dynamic && sc.hg_relax && !sc.hg_enhanced && type != ElType::S4) {
+      if (in.dynamic && sc.hg_relax && !enhanced_hg(e) && type != ElType::S4) {
         double rb = 0, ra = 0;
         if (in.dt > 0) {
           const double L2 = std::max(1.0 / std::max(BB, 1e-300), 0.92 * std::min(4.0 * Me / std::max(n * lam, 1e-300), quad_len2));

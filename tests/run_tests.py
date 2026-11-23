@@ -92,6 +92,13 @@ def fung_membrane():
         fx = RF[3 * 1] + RF[3 * 2]; fy = RF[3 * 2 + 1] + RF[3 * 3 + 1]
         ok &= check('%s Fung biaxial, material at %g deg: sigma_xx' % (et, ang), fx / (t * l3 * l2), sxx, 2e-3)
         ok &= check('%s Fung biaxial, material at %g deg: sigma_yy' % (et, ang), fy / (t * l3 * l1), syy, 2e-3)
+    # orientation without its second line: rotation axis = local 1-axis (here in the shell plane), so the projected
+    # local 2-axis is the material 1-direction: material axes at 30 + 90 degrees
+    n = 'fung_s4r_noaxis'; fung(os.path.join(OUT, n + '.inp'), 'S4R', l1, l2, 30.0, t, rot_line=False); run(n)
+    RF = last(n, 'RF'); sxx, syy, l3 = fung_ref(l1, l2, 120.0)
+    fx = RF[3 * 1] + RF[3 * 2]; fy = RF[3 * 2 + 1] + RF[3 * 3 + 1]
+    ok &= check('S4R Fung biaxial, orientation without rotation line (axes at 120 deg): sigma_xx', fx / (t * l3 * l2), sxx, 2e-3)
+    ok &= check('S4R Fung biaxial, orientation without rotation line (axes at 120 deg): sigma_yy', fy / (t * l3 * l1), syy, 2e-3)
     return ok
 
 @case
@@ -511,7 +518,7 @@ def rigid_deck(path, kind, ccw=True):
     if kind == 'cyl':
         prof = ['START, 5., 0.', 'CIRCL, 0., 5., 0., 0.', 'CIRCL, -5., 0., 0., 0.'] if ccw else \
                ['START, -5., 0.', 'CIRCL, 0., 5., 0., 0.', 'CIRCL, 5., 0., 0., 0.']
-        d += ['*Surface, type=CYLINDER, name=CY', '0., 0., -5., 1., 0., -5.', '0., 0., -4.'] + prof
+        d += ['*Surface, type=CYLINDER, name=CY', '0., 0., -5., 1., 0., -5.', '0., 1., -5.'] + prof
         d += ['*Rigid Body, ref node=100, analytical surface=CY']
     d += ['*Nset, nset=ALL, elset=SH', '*Material, name=AL', '*Density', '2.7e-09', '*Elastic', '70000., 0.33',
           '*Initial Conditions, type=VELOCITY', 'ALL, 3, -1000.', '*Step, nlgeom=YES', '*Dynamic, Explicit', ', 0.002',

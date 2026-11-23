@@ -101,10 +101,10 @@ S4R strip pressed onto an analytical rigid cylinder (explicit)
 0.5, 5
 *Surface, type=CYLINDER, name=RCYL
 0., 0., 0., 1., 0., 0.
-0., 0., 1.
-START, 5., 0.
+0., 1., 0.
+START, -5., 0.
 CIRCL, 0., 5., 0., 0.
-CIRCL, -5., 0., 0., 0.
+CIRCL, 5., 0., 0., 0.
 *Rigid Body, ref node=52, analytical surface=RCYL
 *Amplitude, name=PRESS, definition=SMOOTH STEP
 0., 0., 0.004, 1.

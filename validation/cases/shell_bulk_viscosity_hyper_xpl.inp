@@ -38,6 +38,7 @@ Free S4R and S3R elements, compressible and nearly incompressible materials (exp
 1
 *Orientation, name=ORI, local directions=2
 1., 0., 0., 0., 1., 0.
+3, 0.
 *Shell Section, elset=P1, material=NH45
 0.1, 5
 *Shell Section, elset=P2, material=NH499

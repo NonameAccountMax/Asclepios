@@ -21,12 +21,6 @@ SMA_NOTE = ('superelastic model of Auricchio and Taylor with a smooth cubic kine
             'the reference reverts faster (martensite fraction decreasing almost in proportion to the strain, plateau '
             '6 to 24 MPa higher), which no kinetic law of the equivalent stress reproduces: reactions within 4.3 %')
 KNOWN.update({
-    'contact_analytical_cylinder': 'the strip passes through the analytical cylinder without contact in the '
-                                   'reference, whatever the orientation of the profile, the axis given by the third '
-                                   'point, the inclusion of the surface (all exterior, explicit, contact pair: the '
-                                   'pair reports initial overclosures that do not match the expected geometry); '
-                                   'asclepios reproduces the free strip (U 0.2 %, one-sided surface seen from '
-                                   'behind) but its free bending vibration differs by 19 % on the rotations',
     'mat_superelastic': SMA_NOTE,
     'mat_superelastic_xpl': SMA_NOTE,
 })
@@ -35,6 +29,10 @@ KNOWN_QUANTITIES['contact_block_on_plate'] = (['RM'], 'Total reaction moment of 
 KNOWN_QUANTITIES['crimp_rigid_plates'] = (['RM'], 'Reaction moment of the plate about its reference node not compared: '
                                           '4 N mm against a crimping force of 181 N, i.e. a contact force centred '
                                           'within 0.02 mm of the plate centre (tube held axially at one end only)')
+KNOWN_QUANTITIES['contact_analytical_cylinder'] = (['RF'], 'Reaction of the cylinder not compared: after the first '
+                                                  'impact (within 2 %) the middle of the strip chatters on the top of '
+                                                  'the cylinder with bounces of about 1 micrometre whose phase sets '
+                                                  'the averaged reaction (displacements within 0.3 %, energies 0.2 %)')
 KNOWN_QUANTITIES['contact_rigid_surface'] = (['S'], 'Stresses not compared: a flat sheet stopped uniformly by a flat '
                                                'rigid surface carries no stress in theory (0.5 to 2.5 MPa of noise in '
                                                'the reference)')
@@ -179,7 +177,7 @@ def shell_model(d, etype, conns, t, mat='STEEL', orient=None, npt=5):
     el = d.elements(etype, 'EALL', conns)
     d.materials.add(mat)
     if orient:
-        d.model += ['*Orientation, name=ORI, local directions=2', orient]
+        d.model += ['*Orientation, name=ORI, local directions=2', orient, '3, 0.']
         d.model += ['*Shell Section, elset=EALL, material=%s, orientation=ORI' % mat, '%s, %d' % (fmt(t), npt)]
     else:
         d.model += ['*Shell Section, elset=EALL, material=%s' % mat, '%s, %d' % (fmt(t), npt)]

@@ -325,7 +325,7 @@ class SolidGroup : public ElementGroup {
         fdt[e] = s.face_dt;
         // enhanced hourglass control: requested (*SECTION CONTROLS, HOURGLASS=ENHANCED) or, as the Abaqus default,
         // for hyperelastic materials
-        if (s.hg_enhanced || mat[e]->hyper()) {
+        if (s.hg_enhanced || (s.hg_default && mat[e]->hyper())) {
           const double mu0 = mat[e]->shear_modulus(), lam0 = std::max(0.0, dilatational_modulus(*mat[e]) - 2 * mu0);
           hgKi[e] = (int)(hgK.size() / 144);
           hgK.resize(hgK.size() + 144);

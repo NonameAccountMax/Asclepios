@@ -593,7 +593,7 @@ def element_features():
             if mat == 'FUNG':
                 d.model[-2] += ', orientation=ORI'
                 if '*Orientation, name=ORI, local directions=2' not in d.model:
-                    d.model[:0] = ['*Orientation, name=ORI, local directions=2', '1., 0., 0., 0., 1., 0.']
+                    d.model[:0] = ['*Orientation, name=ORI, local directions=2', '1., 0., 0., 0., 1., 0.', '3, 0.']
             for nid, (x, y) in zip(ids, corners):
                 x, y = x - cx, y - cy
                 vals = (rate * x, rate * y, 0, 0, 0, 0) if mode == 'dil' else (0, 0, 0, rate * y, -rate * x, 0)

@@ -129,6 +129,10 @@ struct GeneralContact::Impl {
   std::vector<char> tri_solid;  // exterior face of a solid: one-sided (outward normal), no thickness
   std::vector<double> tri_depth;  // solid faces: deepest penetration still detected (beyond: other side of the solid)
   std::vector<int> st_off, st;    // per node: the exterior solid facets that contain it
+  // analytical rigid surfaces: facets (first triangle of each) around each of their nodes, and the current vertex
+  // normals (mean of the facet normals: exact on an arc), interpolated over a facet as the contact normal
+  std::vector<int> an_nodes, an_off, an;
+  std::vector<Vec3> an_vn;
   // nodes of the master triangle or segment of a hit (weights w) and their number
   const int* stiff_nodes(const Hit& h, int& nm) const {
     nm = h.master >= 0 ? 3 : 2;
@@ -385,6 +389,21 @@ bool GeneralContact::define(const Step& st) {
     for (size_t t = 0; t < P.tri_h.size(); ++t)
       if (P.tri_solid[t] == 1) for (int k = 0; k < 3; ++k) P.st[cnt[P.tri[3 * t + k]]++] = (int)t;
   }
+  {
+    std::vector<std::vector<int>> lists(m.nn());
+    for (size_t t = 0; t < P.tri_h.size(); ++t) {
+      if (P.tri_solid[t] != 2 || P.fac_half[t] != 0) continue;
+      for (int k = 0; k < 4; ++k) if (P.fac[4 * t + k] >= 0) lists[P.fac[4 * t + k]].push_back((int)t);
+    }
+    P.an_off.assign(1, 0);
+    for (int n = 0; n < m.nn(); ++n) {
+      if (lists[n].empty()) continue;
+      P.an_nodes.push_back(n);
+      P.an.insert(P.an.end(), lists[n].begin(), lists[n].end());
+      P.an_off.push_back((int)P.an.size());
+    }
+    P.an_vn.assign(m.nn(), Vec3());
+  }
   P.slave_of.assign(m.nn(), -1);
   for (int n = 0; n < m.nn(); ++n)
     if (node_h[n] < 1e29) { P.slave_of[n] = (int)P.slaves.size(); P.slaves.push_back(n); P.slave_h.push_back(node_h[n]); }
@@ -504,6 +523,14 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     P.shift[n] = d;
   }
   auto Xs = [&](int n) { return X(n) + P.shift[n]; };
+  for (size_t i = 0; i < P.an_nodes.size(); ++i) {  // vertex normals of the analytical rigid surfaces
+    Vec3 s;
+    for (int j = P.an_off[i]; j < P.an_off[i + 1]; ++j) {
+      const int* tn = &P.tri[3 * P.an[j]];
+      s += normalized(cross(X(tn[1]) - X(tn[0]), X(tn[2]) - X(tn[0])));
+    }
+    P.an_vn[P.an_nodes[i]] = normalized(s);
+  }
 
   // ---- candidate search when nodes moved more than half the margin
   // (slave nodes and master-only nodes such as those of rigid facets)
@@ -733,6 +760,10 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
             h.side = 1;
             h.pen = hsum - s;
             h.n = nrm;
+            if (P.tri_solid[id] == 2) {  // analytical surface: normal of the smooth surface, from the vertex normals
+              const Vec3 ni = P.an_vn[tn[0]] * h.w[0] + P.an_vn[tn[1]] * h.w[1] + P.an_vn[tn[2]] * h.w[2];
+              if (norm(ni) > 0.5) h.n = normalized(ni);
+            }
           } else if (s < 0) {
             // behind the face plane and beyond its boundary: inside the solid only under a concave fold of its
             // surface (a node below the fold line of a face bent into a valley projects outside both triangles),

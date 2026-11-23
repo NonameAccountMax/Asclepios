@@ -807,8 +807,10 @@ def more_features():
     quads, ids = quad_plate(d, 16, 2, 32.0, 4.0, x0=(-16.0, -2.0, 5.5))
     shell(d, 'S4R', quads, 0.5, 'STEEL')
     rp = d.node(0.0, 0.0, 0.0)
-    d.model += ['*Surface, type=CYLINDER, name=RCYL', '0., 0., 0., 1., 0., 0.', '0., 0., 1.', 'START, 5., 0.',
-                'CIRCL, 0., 5., 0., 0.', 'CIRCL, -5., 0., 0., 0.', '*Rigid Body, ref node=%d, analytical surface=RCYL' % rp]
+    # generator along Y (third point): the profile plane is (X, Z), local y = x cross generator = Z; the profile runs
+    # clockwise, so that its normal (to the left) points outwards, towards the strip
+    d.model += ['*Surface, type=CYLINDER, name=RCYL', '0., 0., 0., 1., 0., 0.', '0., 1., 0.', 'START, -5., 0.',
+                'CIRCL, 0., 5., 0., 0.', 'CIRCL, 5., 0., 0., 0.', '*Rigid Body, ref node=%d, analytical surface=RCYL' % rp]
     ends = [ids[0, j] for j in range(3)] + [ids[16, j] for j in range(3)]
     d.nset('ENDS', ends)
     d.model += ['*Amplitude, name=PRESS, definition=SMOOTH STEP', '0., 0., 0.004, 1.']

@@ -39,6 +39,7 @@ S3R Fung anisotropic patch, biaxial stretch 1.15 x 1.10
 1, 5, 8
 *Orientation, name=ORI, local directions=2
 0.8660254038, 0.5, 0., -0.5, 0.8660254038, 0.
+3, 0.
 *Shell Section, elset=EALL, material=FUNG, orientation=ORI
 0.5, 5
 *Material, name=FUNG

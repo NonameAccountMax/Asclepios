@@ -102,7 +102,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   bilinear hourglass vector); hourglass stiffness of the membrane and rotation modes in Flanagan-Belytschko form
   (static: membrane 0.005 G, the documented default, rotations 0.18; explicit: instantaneous stiffnesses 0.2·G·t·A·ΣB²
   and 0.2·G·t³·A·ΣB², relaxed as for C3D8R with 500 undamped element increments), or the stiffness of an
-  incompatible-mode element with `HOURGLASS=ENHANCED`; drilling stiffness G t A t²/(24 (t² + 0.1 A)) on the rotation
+  incompatible-mode element with `HOURGLASS=ENHANCED` (the default for hyperelastic materials; their hourglass and
+  drilling stiffnesses use the initial modulus: incremental forces with a stiffness that follows the tangent would
+  create energy when it changes); drilling stiffness G t A t²/(24 (t² + 0.1 A)) on the rotation
   of each corner against the spin of the bilinear field there (static) or against the mean spin of the element
   (explicit), with a warping correction. The stable increment uses the element's membrane and bending frequencies, with the tangent modulus of the outer
   section points for hyperelastic materials: membrane, the smaller of the element eigenvalue bound and
@@ -189,10 +191,16 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   fraction still to transform follows a smooth cubic step between the start and finish thresholds (zero rate at both
   ends), integrated in closed form over each increment.
 - **Rigid surfaces** (explicit general contact): R3D4 / R3D3 elements of a rigid body are two-sided contact facets
-  without thickness; analytical surfaces (`TYPE=CYLINDER`) are cut into one-sided rigid facets (2° arcs, normal to the
-  left of the profile direction) and a node coming from behind never contacts them. Rigid facet nodes carry no mass
+  without thickness; analytical surfaces (`TYPE=CYLINDER`: local x along a-b, generator along a-c, profile in the plane
+  of x and y = x × generator) are cut into one-sided rigid facets (2° arcs, normal to the left of the profile
+  direction) and a node coming from behind never contacts them; their contact normal is interpolated from the vertex
+  normals (mean of the neighbouring facets), so that a node resting on a ridge between two facets is pushed along
+  the normal of the smooth surface. Rigid facet nodes carry no mass
   and are never slaves: the penalty follows the deformable side, and the contact forces reach the reference node
   through the rigid-body constraint (its reaction and the work of its prescribed motion).
+- **Orientations on shells**: the axis that follows the axis of the additional rotation in the order 1 → 2 → 3 (with
+  the default rotation axis, the local 2-axis) is projected onto the surface as the material 1-direction, the
+  2-direction is the normal × 1.
 - **Implicit dynamics** (`*DYNAMIC`): HHT-α integration in the Newton driver, lumped masses with the physical rotary
   inertia of shells (m t²/12, not the explicit stability scaling), initial accelerations from equilibrium, mass
   proportional damping, loads applied at once by default (STEP), increments growing by 1.5 after each fast increment;
@@ -292,13 +300,12 @@ Features exercised by the validation suite and not supported yet:
 
 Accuracy and performance:
 
-- Shells: drilling rotations and element stresses of static in-plane problems; S3 is read but computed with the S3R
-  formulation.
+- Shells: drilling rotations and element stresses of static in-plane problems.
 - Dynamics: beam-to-solid impact (displacements within 11 %, stresses 15 %); beam-to-shell impact
   (reactions within 14 %, energy 6 %, beam end rotations 13 %); a shell sheet dropped
   on a beam stops like the reference at the first contact increment, then its contact force stays up to 25 % lower; self-contact of a coiled strip (first contact within 7 %; the later chatter of the coil on the clamped edge, which
-  goes straight into the reactions, is not compared); stability of thin Fung shells closing face to face with contact (valve model: the leaflets bend after the contact
-  where the reference stays nearly flat, then the rotations diverge).
+  goes straight into the reactions, is not compared); thin Fung leaflets flapping under pressure (valve model: same response up to 2.4 ms, then the corner next to the
+  clamped annulus and the later flapping differ).
 - Performance: vectorisation of the constitutive updates; parallel linear solver for the implicit procedure (speed-up
   1.4 on 8 threads); fewer threads on small models (OpenMP overhead).
 

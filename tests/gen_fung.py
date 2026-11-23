@@ -5,13 +5,15 @@ FUNG_MAT = ('*Anisotropic Hyperelastic, fung-anisotropic, local directions=2\n'
          '8.00000, 0.00000, 100.000, 0.00000, 0.00000, 8.00000, 0.00000, 0.00000\n'
          '0.00000, 12.0000, 0.00000, 0.00000, 0.00000, 0.00000, 8.00000, 0.00000\n'
          '0.00000, 0.00000, 0.00000, 0.00000, 12.0000, 2.00E-05, 2.00E-05\n')
-def fung(path, etype='S4R', l1=1.15, l2=1.10, ang=0.0, t=0.5, static=True):
+def fung(path, etype='S4R', l1=1.15, l2=1.10, ang=0.0, t=0.5, static=True, rot_line=True):
+    # rot_line=False: no second orientation line, the rotation axis is the local 1-axis (in the shell plane) and the
+    # projected local 2-axis gives the material 1-direction (material axes at ang + 90 degrees)
     c, s = math.cos(math.radians(ang)), math.sin(math.radians(ang))
     with open(path, 'w') as f:
         f.write('*Heading\nFung patch\n*Node\n1, 0., 0., 0.\n2, 1., 0., 0.\n3, 1., 1., 0.\n4, 0., 1., 0.\n')
         f.write(f'*Element, type={etype}, elset=P\n')
         f.write('1, 1, 2, 3, 4\n' if etype == 'S4R' else '1, 1, 2, 3\n2, 1, 3, 4\n')
-        f.write(f'*Orientation, name=OR, local directions=2\n{c:.12f}, {s:.12f}, 0., {-s:.12f}, {c:.12f}, 0.\n')
+        f.write(f'*Orientation, name=OR, local directions=2\n{c:.12f}, {s:.12f}, 0., {-s:.12f}, {c:.12f}, 0.\n' + ('3, 0.\n' if rot_line else ''))
         f.write(f'*Shell Section, elset=P, material=M, orientation=OR\n{t}, 5\n')
         f.write('*Material, name=M\n' + FUNG_MAT + '*Density\n1.06e-9\n')
         f.write('*Amplitude, name=R\n0., 0., 1., 1.\n')

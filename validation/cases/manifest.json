@@ -9611,10 +9611,12 @@
    "E": 0.15
   },
   "analysis": "nonlinear",
-  "known": "the strip passes through the analytical cylinder without contact in the reference, whatever the orientation of the profile, the axis given by the third point, the inclusion of the surface (all exterior, explicit, contact pair: the pair reports initial overclosures that do not match the expected geometry); asclepios reproduces the free strip (U 0.2 %, one-sided surface seen from behind) but its free bending vibration differs by 19 % on the rotations",
+  "known": null,
   "reference": "abaqus",
-  "known_quantities": [],
-  "known_quantities_note": null,
+  "known_quantities": [
+   "RF"
+  ],
+  "known_quantities_note": "Reaction of the cylinder not compared: after the first impact (within 2 %) the middle of the strip chatters on the top of the cylinder with bounces of about 1 micrometre whose phase sets the averaged reaction (displacements within 0.3 %, energies 0.2 %)",
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,

@@ -212,7 +212,7 @@ class Builder {
   std::map<std::string, std::pair<size_t, size_t>> parts;  // name -> [first card, end card)
   std::unordered_map<std::string, int> node_key, elem_key;
   std::vector<PendingSection> pend_sections;
-  struct ControlsCard { double hg_scale = 1.0; bool enhanced = false, face_dt = true, relax = true; };
+  struct ControlsCard { double hg_scale = 1.0; bool enhanced = false, face_dt = true, relax = true, hg_given = false; };
   std::map<std::string, ControlsCard> section_controls;  // *SECTION CONTROLS by name
   std::set<std::string> warned;
   int cur_material = -1;
@@ -424,7 +424,7 @@ class Builder {
       as.name = s.name;
       size_t r = 0;
       auto num = [&](const std::vector<std::string>& d, size_t i) { return i < d.size() && !trim(d[i]).empty() ? to_double(d[i], &c) : 0.0; };
-      as.a = Vec3(0, 0, 0); as.b = Vec3(1, 0, 0); as.c = Vec3(0, 1, 0);
+      as.a = Vec3(0, 0, 0); as.b = Vec3(1, 0, 0); as.c = Vec3(0, 0, 1);
       if (r < c.data.size() && !c.data[r].empty() && is_number(trim(c.data[r][0]))) {
         const auto& d = c.data[r++];
         as.a = Vec3(num(d, 0), num(d, 1), num(d, 2)); as.b = Vec3(num(d, 3), num(d, 4), num(d, 5));
@@ -504,6 +504,10 @@ class Builder {
         const auto& d2 = c.data[2 + k];
         if (d2.size() < 3) continue;
         o.local_dirs.push_back(normalized(Vec3(to_double(d2[0]), to_double(d2[1]), to_double(d2[2]))));
+      }
+      if (c.data.size() > 1 && !c.data[1].empty() && !trim(c.data[1][0]).empty()) {
+        const int ax0 = to_int(c.data[1][0]);
+        if (ax0 >= 1 && ax0 <= 3) o.rot_axis = ax0;
       }
       if (c.data.size() > 1 && c.data[1].size() >= 2 && !c.data[1][1].empty()) {
         int ax = to_int(c.data[1][0]);
@@ -1158,6 +1162,7 @@ class Builder {
         cc.hg_scale = s;
         const std::string hg = c.getu("HOURGLASS");
         cc.enhanced = hg == "ENHANCED";
+        cc.hg_given = !hg.empty();
         cc.relax = hg.empty() || hg == "RELAX STIFFNESS";
         if (hg == "VISCOUS" || hg == "COMBINED") warn_once("HGCTRL" + hg, "*SECTION CONTROLS: HOURGLASS=" + hg + " not supported, relaxed stiffness used");
         cc.face_dt = c.getu("IMPROVED DT METHOD") != "NO";
@@ -1284,10 +1289,14 @@ class Builder {
   // z axis times the profile direction (to the left of the direction of travel along the profile)
   void facet_analytic_surface(NodeCoupling& cp) {
     const AnalyticSurface& as = m.analytic_surfaces.at(cp.analytic);
+    // local x along a-b, generator along a-c; the profile lies in the plane of x and y = x cross generator (with the
+    // generator along global Z, y points to -Y: Abaqus/Explicit reports initial overclosures of a clockwise
+    // half-circle profile for the nodes inside it with y <= 0 only)
     const Vec3 ex = normalized(as.b - as.a);
-    Vec3 ey = as.c - as.a;
-    ey = normalized(ey - ex * dot(ey, ex));
-    const Vec3 ez = cross(ex, ey);
+    Vec3 gen = as.c - as.a;
+    gen = normalized(gen - ex * dot(gen, ex));
+    const Vec3 ey = normalized(cross(ex, gen));
+    const Vec3 ez = cross(ex, ey);  // = -generator: facet normals ez x tangent, to the left of the profile
     std::vector<std::pair<double, double>> prof;
     for (const auto& g : as.segs) {
       if (g.kind == 0) { prof.push_back({g.x, g.y}); continue; }
@@ -1363,6 +1372,7 @@ class Builder {
         const ControlsCard& cc = section_controls[p.controls_name];
         s.hg_scale = cc.hg_scale;
         s.hg_enhanced = cc.enhanced;
+        s.hg_default = !cc.hg_given;
         s.hg_relax = cc.relax;
         s.face_dt = cc.face_dt;
       }
