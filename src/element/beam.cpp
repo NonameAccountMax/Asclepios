@@ -162,6 +162,15 @@ class BeamGroup : public ElementGroup {
     mr[0] = mr[1] = irot[e];
   }
 
+  // Abaqus/Explicit damps the rotations of beams with the exact (default) rotary inertia isotropically, with the
+  // inertia about the weaker bending axis, rho L / 2 min(I11, I22), not with the anisotropic tensor (clamped B31 in
+  // torsion, sections RECT 2:1 and 4:1 and CIRC: decay rate alpha min(I11, I22) / (I11 + I22))
+  void damping_rotary(int e, const double* mr, double* mrd) const override {
+    if (sec[e]->rotary_isotropic) { mrd[0] = mr[0]; mrd[1] = mr[1]; return; }
+    const SectionProps& P = props[pidx[e]];
+    mrd[0] = mrd[1] = mat[e]->density * L0[e] / 2 * std::min(P.I11, P.I22);
+  }
+
   bool rotary_tensor(int e, const double* x, double* J6) const override {
     if (sec[e]->rotary_isotropic) return false;
     const SectionProps& P = props[pidx[e]];

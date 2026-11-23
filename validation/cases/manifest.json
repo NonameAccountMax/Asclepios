@@ -5559,6 +5559,92 @@
   "deferred": false
  },
  {
+  "name": "xpl_damping_alpha_torsion",
+  "category": "feature",
+  "group": "explicit",
+  "procedure": "explicit",
+  "element": "B31",
+  "mode": "Rayleigh damping (alpha), exact rotary inertia",
+  "description": "Cantilever under a suddenly applied tip torque: torsional vibration (rotational dofs only) damped by mass-proportional damping.",
+  "mon": [
+   6,
+   11
+  ],
+  "fix": [
+   1
+  ],
+  "mone": [
+   1,
+   6,
+   10
+  ],
+  "mone_type": "B31",
+  "rot": true,
+  "tol": {
+   "U": 0.06,
+   "RF": 0.1,
+   "S": 0.12,
+   "E": 0.06
+  },
+  "analysis": "nonlinear",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [
+   "U",
+   "S"
+  ],
+  "known_quantities_note": "Displacements and axial forces not compared: second-order axial response of a twisted bar (strains of 1e-9, 2e-7 mm and 2e-3 N in the reference), at the level of the numerical noise",
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": null,
+  "energies": null,
+  "deferred": false
+ },
+ {
+  "name": "xpl_damping_alpha_torsion_iso",
+  "category": "feature",
+  "group": "explicit",
+  "procedure": "explicit",
+  "element": "B31",
+  "mode": "Rayleigh damping (alpha), isotropic rotary inertia",
+  "description": "Cantilever under a suddenly applied tip torque: torsional vibration (rotational dofs only) damped by mass-proportional damping.",
+  "mon": [
+   6,
+   11
+  ],
+  "fix": [
+   1
+  ],
+  "mone": [
+   1,
+   6,
+   10
+  ],
+  "mone_type": "B31",
+  "rot": true,
+  "tol": {
+   "U": 0.06,
+   "RF": 0.1,
+   "S": 0.12,
+   "E": 0.06
+  },
+  "analysis": "nonlinear",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [
+   "U",
+   "S"
+  ],
+  "known_quantities_note": "Displacements and axial forces not compared: second-order axial response of a twisted bar (strains of 1e-9, 2e-7 mm and 2e-3 N in the reference), at the level of the numerical noise",
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": null,
+  "energies": null,
+  "deferred": false
+ },
+ {
   "name": "std_riks",
   "category": "feature",
   "group": "standard",
@@ -15434,6 +15520,50 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "xpl_damping_alpha",
+  "literature": null,
+  "energies": null,
+  "deferred": false
+ },
+ {
+  "name": "xpl_damping_alpha_torsion_std",
+  "category": "feature",
+  "group": "explicit",
+  "procedure": "implicit dynamic",
+  "element": "B31",
+  "mode": "Rayleigh damping (alpha), exact rotary inertia",
+  "description": "Cantilever under a suddenly applied tip torque: torsional vibration (rotational dofs only) damped by mass-proportional damping.",
+  "mon": [
+   6,
+   11
+  ],
+  "fix": [
+   1
+  ],
+  "mone": [
+   1,
+   6,
+   10
+  ],
+  "mone_type": "B31",
+  "rot": true,
+  "tol": {
+   "U": 0.06,
+   "RF": 0.1,
+   "S": 0.12,
+   "E": 0.06
+  },
+  "analysis": "implicit dynamic",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [
+   "U",
+   "S",
+   "RM"
+  ],
+  "known_quantities_note": "Displacements and axial forces not compared: second-order axial response of a twisted bar (strains of 1e-9, 2e-7 mm and 2e-3 N in the reference), at the level of the numerical noise; reaction moment not compared: its first frame (4e-5 s, four increments after the suddenly applied torque) carries the wave front, set by the start-up increments (106 in the reference, 104 here); later frames within 1 %",
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": "xpl_damping_alpha_torsion",
   "literature": null,
   "energies": null,
   "deferred": false

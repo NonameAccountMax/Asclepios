@@ -1,0 +1,64 @@
+*Heading
+B31 cantilever, sudden tip torque, mass-proportional damping (alpha = 2000 /s), exact rotary inertia
+*Node
+1, 0., 0., 0.
+2, 10, 0., 0.
+3, 20, 0., 0.
+4, 30, 0., 0.
+5, 40, 0., 0.
+6, 50, 0., 0.
+7, 60, 0., 0.
+8, 70, 0., 0.
+9, 80, 0., 0.
+10, 90, 0., 0.
+11, 100, 0., 0.
+*Element, type=B31, elset=EALL
+1, 1, 2
+2, 2, 3
+3, 3, 4
+4, 4, 5
+5, 5, 6
+6, 6, 7
+7, 7, 8
+8, 8, 9
+9, 9, 10
+10, 10, 11
+*Nset, nset=MON
+6, 11
+*Nset, nset=FIX
+1
+*Elset, elset=EALL
+1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+*Elset, elset=MONE
+1, 6, 10
+*Beam Section, elset=EALL, material=STEEL_DAMP2K, section=CIRC
+0.8
+0., 0., -1.
+*Material, name=STEEL_DAMP2K
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Damping, alpha=2000.
+*Step, name=Twist, nlgeom=YES
+*Dynamic, Explicit
+, 0.001
+*Boundary
+FIX, ENCASTRE
+*Cload
+11, 4, 10.
+*Output, field, number interval=50
+*Node Output
+U, RF, UR, RM, V
+*Element Output, elset=MONE
+SF
+*Output, history, variable=PRESELECT, time interval=5e-06
+*Output, history, time interval=5e-06
+*Incrementation Output
+DT, DMASS
+*Output, history, frequency=1
+*Node Output, nset=FIX
+RF1, RF2, RF3
+*Node Output, nset=MON
+U1, U2, U3, UR1, UR2, UR3
+*End Step

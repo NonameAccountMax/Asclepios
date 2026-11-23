@@ -39,6 +39,15 @@ KNOWN_QUANTITIES['contact_rigid_surface'] = (['S'], 'Stresses not compared: a fl
 KNOWN_QUANTITIES['b31_vibration_std'] = (['S'], 'Axial force not compared: second order in this bending vibration '
                                          '(2e-4 N), set by the high-frequency axial modes that the numerical '
                                          'dissipation of the implicit integration damps according to the increments')
+TORSION_UNOTE = ('Displacements and axial forces not compared: second-order axial response of a twisted bar (strains '
+                 'of 1e-9, 2e-7 mm and 2e-3 N in the reference), at the level of the numerical noise')
+for _n in ('xpl_damping_alpha_torsion', 'xpl_damping_alpha_torsion_iso'):
+    KNOWN_QUANTITIES[_n] = (['U', 'S'], TORSION_UNOTE)
+KNOWN_QUANTITIES['xpl_damping_alpha_torsion_std'] = (['U', 'S', 'RM'], TORSION_UNOTE + '; reaction moment not compared: '
+                                                     'its first frame (4e-5 s, four increments after the suddenly '
+                                                     'applied torque) carries the wave front, set by the start-up '
+                                                     'increments (106 in the reference, 104 here); later frames '
+                                                     'within 1 %')
 KNOWN_QUANTITIES['symmetry_bcs_xpl'] = (['RM'], 'Reaction moments not compared: the corner nodes carry both the clamping '
                                         'and the symmetry conditions')
 S3R_XPL_RM = ('Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit '

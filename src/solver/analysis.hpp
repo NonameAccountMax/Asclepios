@@ -1,5 +1,6 @@
 // Shared analysis state for the explicit and implicit drivers.
 #pragma once
+#include <cmath>
 #include <map>
 #include <memory>
 #include <set>
@@ -52,6 +53,28 @@ struct Analysis {
   std::vector<double> u, v, a, du;                // 6nn
   std::vector<double> fint, fext, fcon, rf;       // 6nn
   std::vector<double> mt, mr, cdamp;              // nn masses, rotary inertia, alpha*m
+  // mass proportional damping of the rotational dofs, isotropic: alpha times the rotary inertia of
+  // ElementGroup::damping_rotary (the lumped one, except for beams with the exact anisotropic inertia)
+  std::vector<double> cdamp_r;                    // nn
+  std::vector<double> cdamp_rl;                   // nn, alpha times the lumped rotary inertia mr
+  double alpha_max = 0;                           // largest alpha of the model (stable increment)
+  // diagonal damping coefficient of dof i (6 n + k)
+  // implicit dynamics (Abaqus/Standard): alpha times the whole rotary inertia, anisotropic part included (diagonal)
+  double damp_coef(int i, bool implicit = false) const {
+    const int n = i / 6, k = i % 6;
+    if (k < 3) return cdamp[n];
+    if (!implicit) return cdamp_r[n];
+    double c = cdamp_rl[n];
+    if (node_aniso[n] && mt[n] > 0) c += cdamp[n] / mt[n] * jrot[6 * (size_t)n + k - 3];
+    return c;
+  }
+  // mass proportional damping moments of node n for the angular velocity w
+  void rotary_damping(int n, const double* w, double* m) const;
+  // reduction of the stable increment by the damping of the highest mode: xi = alpha / (2 w_max), w_max = 2 / dt
+  double damped_dt(double dt) const {
+    const double xi = 0.25 * alpha_max * dt;
+    return xi > 0 ? dt * (std::sqrt(1 + xi * xi) - xi) : dt;
+  }
   std::vector<double> temp, temp_prev, fv1;       // nn
   std::vector<char> node_rot;                     // node carries rotational stiffness/inertia
   // anisotropic rotary inertia (beams with the default exact inertia): per node symmetric tensor (xx, yy, zz, xy,

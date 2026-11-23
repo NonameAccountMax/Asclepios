@@ -30,6 +30,7 @@ MATERIALS = {
     'SOFT7': '*Material, name=SOFT7\n*Density\n7.85e-09\n*Elastic\n7000., 0.33\n',
     'LIGHT7': '*Material, name=LIGHT7\n*Density\n7.85e-10\n*Elastic\n70000., 0.33\n',
     'STEEL_DAMP': '*Material, name=STEEL_DAMP\n*Density\n7.85e-09\n*Elastic\n210000., 0.3\n*Damping, alpha=200.\n',
+    'STEEL_DAMP2K': '*Material, name=STEEL_DAMP2K\n*Density\n7.85e-09\n*Elastic\n210000., 0.3\n*Damping, alpha=2000.\n',
     'STEEL_TDEP': ('*Material, name=STEEL_TDEP\n*Density\n7.85e-09\n*Elastic\n210000., 0.3, 0.\n150000., 0.3, 200.\n'
                    '*Expansion\n1.2e-05\n'),
     'MOONEY': '*Material, name=MOONEY\n*Density\n1.1e-09\n*Hyperelastic, mooney-rivlin\n0.3, 0.2, 0.04\n',

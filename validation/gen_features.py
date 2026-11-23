@@ -958,6 +958,21 @@ def explicit_features():
              'vibration damped by mass-proportional damping.', [ids[4, 4], ids[2, 2]], edge, True, 'dynamic',
              category='feature', group='explicit')
 
+    # torsion of a beam moves only the rotational dofs: the damping must act on the rotary inertia as well. Circular
+    # section (torsion constant exact in both codes). Default exact inertia: Abaqus damps with rho L / 2 min(I11, I22),
+    # half the polar inertia here; ROTARY INERTIA=ISOTROPIC: with the isotropic inertia itself
+    for name, opt, what in (('xpl_damping_alpha_torsion', '', 'exact rotary inertia'),
+                            ('xpl_damping_alpha_torsion_iso', ', rotary inertia=ISOTROPIC', 'isotropic rotary inertia')):
+        d = Deck(name, 'B31 cantilever, sudden tip torque, mass-proportional damping (alpha = 2000 /s), ' + what)
+        segs, ids = beam_line(d, 10, 100.0)
+        beam(d, segs, 'CIRC' + opt, '0.8', mat='STEEL_DAMP2K')
+        d.steps += explicit_step('Twist', 1e-3, ['*Boundary', 'FIX, ENCASTRE', '*Cload', '%d, 4, 10.' % ids[-1]],
+                                 rot=True, nframes=50)
+        register(d, 'explicit', 'B31', 'Rayleigh damping (alpha), ' + what, 'Cantilever under a suddenly applied tip '
+                 'torque: torsional vibration (rotational dofs only) damped by mass-proportional damping.',
+                 [ids[-1], ids[5]], [ids[0]], True, 'dynamic', category='feature', group='explicit',
+                 twin=not opt)
+
 
 def standard_features():
     d = Deck('std_riks', 'Shallow B31 arch, snap-through under an apex load (arc-length method)')

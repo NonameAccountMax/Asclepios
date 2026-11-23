@@ -60,7 +60,7 @@ OutputWriter::OutputWriter(Analysis& A, const std::string& job) : A_(A), job_(jo
   dir_ = job + "_vtk";
   mkdir(dir_.c_str(), 0755);
   hist_ = std::fopen((job + "_history.csv").c_str(), "w");
-  if (hist_) std::fprintf(hist_, "step,increment,step_time,total_time,dt,ALLKE,ALLIE,ALLWK,ALLVD,ALLPD,ALLAE,ALLDMD,ALLFD,ALLCW,ETOTAL\n");
+  if (hist_) std::fprintf(hist_, "step,increment,step_time,total_time,dt,ALLKE,ALLIE,ALLWK,ALLVD,ALLPD,ALLAE,ALLDMD,ALLFD,ALLMW,ETOTAL\n");
   sta_ = std::fopen((job + ".sta").c_str(), "w");
 }
 
@@ -119,7 +119,8 @@ void OutputWriter::history(int step, int inc, double st, double tt, double dt, d
   if (!hist_) return;
   const Energies& E = A_.en;
   std::fprintf(hist_, "%d,%d,%.9g,%.9g,%.6g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", step + 1, inc, st, tt, dt, ke,
-               E.internal, E.external, E.viscous, E.plastic, E.artificial, E.damping, E.friction, E.mass_scaling_work,
+               // ALLVD: bulk viscosity, contact damping and Rayleigh damping (as Abaqus); ALLDMD: no damage model
+               E.internal, E.external, E.viscous + E.damping, E.plastic, E.artificial, 0.0, E.friction, E.mass_scaling_work,
                E.total(ke));
   std::fflush(hist_);
 }

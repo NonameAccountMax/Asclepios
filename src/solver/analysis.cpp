@@ -33,7 +33,7 @@ void Analysis::setup() {
   for (int i = 0; i < nn; ++i) store3(&X[3 * i], m.X[i]);
   u.assign(6 * nn, 0); v.assign(6 * nn, 0); a.assign(6 * nn, 0); du.assign(6 * nn, 0);
   fint.assign(6 * nn, 0); fext.assign(6 * nn, 0); fcon.assign(6 * nn, 0); rf.assign(6 * nn, 0);
-  mt.assign(nn, 0); mr.assign(nn, 0); cdamp.assign(nn, 0);
+  mt.assign(nn, 0); mr.assign(nn, 0); cdamp.assign(nn, 0); cdamp_r.assign(nn, 0); cdamp_rl.assign(nn, 0);
   temp.assign(nn, 0); temp_prev.assign(nn, 0); fv1.assign(nn, 0);
   fixed.assign(6 * nn, 0);
   node_rot.assign(nn, 0);
@@ -97,18 +97,24 @@ void Analysis::lump_masses() {
   std::fill(mt.begin(), mt.end(), 0.0);
   std::fill(mr.begin(), mr.end(), 0.0);
   std::fill(cdamp.begin(), cdamp.end(), 0.0);
+  std::fill(cdamp_r.begin(), cdamp_r.end(), 0.0);
+  std::fill(cdamp_rl.begin(), cdamp_rl.end(), 0.0);
+  alpha_max = 0;
   for (auto& gp : groups) {
     auto& G = *gp;
-    std::vector<double> Xe(3 * G.nen), me(G.nen), mre(G.nen);
+    std::vector<double> Xe(3 * G.nen), me(G.nen), mre(G.nen), mrd(G.nen);
     for (int e = 0; e < G.size(); ++e) {
       for (int I = 0; I < G.nen; ++I) for (int k = 0; k < 3; ++k) Xe[3 * I + k] = X[3 * G.conn[e * G.nen + I] + k];
       G.mass(e, Xe.data(), me.data(), mre.data());
       double al = G.alpha_damping(e);
+      if (al != 0) G.damping_rotary(e, mre.data(), mrd.data());
+      alpha_max = std::max(alpha_max, al);
       for (int I = 0; I < G.nen; ++I) {
         int n = G.conn[e * G.nen + I];
         mt[n] += me[I] * G.msf[e];
         mr[n] += mre[I] * G.msf[e];
         cdamp[n] += al * me[I] * G.msf[e];
+        if (al != 0) { cdamp_r[n] += al * mrd[I] * G.msf[e]; cdamp_rl[n] += al * mre[I] * G.msf[e]; }
       }
     }
   }
@@ -174,6 +180,10 @@ void Analysis::rotary_accelerations(int n, const double* r, const double* w, dou
     for (int j = 0; j < 3; ++j) ja += J.m[i][j] * (fixed[6 * n + 3 + j] ? 0.0 : xa[j]);
     react[i] = fx ? -(rhs[i] - ja) : 0.0;
   }
+}
+
+void Analysis::rotary_damping(int n, const double* w, double* m) const {
+  for (int k = 0; k < 3; ++k) m[k] = cdamp_r[n] * w[k];
 }
 
 double Analysis::rotary_energy(int n, const double* w) const {
@@ -476,7 +486,7 @@ void Analysis::save_state(BinOut& o) const {
   o.tag("analysis");
   o.pod(nn);
   o.vec(u); o.vec(v); o.vec(a); o.vec(du); o.vec(fint); o.vec(fext); o.vec(fcon); o.vec(rf);
-  o.vec(mt); o.vec(mr); o.vec(cdamp); o.vec(temp); o.vec(temp_prev); o.vec(fv1); o.vec(fixed);
+  o.vec(mt); o.vec(mr); o.vec(cdamp); o.vec(cdamp_r); o.vec(cdamp_rl); o.pod(alpha_max); o.vec(temp); o.vec(temp_prev); o.vec(fv1); o.vec(fixed);
   o.vec(loads.bcs); o.vec(loads.cloads); o.vec(loads.temps); o.vec(loads.fields); o.vec(loads.press);
   o.pod(loads.ramp); o.pod(loads.period);
   o.pod(en); o.pod(total_time); o.pod(total_increments); o.pod(nlgeom);
@@ -492,7 +502,7 @@ void Analysis::load_state(BinIn& in) {
   in.pod(n);
   if (n != nn) throw std::runtime_error("restart file: node count differs from the model");
   in.vec(u); in.vec(v); in.vec(a); in.vec(du); in.vec(fint); in.vec(fext); in.vec(fcon); in.vec(rf);
-  in.vec(mt); in.vec(mr); in.vec(cdamp); in.vec(temp); in.vec(temp_prev); in.vec(fv1); in.vec(fixed);
+  in.vec(mt); in.vec(mr); in.vec(cdamp); in.vec(cdamp_r); in.vec(cdamp_rl); in.pod(alpha_max); in.vec(temp); in.vec(temp_prev); in.vec(fv1); in.vec(fixed);
   in.vec(loads.bcs); in.vec(loads.cloads); in.vec(loads.temps); in.vec(loads.fields); in.vec(loads.press);
   in.pod(loads.ramp); in.pod(loads.period);
   in.pod(en); in.pod(total_time); in.pod(total_increments); in.pod(nlgeom);

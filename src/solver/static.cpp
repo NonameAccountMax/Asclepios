@@ -122,7 +122,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     A.eval_elements(0.0, 0, 0, false, false, A.fint);
     A.external_forces(0.0, A.total_time, A.fext);
     std::vector<double> r0(6 * nn), m0 = mdof;
-    for (int i = 0; i < 6 * nn; ++i) r0[i] = A.fext[i] - A.fint[i] - (i % 6 < 3 ? A.cdamp[i / 6] * A.v[i] : 0.0);
+    for (int i = 0; i < 6 * nn; ++i) r0[i] = A.fext[i] - A.fint[i] - A.damp_coef(i, true) * A.v[i];
     A.gather_links(r0);
     for (const auto& L : A.links)
       for (int t = L.first; t < L.first + L.count; ++t) m0[A.link_terms[t].dof] += A.link_terms[t].mc * mdof[L.dof];
@@ -193,7 +193,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
         for (int i = 0; i < 6 * nn; ++i) {
           const double an = (A.du[i] - dt * A.v[i] - dt * dt * (0.5 - hb) * A.a[i]) / (hb * dt * dt);
           const double vn = A.v[i] + dt * ((1 - hg) * A.a[i] + hg * an);
-          const double c = i % 6 < 3 ? A.cdamp[i / 6] : 0.0;
+          const double c = A.damp_coef(i, true);
           R[i] = (1 + ha) * (A.fext[i] - A.fint[i]) - ha * (fext0[i] - fint0[i]) - c * ((1 + ha) * vn - ha * A.v[i]);
           inert[i] = (i % 6 < 3 ? A.mt[i / 6] : A.mr[i / 6] + (A.node_aniso[i / 6] ? A.jrot[6 * (size_t)(i / 6) + i % 6 - 3] : 0.0)) * an;
         }
@@ -270,7 +270,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
         for (auto& tr : trip) tr = Eigen::Triplet<double>(tr.row(), tr.col(), (1 + ha) * tr.value());
         for (int i = 0; i < 6 * nn; ++i) {
           if (dm.eq[i] < 0) continue;
-          const double c = i % 6 < 3 ? A.cdamp[i / 6] : 0.0;
+          const double c = A.damp_coef(i, true);
           trip.push_back({dm.eq[i], dm.eq[i], mdof[i] / (hb * dt * dt) + (1 + ha) * hg / (hb * dt) * c});
         }
       }
@@ -330,7 +330,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       for (int i = 0; i < 6 * nn; ++i) {
         const double an = (A.du[i] - dt * A.v[i] - dt * dt * (0.5 - hb) * A.a[i]) / (hb * dt * dt);
         const double vn = A.v[i] + dt * ((1 - hg) * A.a[i] + hg * an);
-        const double c = i % 6 < 3 ? A.cdamp[i / 6] : 0.0;
+        const double c = A.damp_coef(i, true);
         dWd += c * 0.5 * (vn + A.v[i]) * A.du[i];
         A.a[i] = an; A.v[i] = vn;
       }

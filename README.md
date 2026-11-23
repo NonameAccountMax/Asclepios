@@ -55,8 +55,8 @@ Output files:
 - `<job>.pvd` and `<job>_vtk/*.vtu` for ParaView: U, V, RF, UR, NT11 at nodes; S_Mises, S11…S23, PEEQ,
   LE_max, STH, SF per element (shell stresses in the local shell axes: the section orientation if any, otherwise the
   projection of the global x axis on the surface, rotating with the element);
-- `<job>_history.csv`: energies ALLKE, ALLIE, ALLWK, ALLVD (bulk viscosity and contact damping), ALLPD, ALLAE,
-  ALLDMD, ALLFD, ETOTAL;
+- `<job>_history.csv`: energies ALLKE, ALLIE, ALLWK, ALLVD (bulk viscosity, contact damping and Rayleigh mass
+  damping), ALLPD, ALLAE, ALLDMD (0: no damage model), ALLFD, ALLMW (work of the mass added by mass scaling), ETOTAL;
 - `<job>.sta` (progress) and `<job>.dat` (messages).
 
 Diagnostics on stderr: `ABQ_TRACE_NODE=Inst.123` (node state at each increment), `ABQ_TRACE_ELEM=<id>`
@@ -82,7 +82,10 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   reactions written at increment 0 include the linear bulk viscosity of the initial velocities (on the
   stable-increment length). Field frames are written at the end of the first increment past each output time; with
   `TIME MARKS=YES` the output times are reached exactly, the increments before each of them being made equal (the
-  remainder spread over up to 10 increments).
+  remainder spread over up to 10 increments). Rayleigh mass damping (`*DAMPING, ALPHA`) acts on the translations
+  and on the rotations: α times the lumped mass and rotary inertia, except for beams with the default exact
+  (anisotropic) rotary inertia, whose rotations are damped isotropically with ρL/2·min(I11, I22); its damping of
+  the highest mode, ξ = α·Δt/4, reduces the increment.
 - **C3D8R hourglass control**: Flanagan-Belytschko vectors. Explicit procedures: relaxed stiffness (`RELAX STIFFNESS`,
   the default), a standard linear solid on each mode: instantaneous stiffness 8/15·G·V·Σ|∇N|² on the current
   shape of the brick, long-term 0.1 of it, relaxation of the generalized hourglass strains with a time of 1000
@@ -203,7 +206,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   2-direction is the normal × 1.
 - **Implicit dynamics** (`*DYNAMIC`): HHT-α integration in the Newton driver, lumped masses with the physical rotary
   inertia of shells (m t²/12, not the explicit stability scaling), initial accelerations from equilibrium, mass
-  proportional damping, loads applied at once by default (STEP), increments growing by 1.5 after each fast increment;
+  proportional damping (rotations with the whole rotary inertia, beams included), loads applied at once by default (STEP), increments growing by 1.5 after each fast increment;
   the reactions are those of the HHT-weighted equilibrium, (1 + α) f(t_{n+1}) − α f(t_n), as Abaqus/Standard reports
   them.
 - **Static implicit**: Newton-Raphson; element tangents by central finite differences of the internal force

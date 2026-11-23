@@ -59,6 +59,10 @@ class ElementGroup {
   virtual void setup(const Model& m) = 0;
   // lumped translational mass and isotropic rotary inertia per element node (unscaled density)
   virtual void mass(int e, const double* X, double* mt, double* mr) const = 0;
+  // rotary inertia per element node that mass proportional damping (alpha) multiplies; default: the lumped one, mr
+  virtual void damping_rotary(int e, const double* mr, double* mrd) const {
+    for (int I = 0; I < nen; ++I) mrd[I] = mr[I];
+  }
   // anisotropic rotary inertia, added to the isotropic part of mass(): symmetric tensor (xx, yy, zz, xy, xz, yz)
   // carried by every node of element e in the current configuration (x: current nodal coordinates), unscaled
   // density. Returns false when the element has none.

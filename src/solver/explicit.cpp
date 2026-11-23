@@ -321,7 +321,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     inc = 0;
     dt_el = fresh.dt_min;
     crit = fresh.dt_elem;
-    dt = st.fixed_dt && st.user_dt > 0 ? st.user_dt : dt_el * std::min(1.0, st.dt_scale);
+    dt = st.fixed_dt && st.user_dt > 0 ? st.user_dt : A.damped_dt(dt_el) * std::min(1.0, st.dt_scale);
     if (A.save_interval > 0 && A.next_save <= A.total_time) A.next_save = (std::floor(A.total_time / A.save_interval + 1e-9) + 1) * A.save_interval;
   }
   auto save_restart = [&]() {
@@ -406,8 +406,10 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     if (A.contact->active()) A.contact->compute(dt, A.fcon, A.en, A.total_increments);
     // damping forces (mass proportional, half-step velocity)
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
-    for (int n = 0; n < nn; ++n)
+    for (int n = 0; n < nn; ++n) {
       for (int k = 0; k < 3; ++k) fd[6 * n + k] = A.cdamp[n] * A.v[6 * n + k];
+      A.rotary_damping(n, &A.v[6 * n + 3], &fd[6 * n + 3]);
+    }
 
     // energies (trapezoidal rule on nodal forces)
     double dWi = 0, dWe = 0, dWc = 0, dWd = 0;
@@ -541,7 +543,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     }
     const double gr = gdt.ok ? gdt.ratio : 1.0;
     double dt_next = st.fixed_dt && st.user_dt > 0 ? st.user_dt
-                     : (mixed ? std::min(dt_solid * gr, dt_other) : dt_el * gr) * std::min(1.0, st.dt_scale);
+                     : A.damped_dt(mixed ? std::min(dt_solid * gr, dt_other) : dt_el * gr) * std::min(1.0, st.dt_scale);
     // limit the growth of the increment (a sudden x10 jump after a stiff transient destabilises the
     // viscous terms, which are evaluated with the rate du/dt of the new increment)
     if (!(st.fixed_dt && st.user_dt > 0)) {
