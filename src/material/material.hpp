@@ -25,6 +25,8 @@ double j2_update_beam(const Material& m, double G, double d11, double dg12, doub
 // eps: total strain (corotational, tensor components), etr: transformation strain, xi: martensite fraction (both
 // updated), T: temperature, sig_old: stress at the start of the increment, sig: new stress.
 void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, double T, const Sym6& sig_old, Sym6& sig);
+// transformation energy density of a change dxi of the martensite fraction between the stresses s0 and s1
+double sma_transformation_energy(const Material& m, const Sym6& s0, const Sym6& s1, double dxi);
 
 // ---- hyperelasticity, total formulation
 // Fung (generalized, anisotropic) and neo-Hooke. C in the material (orientation) basis.

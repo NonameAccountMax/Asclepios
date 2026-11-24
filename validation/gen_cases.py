@@ -16,14 +16,6 @@ import gen_features
 import gen_more
 import gen_literature
 
-SMA_NOTE = ('superelastic model of Auricchio and Taylor with a smooth cubic kinetics: elasticity (moduli mixed '
-            'linearly), transformation strain, lateral contraction and the whole loading plateau agree; on unloading '
-            'the reference reverts faster (martensite fraction decreasing almost in proportion to the strain, plateau '
-            '6 to 24 MPa higher), which no kinetic law of the equivalent stress reproduces: reactions within 4.3 %')
-KNOWN.update({
-    'mat_superelastic': SMA_NOTE,
-    'mat_superelastic_xpl': SMA_NOTE,
-})
 KNOWN_QUANTITIES['contact_block_on_plate'] = (['RM'], 'Total reaction moment of the clamped edges zero by symmetry '
                                               '(peak 1.3e-3 N mm against reactions of 129 N): numerical noise')
 KNOWN_QUANTITIES['crimp_rigid_plates'] = (['RM'], 'Reaction moment of the plate about its reference node not compared: '

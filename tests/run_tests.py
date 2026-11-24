@@ -628,8 +628,9 @@ def hgo_homogeneous():
     return ok
 
 def sma_uniaxial_ref(eps_path, EA=60000., EM=30000., eL=0.05, Rs=520., Rf=600., RsR=300., RfR=200.):
-    # uniaxial response of the superelastic model (smooth cubic kinetics between the start and finish stresses),
-    # integrated in closed form (log strains)
+    # uniaxial response of the superelastic model (smooth cubic kinetics between the start and finish stresses,
+    # log strains), increment by increment along eps_path: on reverse transformation the kinetics sees the stress with
+    # the modulus of the start of the increment and the stress returned uses the modulus of the mid-increment fraction
     xi, sig, out = 0.0, 0.0, []
     E = lambda x: EA + x * (EM - EA)
     def z(F, s, f):
@@ -651,8 +652,11 @@ def sma_uniaxial_ref(eps_path, EA=60000., EM=30000., eL=0.05, Rs=520., Rf=600., 
             xi = bis(g, xn, 1.0) if g(1.0) < 0 else 1.0
         elif st < sig and st < RsR and xi > 0:
             z0, xn = z(sig, RsR, RfR), xi
-            g = lambda x: x * (1 - z0) - xn * (1 - z(S(x), RsR, RfR))
+            g = lambda x: x * (1 - z0) - xn * (1 - z(E(xn) * (e - eL * x), RsR, RfR))
             xi = bis(g, 0.0, xn) if g(0.0) < 0 else 0.0
+            sig = E(0.5 * (xn + xi)) * (e - eL * xi)
+            out.append((sig, xi))
+            continue
         sig = S(xi)
         out.append((sig, xi))
     return out
@@ -682,8 +686,9 @@ def superelastic_uniaxial():
         m = re.search(r'Name="%s"[^>]*>\n(.*?)\n</DataArray>' % field, s_, re.S)
         b = base64.b64decode(m.group(1)); n = struct.unpack('<I', b[:4])[0]
         return struct.unpack('<%df' % (n // 4), b[4:4 + n])
-    path = [math.log(1 + 0.07 * k / 10) for k in range(11)] + [math.log(1 + 0.07 * (10 - k) / 10) for k in range(1, 11)]
-    ref = sma_uniaxial_ref(path)
+    # every increment (0.01 of the step), frames every 10 increments
+    path = [math.log(1 + 0.07 * k / 100) for k in range(101)] + [math.log(1 + 0.07 * (100 - k) / 100) for k in range(1, 101)]
+    ref = sma_uniaxial_ref(path)[::10]
     ok = True
     for k in (3, 10, 13, 17, 19):  # plateau, end of loading, elastic unloading, reverse plateau
         ok &= check('superelastic uniaxial: S11 at frame %d' % k, frame(frames[k], 'S11')[0], ref[k][0], 2e-3)

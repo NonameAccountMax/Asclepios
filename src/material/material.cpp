@@ -193,10 +193,10 @@ double j2_update_beam(const Material& m, double G, double d11, double dg12, doub
 //  - transformation strain along dF/dsigma, scaled to eps_L in uniaxial tension; the reverse transformation retraces
 //    the transformation strain;
 //  - kinetics: the fraction still to transform follows a smooth cubic step z(F) between the start and finish
-//    thresholds (z = 1/2 + 3/4 t - 1/4 t^3, t = 2 (F - (R_s + R_f)/2) / (R_f - R_s) clamped to [-1, 1]), integrated
-//    exactly over the increment: forward (1 - xi) / (1 - xi_n) = (1 - z(F)) / (1 - z(F_n)), reverse
-//    xi / xi_n = (1 - z(F)) / (1 - z(F_n)) (the transformation starts and ends with zero rate, as in
-//    Abaqus/Standard's superelastic user material).
+//    thresholds (z = 1/2 + 3/4 t - 1/4 t^3, t = 2 (F - (R_s + R_f)/2) / (R_f - R_s) clamped to [-1, 1]), over the
+//    increment: forward (1 - xi) / (1 - xi_n) = (1 - z(F)) / (1 - z(F_n)), reverse xi / xi_n = (1 - z(F)) / (1 - z(F_n)),
+//    F_n from the stress of the previous increment (behaviour of Abaqus/Standard's superelastic user material; on
+//    reverse, F is evaluated with the moduli of the start of the increment, see below).
 namespace {
 
 struct SmaState {
@@ -228,6 +228,11 @@ inline double sma_F(const Sym6& s, double tb) {
 
 }  // namespace
 
+double sma_transformation_energy(const Material& m, const Sym6& s0, const Sym6& s1, double dxi) {
+  const double tb = 3 * (m.sma_sCLs - m.sma_sLs) / std::max(m.sma_sCLs + m.sma_sLs, 1e-30);
+  return 0.5 * (sma_F(s0, tb) + sma_F(s1, tb)) * m.sma_epsL / (1 + tb / 3) * dxi;
+}
+
 void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, double T, const Sym6& sig_old, Sym6& sig) {
   const double tb = 3 * (m.sma_sCLs - m.sma_sLs) / std::max(m.sma_sCLs + m.sma_sLs, 1e-30);
   const double k = 1 + tb / 3;
@@ -240,11 +245,13 @@ void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, doubl
   // stress for a fraction x with the transformation strain moved along dir; returns F with the deviator projected on
   // the unit deviatoric direction nd (signed, so that F decreases monotonically as the transformation proceeds), or
   // the plain F when nd is null
-  auto state = [&](double x, const Sym6& dir, double scale, Sym6& e_out, Sym6& s_out, const Sym6* nd) {
+  // xm: martensite fraction of the elastic moduli (x itself when negative)
+  auto state = [&](double x, const Sym6& dir, double scale, Sym6& e_out, Sym6& s_out, const Sym6* nd,
+                   double xm = -1) {
     for (int i = 0; i < 6; ++i) e_out[i] = etr_n[i] + scale * (x - xin) * dir[i];
     Sym6 ee;
     for (int i = 0; i < 6; ++i) ee[i] = eps[i] - e_out[i];
-    sma_stress(m, x, ee, s_out);
+    sma_stress(m, xm < 0 ? x : xm, ee, s_out);
     if (!nd) return sma_F(s_out, tb);
     const double p = (s_out[0] + s_out[1] + s_out[2]) / 3;
     double sn = 0;
@@ -288,7 +295,11 @@ void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, doubl
     state(xi, N, m.sma_epsL, etr, sig, nullptr);
     return;
   }
-  // reverse transformation: the transformation strain shrinks in proportion to xi
+  // reverse transformation: the transformation strain shrinks in proportion to xi. As in Abaqus/Standard's
+  // superelastic user material (probe of a unit cube, every increment): the kinetics sees the stress with the
+  // moduli of the start of the increment, the stress returned uses the moduli of the mid-increment fraction, so that
+  // the next increment starts from a higher F and the reverse transformation runs faster than the plain cubic step
+  // (martensite fraction almost linear in the strain). On loading, both use the end-of-increment moduli.
   if (Ftr < Fn && Ftr < RsSA && xin > 0) {
     Sym6 D;
     for (int i = 0; i < 6; ++i) D[i] = etr_n[i] / xin;
@@ -297,7 +308,7 @@ void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, doubl
     const double z0 = sma_step(Fn, RsSA, RfSA);
     auto g = [&](double x) {
       Sym6 e, s;
-      const double z = sma_step(state(x, D, 1.0, e, s, &nd), RsSA, RfSA);
+      const double z = sma_step(state(x, D, 1.0, e, s, &nd, xin), RsSA, RfSA);
       return x * (1 - z0) - xin * (1 - z);
     };
     double lo = 0.0, hi = xin;  // g increases with xi up to g(xi_n) > 0
@@ -308,7 +319,7 @@ void sma_update(const Material& m, const Sym6& eps, Sym6& etr, double& xi, doubl
         (g(mid) > 0 ? hi : lo) = mid;
       }
     xi = hi;
-    state(xi, D, 1.0, etr, sig, nullptr);
+    state(xi, D, 1.0, etr, sig, nullptr, 0.5 * (xin + xi));
   }
 }
 

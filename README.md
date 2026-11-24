@@ -191,8 +191,15 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 - **Superelasticity** (Auricchio-Taylor): one martensite fraction, elastic moduli mixed linearly between austenite and
   martensite, Drucker-Prager loading function (tension-compression asymmetry from the start stresses), transformation
   strain along its gradient scaled to the uniaxial transformation strain, thresholds shifted with temperature; the
-  fraction still to transform follows a smooth cubic step between the start and finish thresholds (zero rate at both
-  ends), integrated in closed form over each increment.
+  fraction still to transform follows a smooth cubic step between the start and finish thresholds, from the loading
+  function of the previous increment to the current one. As in Abaqus/Standard's superelastic material (measured
+  increment by increment on a single element), the reverse transformation evaluates the loading function with the
+  moduli of the start of the increment and returns the stress with the moduli of the mid-increment fraction, which
+  makes it faster than the plain cubic step (fraction almost linear in the strain). Internal energy: elastic strain
+  energy plus the transformation energy (trapezoidal in the loading function, reported as ALLPD), as Abaqus reports
+  it. Explicit dynamics: the stable increment and the bulk viscosity use effective moduli of each element from its
+  stress and strain increments (2μ = ΔS:Δe / Δe:Δe, 3K = Δp / Δε_mean, at least 0.1 of the austenite values,
+  averaged with the previous increment), as Abaqus/Explicit does for materials without analytical moduli.
 - **Rigid surfaces** (explicit general contact): R3D4 / R3D3 elements of a rigid body are two-sided contact facets
   without thickness; analytical surfaces (`TYPE=CYLINDER`: local x along a-b, generator along a-c, profile in the plane
   of x and y = x × generator) are cut into one-sided rigid facets (2° arcs, normal to the left of the profile
@@ -281,7 +288,7 @@ Mesh-convergence curves and deformed shapes of every benchmark: [validation/LITE
 | C3D8 bar loaded through a distributing coupling / moving with a massless kinematic reference node | S11 = 10 MPa in every element, reference node u1 exact; ALLKE kept, ALLIE = 0 | uniform traction; momentum |
 | S4R sheet dropped on a rigid R3D4 plane / on a one-sided analytical cylinder from behind and from the front | ETOTAL kept, bounce; free fall through from behind, bounce from the front | energy balance; one-sided surface |
 | Holzapfel-Gasser-Ogden C3D8R cube, prescribed homogeneous stretch and shear, fibres at ±30° | σ11, σ22, σ33, σ12 within 1e-6 | numerical derivative of the strain energy |
-| Superelastic NiTi cube stretched to 7 % and unloaded (uniaxial stress) | plateaux and lateral strain within 1e-6 | closed-form uniaxial law |
+| Superelastic NiTi cube stretched to 7 % and unloaded (uniaxial stress) | plateaux and lateral strain within 1e-6 | uniaxial law integrated increment by increment |
 | Fung anisotropic shell, biaxial stretch 1.15 × 1.10, S4R and S3R, material axes at 0° and 30° | σ_xx, σ_yy within 1e-6 | Fung energy differentiated with 40-digit arithmetic (mpmath) |
 
 ## Roadmap
@@ -296,8 +303,10 @@ Features exercised by the validation suite and not supported yet:
 - Loads and conditions: initial stresses in shells and beams; non-zero boundary conditions in transformed axes;
   output in transformed axes; follower loads in restart files.
 - Materials: viscoelasticity, rate dependence, damage, user materials (UMAT/VUMAT), Holzapfel-Gasser-Ogden
-  and superelasticity in shells and beams; reverse transformation of the superelastic reference (unloading plateau
-  up to 24 MPa higher).
+  and superelasticity in shells and beams; superelasticity in explicit dynamics: Abaqus/Explicit's built-in material
+  integrates the loading plateau with a result that depends on the increment size and jumps from one increment to
+  the next (single element with every node driven); asclepios keeps the converged law (reactions within 6 % on the
+  explicit bar).
 - Procedures: arc length (`*STATIC, RIKS`), natural frequencies (`*FREQUENCY`), linear
   buckling (`*BUCKLE`).
 

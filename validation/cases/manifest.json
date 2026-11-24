@@ -9112,7 +9112,7 @@
    "E": 0.05
   },
   "analysis": "nonlinear",
-  "known": "superelastic model of Auricchio and Taylor with a smooth cubic kinetics: elasticity (moduli mixed linearly), transformation strain, lateral contraction and the whole loading plateau agree; on unloading the reference reverts faster (martensite fraction decreasing almost in proportion to the strain, plateau 6 to 24 MPa higher), which no kinetic law of the equivalent stress reproduces: reactions within 4.3 %",
+  "known": null,
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,
@@ -16147,7 +16147,7 @@
    "E": 0.06
   },
   "analysis": "quasi-static explicit",
-  "known": "superelastic model of Auricchio and Taylor with a smooth cubic kinetics: elasticity (moduli mixed linearly), transformation strain, lateral contraction and the whole loading plateau agree; on unloading the reference reverts faster (martensite fraction decreasing almost in proportion to the strain, plateau 6 to 24 MPa higher), which no kinetic law of the equivalent stress reproduces: reactions within 4.3 %",
+  "known": null,
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,
