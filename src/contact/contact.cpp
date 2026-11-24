@@ -18,7 +18,8 @@
 //    (0.3 m/dt^2 between two critical nodes, stiffer for light nodes of soft elements);
 //  - facet half thickness h = min(t/2, 0.3 x smallest facet height), segment radius
 //    r = min(r, 0.3 x segment length) (thickness reduced on small facets);
-//  - normal viscous damping of 3 % of the critical damping of the contact spring with the lighter side, not
+//  - normal viscous damping of 3 % of the critical damping of the contact spring (slave mass, or reduced mass of the
+//    slave and of the master facet when the master side sets the stiffness), not
 //    bounded by the spring force (slightly tensile total force when overlapping nodes separate fast);
 //  - Coulomb friction, tangential penalty stiffness equal to the normal one;
 //  - incremental normal force (no jump when k changes, when a node switches facet or when a
@@ -178,7 +179,7 @@ struct GeneralContact::Impl {
     last_master.resize(n, INT_MIN); last_side.resize(n, 0); ft.resize(n, Vec3());
     behind.resize(n, 0);
     fn_t.resize(n, 0.0); fn_s.resize(n, 0.0); pen_t.resize(n, -1.0); pen_s.resize(n, -1.0); last_n.resize(n, Vec3());
-    for (auto* v : {&cw2_t, &cw2_s, &md_t, &md_s, &kmin_t, &kmin_s, &cdt_t, &cdt_s}) v->resize(n, 0.0);
+    for (auto* v : {&cw2_t, &cw2_s, &md_t, &md_s, &mm_t, &mm_s, &kmin_t, &kmin_s, &cdt_t, &cdt_s}) v->resize(n, 0.0);
     hit_t.resize(n); hit_s.resize(n); force_t.resize(n); force_s.resize(n);
   }
   std::vector<int> nb_off, nb;  // per slave: sorted nodes of its elements (facets touching them are excluded)
@@ -199,7 +200,7 @@ struct GeneralContact::Impl {
   std::vector<double> node_w2;
   std::vector<double> node_g;  // per node: global-to-element ratio of the increment of the element setting node_w2
   std::vector<double> cdt_t, cdt_s;  // per slave and pass: stable increment bound of the contact
-  std::vector<double> cw2_t, cw2_s, md_t, md_s, kmin_t, kmin_s;
+  std::vector<double> cw2_t, cw2_s, md_t, md_s, mm_t, mm_s, kmin_t, kmin_s;  // md: slave mass, mm: master mass
   double dt_min = 0;  // smallest stable increment bound of the contacts of the increment
   double mu = 0;
   std::vector<Hit> hit_t, hit_s;
@@ -889,7 +890,8 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       if (!(kc > 0 && kc < 1e299)) { h = Hit(); continue; }
       h.k = kc;
       (pass ? P.cw2_s : P.cw2_t)[si] = w2;
-      (pass ? P.md_s : P.md_t)[si] = mm > 0 ? meff : -meff;  // negative: rigid master facet
+      (pass ? P.md_s : P.md_t)[si] = msl;
+      (pass ? P.mm_s : P.mm_t)[si] = mm;  // zero: rigid master facet
     }
     P.hit_t[si] = bt;
     P.hit_s[si] = bs;
@@ -977,7 +979,12 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         if (sw[i] > 0) sflex += sw[i] * std::max(1.0, ksum[sn[i]]) / node_k(sn[i], w2, true);
       const double kshared = std::min(sflex > 0 ? 1.0 / sflex : 1e300, flex > 0 ? 1.0 / flex : 1e300);
       const double k = 9.0 / 11.0 * kmin * std::min(1.0, kshared / h.k);
-      const double mdamp = (pass ? P.md_s : P.md_t)[si];
+      // damping mass: the slave mass when the slave side sets the (shared) stiffness, the reduced mass of the
+      // slave and of the master facet (weighted by the contact point) when the master side does
+      const double msl = (pass ? P.md_s : P.md_t)[si], mms = (pass ? P.mm_s : P.mm_t)[si];
+      const bool master_limits = flex > 0 && (sflex <= 0 || 1.0 / flex < 1.0 / sflex);
+      const double mdamp = master_limits && mms > 0 ? msl * mms / (msl + mms) : msl;
+      const bool rigid_master = !(mms > 0);
       dtmn = std::min(dtmn, (pass ? P.cdt_s : P.cdt_t)[si]);
       Vec3 dum;
       int nf;
@@ -997,16 +1004,16 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       Fn = std::max(Fn, 0.0);
       fn = Fn;
       pp = h.pen;
-      // normal viscous damping, 3 % of the critical damping of the contact spring with the lighter side of the
-      // pair, c = 2 zeta sqrt(k m); between deformable bodies it is not bounded by the spring force: while the
+      // normal viscous damping, 3 % of the critical damping of the contact spring with the damping mass,
+      // c = 2 zeta sqrt(k m); between deformable bodies it is not bounded by the spring force: while the
       // spring is loaded and the nodes separate fast, the total normal force may become slightly tensile (as in
       // Abaqus/Explicit); no force within a released offset (spring force zero); against a rigid facet the total
       // force stays compressive
       double Ft = Fn;
       if (dt > 0) {
-        const double c = 2 * 0.03 * std::sqrt(k * std::fabs(mdamp));
+        const double c = 2 * 0.03 * std::sqrt(k * mdamp);
         Ft = Fn > 0 ? Fn - c * dot(dus - dum, h.n) / dt : 0.0;
-        if (mdamp < 0) Ft = std::max(Ft, 0.0);
+        if (rigid_master) Ft = std::max(Ft, 0.0);
         // dissipated by the damper, integrated as the work of the contact forces (trapezoidal rule)
         edamp += -0.5 * (fd_old + Ft - Fn) * dot(dus - dum, h.n);
       }

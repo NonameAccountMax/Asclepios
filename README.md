@@ -167,7 +167,8 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   a valley, both triangles behind it) contacts the fold line or vertex. Beam nodes contact shell facets and beam segments; shell nodes do not contact beam
   segments, the free shell edges do (edge to segment: closest points of the two segments, edge stiffness from its
   two nodes weighted by the contact point, a vertex held by one of its edges). Normal viscous damping of 3 % of critical
-  (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL), not bounded by the spring force
+  with the slave mass, or the reduced mass of the slave and of the master facet when the master side sets the
+  (shared) stiffness (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL), not bounded by the spring force
   between deformable bodies (the total normal force may turn slightly tensile while a loaded contact separates fast;
   it stays compressive against rigid facets),
   shell half thickness limited to 0.3 times the smallest triangular facet height; free shell edges rounded within
@@ -322,7 +323,10 @@ Accuracy and performance:
   quadrilaterals and of non-isosceles triangles (Abaqus adds the circulation of the edge strains to the homogeneous
   shear with coefficients of the geometry: approximated for triangles, not reproduced for quadrilaterals; 1 to 5 %
   on the rotation terms of a single distorted element).
-- Dynamics: beam-to-solid impact (displacements within 11 %, stresses 15 %); beam-to-shell impact
+- Dynamics: beam-to-solid impact (displacements within 11 %, stresses 15 %: the impact lasts 5 increments and the
+  B31 stable increment differs by 2e-4, which shifts the phase of the contact; the response matches once the
+  increments coincide); stable increment of B31 elements within 4e-4 (2e-4 near the crossing of the bending and
+  shear modes), prescribed transverse shear stiffness ignored in it; beam-to-shell impact
   (reactions within 14 %, energy 6 %, beam end rotations 13 %); a shell sheet dropped
   on a beam stops like the reference at the first contact increment, then its contact force stays up to 25 % lower; self-contact of a coiled strip (first contact within 7 %; the later chatter of the coil on the clamped edge, which
   goes straight into the reactions, is not compared); thin Fung leaflets flapping under pressure (valve model: same response up to 2.4 ms, then the corner next to the
