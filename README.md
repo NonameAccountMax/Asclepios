@@ -152,7 +152,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 - **Plane-stress hyperelasticity**: Newton iteration on the thickness stretch (S33 = 0), with an exact
   derivative for the Fung model.
 - **Contact**: penalty method. Each node has a frequency bound 1/Δt_e (stable increment of its stiffest element);
-  a contact pair gets the frequency Ω² = max(1/(3Δt²), 1.1·max Ω_i²) of its nodes, nodal springs that keep each
+  a contact pair gets the frequency Ω² = max(1/(3·(1.2Δt)²), 1.1·max Ω_i²) of its nodes, nodal springs that keep each
   node stable at 1/Ω, and the softer of the slave and master springs (0.3·m/Δt² between two critical nodes,
   stiffer for light nodes of soft elements), never stiffened during a contact and shared between the contacts of
   a node; the increment is bounded by 1/Ω of the active contacts. Solid elements running under the global estimate
@@ -167,7 +167,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   a valley, both triangles behind it) contacts the fold line or vertex. Beam nodes contact shell facets and beam segments; shell nodes do not contact beam
   segments, the free shell edges do (edge to segment: closest points of the two segments, edge stiffness from its
   two nodes weighted by the contact point, a vertex held by one of its edges). Normal viscous damping of 3 % of critical
-  (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL),
+  (its dissipation is reported in ALLVD; the penalty energy only enters ETOTAL), not bounded by the spring force
+  between deformable bodies (the total normal force may turn slightly tensile while a loaded contact separates fast;
+  it stays compressive against rigid facets),
   shell half thickness limited to 0.3 times the smallest triangular facet height; free shell edges rounded within
   the shell (their nodes moved back into the shell plane by the half thickness, along the bisector at corners, at
   most half the facet size), so that the contact surface does not extend beyond the edge. The normal force is updated

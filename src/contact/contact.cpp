@@ -12,13 +12,14 @@
 //    at most half the facet size and 0.6 x facet size x sine of the angle to each edge), so that
 //    the contact surface does not extend beyond the edge;
 //  - node-to-facet and node-to-segment penalty from the stable increment of the elements of each node: contact
-//    frequency W^2 = max(1/(3 dt^2), 1.1 max_i 1/dt_i^2) over the pair, nodal stiffnesses that keep each node
+//    frequency W^2 = max(1/(3 (1.2 dt)^2), 1.1 max_i 1/dt_i^2) over the pair, nodal stiffnesses that keep each node
 //    stable at 1/W, pair stiffness = softer of slave and master, 9/11 of its smallest value since the contact
 //    started, shared between the contacts of a node; the increment is bounded by 1/W of the active contacts
 //    (0.3 m/dt^2 between two critical nodes, stiffer for light nodes of soft elements);
 //  - facet half thickness h = min(t/2, 0.3 x smallest facet height), segment radius
 //    r = min(r, 0.3 x segment length) (thickness reduced on small facets);
-//  - normal viscous damping of 3 % of the critical damping of the contact spring with the lighter side;
+//  - normal viscous damping of 3 % of the critical damping of the contact spring with the lighter side, not
+//    bounded by the spring force (slightly tensile total force when overlapping nodes separate fast);
 //  - Coulomb friction, tangential penalty stiffness equal to the normal one;
 //  - incremental normal force (no jump when k changes, when a node switches facet or when a
 //    contact is found deep); initial overclosures act as offsets released as the nodes separate;
@@ -640,7 +641,8 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   }
 
   // ---- penalty stiffness of a pair, from the frequency bound w_i^2 = 1/dt_e^2 of each node (stable increment
-  // of its stiffest element) and the contact frequency W^2 = max(w_ref^2/3, 1.1 max_i w_i^2) of the pair: each
+  // of its stiffest element) and the contact frequency W^2 = max(w_ref^2/3, 1.1 max_i w_i^2) of the pair, w_ref =
+  // 1/(1.2 dt) (floor identified on a soft sheet whose elements are far from critical): each
   // node gets k_i = 2 m_i W^2 (1 - r_i)/(1 - r_i/2), r_i = w_i^2/W^2, so that its own stiffness plus the
   // contact spring stays stable at the increment 1/W; the pair stiffness is the softer of the slave and of the
   // master facet (nodal flexibilities weighted by the contact point coordinates). A massive node stiffer
@@ -651,6 +653,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   // and on an S4R plate in Abaqus/Explicit: same force histories increment by increment, increment shortened by
   // about 4 % during the contact.
   const double wref2 = dt > 0 ? 1.0 / (dt * dt) : 0.0;
+  const double wfloor2 = wref2 / (3 * 1.2 * 1.2);
   P.node_w2.assign(nn, 0.0);
   P.node_g.assign(nn, 1.0);
   for (auto& gp : A.groups) {
@@ -872,8 +875,8 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       for (int i = 0; i < nsn; ++i) msl += sw[i] * A.mt[sn[i]];
       double meff = std::min(msl > 0 ? msl : 1e300, mm > 0 ? mm : 1e300);
       if (meff >= 1e299) { h = Hit(); continue; }
-      // contact frequency: the stiffest node of the pair, at least a third of the increment frequency
-      double w2 = wref2 / 3, g = 1.0;
+      // contact frequency: the stiffest node of the pair, at least a third of the squared frequency 1/(1.2 dt)
+      double w2 = wfloor2, g = 1.0;
       for (int i = 0; i < nsn; ++i) if (1.1 * node_w(sn[i], true) > w2) { w2 = 1.1 * node_w(sn[i], true); g = P.node_g[sn[i]]; }
       for (int i = 0; i < nm; ++i) if (1.1 * node_w(mn[i], false) > w2) { w2 = 1.1 * node_w(mn[i], false); g = 1.0; }
       (pass ? P.cdt_s : P.cdt_t)[si] = std::max(g, 1.0) / std::sqrt(w2);
@@ -886,7 +889,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       if (!(kc > 0 && kc < 1e299)) { h = Hit(); continue; }
       h.k = kc;
       (pass ? P.cw2_s : P.cw2_t)[si] = w2;
-      (pass ? P.md_s : P.md_t)[si] = meff;
+      (pass ? P.md_s : P.md_t)[si] = mm > 0 ? meff : -meff;  // negative: rigid master facet
     }
     P.hit_t[si] = bt;
     P.hit_s[si] = bs;
@@ -994,11 +997,15 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       fn = Fn;
       pp = h.pen;
       // normal viscous damping, 3 % of the critical damping of the contact spring with the lighter side of the
-      // pair, c = 2 zeta sqrt(k m); the total normal force stays compressive
+      // pair, c = 2 zeta sqrt(k m); between deformable bodies it is not bounded by the spring force: while the
+      // spring is loaded and the nodes separate fast, the total normal force may become slightly tensile (as in
+      // Abaqus/Explicit); no force within a released offset (spring force zero); against a rigid facet the total
+      // force stays compressive
       double Ft = Fn;
       if (dt > 0) {
-        const double c = 2 * 0.03 * std::sqrt(k * mdamp);
-        Ft = std::max(0.0, Fn - c * dot(dus - dum, h.n) / dt);
+        const double c = 2 * 0.03 * std::sqrt(k * std::fabs(mdamp));
+        Ft = Fn > 0 ? Fn - c * dot(dus - dum, h.n) / dt : 0.0;
+        if (mdamp < 0) Ft = std::max(Ft, 0.0);
         // dissipated by the damper, integrated as the work of the contact forces (trapezoidal rule)
         edamp += -0.5 * (fd_old + Ft - Fn) * dot(dus - dum, h.n);
       }
