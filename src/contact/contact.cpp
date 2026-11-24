@@ -942,6 +942,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   // switches between facets and contacts found already deep do not create force jumps (no energy is
   // injected); a new contact only loads the approach of the current increment, so initial or lateral
   // overclosures act as offsets that are released as the nodes separate.
+  static const bool trace = std::getenv("ABQ_CONTACT_TRACE") != nullptr;
   double efric = 0, edamp = 0, dtmn = 1e30;
   int ncont = 0;
   long ndeep = 0;
@@ -1010,6 +1011,10 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         edamp += -0.5 * (fd_old + Ft - Fn) * dot(dus - dum, h.n);
       }
       F = h.n * Ft;
+      if (trace)  // ABQ_CONTACT_TRACE: every contact force (stderr), for comparisons with nodal contact output
+        std::fprintf(stderr, "CTRACE inc %d node %d pass %d k %.6e hk %.6e pen %.6e appr %.6e fn %.6e ft %.6e vn %.6e m %.6e\n",
+                     increment, si < ns ? P.slaves[si] : -1, pass, k, h.k, h.pen, appr, Fn, Ft,
+                     dt > 0 ? dot(dus - dum, h.n) / dt : 0.0, mdamp);
       ++ncont;
       const bool fric = pass == 0 || P.hit_t[si].master == INT_MIN;
       if (fric && P.mu > 0) {
