@@ -286,24 +286,42 @@ def _smooth_amplitude(d, dur, a0=0.0):
     return name
 
 
+BC_TYPES = ('ENCASTRE', 'PINNED', 'XSYMM', 'YSYMM', 'ZSYMM', 'XASYMM', 'YASYMM', 'ZASYMM')
+
+
 def quasi_static_body(d, body, dur):
     """Loads and prescribed values of a static step, made to follow a smooth step over the explicit step. A value
-    changed from a non-zero previous value starts from it (amplitude from previous/new to 1)."""
+    changed from a non-zero previous value starts from it (amplitude from previous/new to 1). Boundary conditions
+    given by type (ENCASTRE, XSYMM, ...) stay without amplitude: zero values, and Abaqus/Explicit reports multiplied
+    reaction moments for them under an amplitude (ENCASTRE doubles RM1, XSYMM RM2)."""
     out, kw, head = [], None, None
     base = None
+    bmode = None  # *Boundary block without amplitude in the input: header last written ('amp' / 'plain' / None)
     for line in body:
         if line.startswith('*'):
             low = line.lower()
             kw = low.split(',')[0].strip()
             head = line
+            bmode = None
             if kw in LOAD_KW and 'amplitude=' not in low:
                 if base is None:
                     base = _smooth_amplitude(d, dur)
+                if kw == '*boundary':
+                    bmode = 'pending'
+                    continue
                 out.append(line + ', amplitude=%s' % base)
             else:
                 out.append(line)
             continue
         p = [v.strip() for v in line.split(',')]
+        if bmode is not None:
+            want = 'plain' if len(p) > 1 and p[1].upper() in BC_TYPES else 'amp'
+            if want != bmode:
+                out.append(head if want == 'plain' else head + ', amplitude=%s' % base)
+                bmode = want
+            if want == 'plain':
+                out.append(line)
+                continue
         if '<' in line:  # parameter reference: value unknown here, no continuation amplitude
             out.append(line)
             continue

@@ -58,8 +58,9 @@ HO
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.05
-*Boundary, amplitude=QS1
+*Boundary
 1, ENCASTRE
+*Boundary, amplitude=QS1
 12, 3, 4
 *Cload, amplitude=QS1
 9, 2, 0.5

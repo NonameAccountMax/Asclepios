@@ -40,12 +40,9 @@ KNOWN_QUANTITIES['xpl_damping_alpha_torsion_std'] = (['U', 'S', 'RM'], TORSION_U
                                                      'applied torque) carries the wave front, set by the start-up '
                                                      'increments (106 in the reference, 104 here); later frames '
                                                      'within 1 %')
-KNOWN_QUANTITIES['symmetry_bcs_xpl'] = (['RM'], 'Reaction moments not compared: the corner nodes carry both the clamping '
-                                        'and the symmetry conditions')
-S3R_XPL_RM = ('Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit '
-              'dynamics (the reference values do not follow from equilibrium); asclepios gives the implicit value')
-for _n in ('elem_s3_xpl', 's3r_pressure_xpl', 's3r_pressure_pulse', 'elem_s3rs_xpl', 'elem_s3rs_thick_xpl'):
-    KNOWN_QUANTITIES[_n] = (['RM'], S3R_XPL_RM)
+KNOWN_QUANTITIES['s3r_pressure_pulse'] = (['RM'], 'Total reaction moment not compared: on this plate clamped on its '
+                                         'four edges it is a residual of about 20 % of the largest edge moment; '
+                                         'the edge moments agree with the reference within 1.5 % (dynamic pulse)')
 SCORDELIS_RM = ('Reaction moments along the diaphragms not compared on this coarse curved mesh (8 x 8, 5 degrees per '
                 'element): they differ from the reference by a discretisation term that vanishes with refinement '
                 '(23 / 3 / 0.5 / 0.1 % on 4 x 4 / 8 x 8 / 16 x 16 / 32 x 32 meshes, displacements identical; the '

@@ -129,7 +129,7 @@ S3R cantilever strip (nu = 0), tip load (linear) [quasi-static explicit twin]
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.03
-*Boundary, amplitude=QS1
+*Boundary
 FIX, ENCASTRE
 *Cload, amplitude=QS1
 11, 3, -0.1666666667

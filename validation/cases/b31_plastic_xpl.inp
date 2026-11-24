@@ -53,7 +53,7 @@ B31 circular cantilever bent into plasticity, then partial return [quasi-static 
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.01
-*Boundary, amplitude=QS1
+*Boundary
 1, ENCASTRE
 *Boundary, amplitude=QS1
 11, 3, 3, -20.

@@ -108,7 +108,7 @@ S4R elastic-plastic cantilever, tip displacement then partial return [quasi-stat
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.03
-*Boundary, amplitude=QS1
+*Boundary
 FIX, ENCASTRE
 *Boundary, amplitude=QS1
 TIP, 3, 3, -8.

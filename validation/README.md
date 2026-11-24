@@ -24,7 +24,10 @@ small decks (224 cases and 56 twins), each running in seconds:
 - **procedures**: every case compared with Abaqus exists in its native procedure and as a twin in the other one
   (static as quasi-static explicit, `_xpl`; explicit as implicit dynamic, `_std`; a twin whose static loads change
   abruptly, such as a load removed by `OP=NEW`, gets mass-proportional damping so that its frames are static
-  states), options specific to the explicit
+  states; the quasi-static twins apply their loads along a smooth step, but conditions given by type, such as
+  `ENCASTRE` or `XSYMM`, stay without amplitude: under an amplitude Abaqus/Explicit reports one rotational
+  reaction of such a condition multiplied by two, RM1 for `ENCASTRE`, RM2 for `XSYMM` and `ZSYMM`, RM3 for
+  `YSYMM`, while displacements and forces are unchanged), options specific to the explicit
   procedure (mass scaling, bulk viscosity, fixed increment, damping, adaptive meshing), implicit procedures (arc
   length, frequencies, buckling, stabilization, linear perturbation, `*VISCO`, modal and steady-state dynamics, heat
   transfer, coupled temperature-displacement), transfer between procedures (`*IMPORT`);

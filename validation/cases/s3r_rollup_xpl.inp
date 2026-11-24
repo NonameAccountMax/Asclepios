@@ -140,7 +140,7 @@ S3R cantilever strip (nu = 0) rolled into a quarter circle by an end moment [qua
 *Step, name=Moment, nlgeom=YES
 *Dynamic, Explicit
 , 0.03
-*Boundary, amplitude=QS1
+*Boundary
 FIX, ENCASTRE
 *Cload, amplitude=QS1
 17, 5, -214.7573103

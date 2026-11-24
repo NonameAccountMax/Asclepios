@@ -163,7 +163,7 @@ C3D8R nearly incompressible rubber cantilever (K / mu = 2e4) [quasi-static expli
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.05
-*Boundary, amplitude=QS1
+*Boundary
 FIX, ENCASTRE
 *Cload, amplitude=QS1
 11, 3, -0.1111111111

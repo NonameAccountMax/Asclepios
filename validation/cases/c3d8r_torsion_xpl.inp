@@ -165,7 +165,7 @@ C3D8R bar, end face twisted by 30 deg (NLGEOM) [quasi-static explicit twin]
 *Step, name=Twist, nlgeom=YES
 *Dynamic, Explicit
 , 0.01
-*Boundary, amplitude=QS1
+*Boundary
 FIX, ENCASTRE
 *Boundary, amplitude=QS1
 11, 2, 2, 1.267949192

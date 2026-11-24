@@ -148,7 +148,7 @@ C3D8R bar, end face coupled to a reference node (kinematic coupling) [quasi-stat
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.02
-*Boundary, amplitude=QS1
+*Boundary
 FIX, ENCASTRE
 *Cload, amplitude=QS1
 RP, 3, -100.

@@ -250,7 +250,7 @@ SLAVE, MASTER
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.005
-*Boundary, amplitude=QS1
+*Boundary
 FIX, ENCASTRE
 *Cload, amplitude=QS1
 51, 3, -6.25

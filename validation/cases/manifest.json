@@ -1813,7 +1813,7 @@
   "known_quantities": [
    "RM"
   ],
-  "known_quantities_note": "Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit dynamics (the reference values do not follow from equilibrium); asclepios gives the implicit value",
+  "known_quantities_note": "Total reaction moment not compared: on this plate clamped on its four edges it is a residual of about 20 % of the largest edge moment; the edge moments agree with the reference within 1.5 % (dynamic pulse)",
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -13797,10 +13797,8 @@
   "analysis": "quasi-static explicit",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [
-   "RM"
-  ],
-  "known_quantities_note": "Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit dynamics (the reference values do not follow from equilibrium); asclepios gives the implicit value",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "s3r_pressure",
@@ -15393,10 +15391,8 @@
   "analysis": "quasi-static explicit",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [
-   "RM"
-  ],
-  "known_quantities_note": "Reaction moments not compared: the corner nodes carry both the clamping and the symmetry conditions",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "symmetry_bcs",
@@ -15630,10 +15626,8 @@
   "analysis": "quasi-static explicit",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [
-   "RM"
-  ],
-  "known_quantities_note": "Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit dynamics (the reference values do not follow from equilibrium); asclepios gives the implicit value",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "elem_s3",
@@ -15703,10 +15697,8 @@
   "analysis": "quasi-static explicit",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [
-   "RM"
-  ],
-  "known_quantities_note": "Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit dynamics (the reference values do not follow from equilibrium); asclepios gives the implicit value",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "elem_s3rs",
@@ -15847,10 +15839,8 @@
   "analysis": "quasi-static explicit",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [
-   "RM"
-  ],
-  "known_quantities_note": "Reaction moments of the triangular shells (S3R, S3RS) about the clamped edge not compared in explicit dynamics (the reference values do not follow from equilibrium); asclepios gives the implicit value",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "elem_s3rs_thick",

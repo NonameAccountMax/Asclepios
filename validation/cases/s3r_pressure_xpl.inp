@@ -243,7 +243,7 @@ EALL, SPOS
 *Step, name=Load, nlgeom=YES
 *Dynamic, Explicit
 , 0.002
-*Boundary, amplitude=QS1
+*Boundary
 FIX, ENCASTRE
 *Dsload, amplitude=QS1
 STOP, P, 0.5
