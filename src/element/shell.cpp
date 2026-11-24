@@ -245,6 +245,12 @@ void qm6_hourglass(const double xl[4][3], double nu, double k[3]) {
   k[0] = kxx; k[1] = kyy; k[2] = kxy;
 }
 
+// Local dof index of the transverse shear operators G[c][I][q]: 0 w, 1 theta_x, 2 theta_y, 3 u, 4 v, 5 theta_z
+// (the last three only through the shell directors at the edge midpoints, zero on a flat mesh), and the matching
+// component of the local nodal force vector (u, v, w, theta_x, theta_y, theta_z).
+constexpr int SQ = 6;
+constexpr int SQ_FORCE[SQ] = {2, 3, 4, 0, 1, 5};
+
 // Transverse shear of the quadrilateral sampled along its edges (assumed natural strain): the tangential shear
 // of an edge, w_J - w_I + (mean rotation of the end nodes) x (edge vector), vanishes for every field with linear
 // rotations and quadratic deflection, so that constant-curvature bending of a distorted element is free of
@@ -254,7 +260,7 @@ void qm6_hourglass(const double xl[4][3], double nu, double k[3]) {
 // of the xi strain along eta, 3: variation of the eta strain along xi) with respect to dof k of node I
 // (0: w, 1: theta_x, 2: theta_y). inv[4]: inverse centre Jacobian (gamma_x = inv0 e_xi + inv1 e_eta,
 // gamma_y = inv2 e_xi + inv3 e_eta).
-void edge_shear_ops(const double xl[4][3], double G[4][4][3], double inv[4]) {
+void edge_shear_ops(const double xl[4][3], double G[4][4][SQ], double inv[4]) {
   static const int ED[4][2] = {{0, 1}, {3, 2}, {0, 3}, {1, 2}};
   static const double XI[4] = {-1, 1, 1, -1}, ET[4] = {-1, -1, 1, 1};
   double xx = 0, xe = 0, yx = 0, ye = 0;
@@ -273,6 +279,8 @@ void edge_shear_ops(const double xl[4][3], double G[4][4][3], double inv[4]) {
     Ed[k][I][2] += 0.5 * dx; Ed[k][J][2] += 0.5 * dx;
   }
   for (int I = 0; I < 4; ++I)
+    for (int q = 3; q < SQ; ++q) G[0][I][q] = G[1][I][q] = G[2][I][q] = G[3][I][q] = 0.0;
+  for (int I = 0; I < 4; ++I)
     for (int q = 0; q < 3; ++q) {
       const double exi = 0.25 * (Ed[0][I][q] + Ed[1][I][q]), eeta = 0.25 * (Ed[2][I][q] + Ed[3][I][q]);
       G[0][I][q] = inv[0] * exi + inv[1] * eeta;
@@ -282,24 +290,53 @@ void edge_shear_ops(const double xl[4][3], double G[4][4][3], double inv[4]) {
     }
 }
 
+// Covariant transverse shear strain of the edge a -> b (edge vector t, local frame), with the shell director d at
+// the edge midpoint: e = d . (u_b - u_a) + 1/2 (rot_a + rot_b) . (d x t). The director is the mean of the nodal
+// normals of the two end nodes (local components nl, reference geometry; facet normal when nl is null), less its
+// component along the edge, normalised (Abaqus: averaged nodal normals of a curved mesh, corner normals of a warped
+// element; single-element stiffness matrices with prescribed normals reproduced exactly). On a flat mesh
+// d = (0, 0, 1) and e = w_b - w_a + 1/2 (t_x (theta_y,a + theta_y,b) - t_y (theta_x,a + theta_x,b)).
+// e[N][q]: derivative with respect to dof q of node N.
+void edge_strain_op(const double tx, const double ty, const double tz, int a, int b, const double (*nl)[3],
+                    double e[4][SQ]) {
+  double d[3] = {0, 0, 1}, t[3] = {tx, ty, 0};
+  if (nl) {
+    t[2] = tz;
+    for (int k = 0; k < 3; ++k) d[k] = 0.5 * (nl[a][k] + nl[b][k]);
+    const double L2 = tx * tx + ty * ty + tz * tz, s = L2 > 0 ? (d[0] * tx + d[1] * ty + d[2] * tz) / L2 : 0.0;
+    for (int k = 0; k < 3; ++k) d[k] -= s * t[k];
+    const double dn = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    for (int k = 0; k < 3; ++k) d[k] /= dn;
+  }
+  const double c[3] = {d[1] * t[2] - d[2] * t[1], d[2] * t[0] - d[0] * t[2], d[0] * t[1] - d[1] * t[0]};  // d x t
+  e[b][0] += d[2]; e[a][0] -= d[2];
+  e[b][3] += d[0]; e[a][3] -= d[0];
+  e[b][4] += d[1]; e[a][4] -= d[1];
+  for (int N : {a, b}) {
+    e[N][1] += 0.5 * c[0];
+    e[N][2] += 0.5 * c[1];
+    e[N][5] += 0.5 * c[2];
+  }
+}
+
 // transverse shear of the reduced-integration quad, from the covariant shear strains of the four edges
-// (e = w_K - w_I + 1/2 (t_x (theta_y,I + theta_y,K) - t_y (theta_x,I + theta_x,K)), t = x_K - x_I; zero for
-// every Kirchhoff state). G[0], G[1]: shear strains gamma_xz, gamma_yz at the centre from the mean edge strains
-// u_xi = (e_bottom + e_top) / 2, u_eta = (e_left + e_right) / 2 (gamma = J0^-1 (u_xi, u_eta) / 2, rows of J0 =
-// dx/dxi, dx/deta). G[2]: one stabilised mode, half the sum of the edge-strain variations v_xi = e_top -
+// (edge_strain_op; zero for every Kirchhoff state). G[0], G[1]: shear strains gamma_xz, gamma_yz at the centre from
+// the mean edge strains u_xi = (e_bottom + e_top) / 2, u_eta = (e_left + e_right) / 2 (gamma = J0^-1 (u_xi, u_eta) / 2,
+// rows of J0 = dx/dxi, dx/deta). G[2]: one stabilised mode, half the sum of the edge-strain variations v_xi = e_top -
 // e_bottom, v_eta = e_right - e_left, less its part along the centre gradient (projection of the bilinear mode,
 // h.x J0^-1 (u_xi, u_eta) / 2): for w alone it is sum gamma_I w_I with the projected hourglass vector gamma.
-// G[3] unused. Returns gamma.gamma (4 for a parallelogram).
-double quad_shear_ops(const Geo& g, double G[4][4][3]) {
+// G[3]: circulation of the edge strains ("crop circle" mode, (-e_left + e_bottom + e_right - e_top) / 2), which
+// carries the weak stiffness K_cc = kts cw (0.001 Cs_eff / 12, Cs_eff the mean of the inverse metric diagonal; exact
+// on squares, rectangles, parallelograms and trapezoids: single-element Abaqus/Standard matrices). Abaqus also adds
+// this mode to the homogeneous shear of distorted quadrilaterals with coefficients of the geometry that are not
+// reproduced (zero on parallelograms and symmetric trapezoids). Returns gamma.gamma (4 for a parallelogram).
+double quad_shear_ops(const Geo& g, const double (*nl)[3], double G[4][4][SQ], double* cw = nullptr) {
   static const double XI[4] = {-1, 1, 1, -1}, ET[4] = {-1, -1, 1, 1};
   static const int EDGE[4][2] = {{0, 1}, {3, 2}, {0, 3}, {1, 2}};  // bottom, top, left, right
-  double E[4][4][3];  // edge strain operators
+  double E[4][4][SQ] = {};  // edge strain operators
   for (int k = 0; k < 4; ++k) {
-    for (int I = 0; I < 4; ++I) E[k][I][0] = E[k][I][1] = E[k][I][2] = 0.0;
     const int a = EDGE[k][0], b = EDGE[k][1];
-    const double tx = g.xl[b][0] - g.xl[a][0], ty = g.xl[b][1] - g.xl[a][1];
-    E[k][b][0] += 1.0; E[k][a][0] -= 1.0;
-    for (int N : {a, b}) { E[k][N][1] += -0.5 * ty; E[k][N][2] += 0.5 * tx; }
+    edge_strain_op(g.xl[b][0] - g.xl[a][0], g.xl[b][1] - g.xl[a][1], g.xl[b][2] - g.xl[a][2], a, b, nl, E[k]);
   }
   double jxi[2] = {0, 0}, jet[2] = {0, 0}, hx = 0, hy = 0;
   for (int I = 0; I < 4; ++I) {
@@ -313,15 +350,20 @@ double quad_shear_ops(const Geo& g, double G[4][4][3]) {
   const double cxi = 0.5 * (hx * i00 + hy * i10), ceta = 0.5 * (hx * i01 + hy * i11);
   double gg = 0;
   for (int I = 0; I < 4; ++I) {
-    for (int q = 0; q < 3; ++q) {
+    for (int q = 0; q < SQ; ++q) {
       const double uxi = 0.5 * (E[0][I][q] + E[1][I][q]), ueta = 0.5 * (E[2][I][q] + E[3][I][q]);
       const double vxi = E[1][I][q] - E[0][I][q], veta = E[3][I][q] - E[2][I][q];
       G[0][I][q] = 0.5 * (i00 * uxi + i01 * ueta);
       G[1][I][q] = 0.5 * (i10 * uxi + i11 * ueta);
       G[2][I][q] = 0.5 * (vxi + veta) - cxi * uxi - ceta * ueta;
-      G[3][I][q] = 0.0;
+      G[3][I][q] = 0.5 * (-E[2][I][q] + E[0][I][q] + E[3][I][q] - E[1][I][q]);
     }
     gg += G[2][I][0] * G[2][I][0];
+  }
+  if (cw) {
+    const double m00 = jxi[0] * jxi[0] + jxi[1] * jxi[1], m11 = jet[0] * jet[0] + jet[1] * jet[1];
+    const double m01 = jxi[0] * jet[0] + jxi[1] * jet[1], dm = m00 * m11 - m01 * m01;
+    *cw = 4.0 * det * 0.001 / 12.0 * 0.5 * (m11 + m00) / dm;
   }
   return gg;
 }
@@ -331,7 +373,7 @@ double quad_shear_ops(const Geo& g, double G[4][4][3]) {
 // part a only (one point at the centroid, no stiffness on the circulation c). G[c][I][k]: derivative of a_x (c = 0),
 // a_y (c = 1) and c (c = 2) with respect to dof k of node I (0: w, 1: theta_x, 2: theta_y); G[3] = 0. Reproduces
 // the single-element Abaqus/Explicit S3RS stiffness to 1e-7 (5 shapes, thickness 0.01 to 1)
-void tri_edge_shear_ops(const Geo& g, double G[4][4][3]) {
+void tri_edge_shear_ops(const Geo& g, double G[4][4][SQ]) {
   double M[3][3], R[3][3][3];  // rows: edges; R[edge][node][dof]
   for (int k = 0; k < 3; ++k) {
     const int a = k, b = (k + 1) % 3;
@@ -358,7 +400,7 @@ void tri_edge_shear_ops(const Geo& g, double G[4][4][3]) {
     for (int I = 0; I < 3; ++I)
       for (int q = 0; q < 3; ++q) G[c][I][q] = Mi[c][0] * R[0][I][q] + Mi[c][1] * R[1][I][q] + Mi[c][2] * R[2][I][q];
   for (int I = 0; I < 3; ++I) G[3][I][0] = G[3][I][1] = G[3][I][2] = 0.0;
-  for (int q = 0; q < 4; ++q) for (int a = 0; a < 3; ++a) G[q][3][a] = 0.0;
+  for (int c = 0; c < 4; ++c) for (int I = 0; I < 4; ++I) for (int q = I < 3 ? 3 : 0; q < SQ; ++q) G[c][I][q] = 0.0;
 }
 
 // transverse shear of the triangle as a degenerate quad: corners (k+1, k+2, k, k), the degenerate corner k being
@@ -368,17 +410,16 @@ void tri_edge_shear_ops(const Geo& g, double G[4][4][3]) {
 // homogeneous one, weight returned in cw: K_cc = kts cw). G[0], G[1]: gamma_xz, gamma_yz; G[2]: circulation.
 // Together with the thin-shell factor this gives the Abaqus S3R shear stiffness (exact for isosceles
 // triangles, within a few % otherwise; single-element probes)
-void tri_degenerate_shear_ops(const Geo& g, int k, const double c[2], double G[4][4][3], double& cw) {
+void tri_degenerate_shear_ops(const Geo& g, int k, const double c[2], const double (*nl)[3], double G[4][4][SQ],
+                              double& cw) {
   static const double XI[4] = {-1, 1, 1, -1}, ET[4] = {-1, -1, 1, 1};
   const int o[4] = {(k + 1) % 3, (k + 2) % 3, k, k};
-  auto edge = [&](int a, int b, double e[3][3]) {  // e[node][q] for the edge a -> b of the triangle
-    for (int I = 0; I < 3; ++I) e[I][0] = e[I][1] = e[I][2] = 0.0;
+  auto edge = [&](int a, int b, double e[4][SQ]) {  // e[node][q] for the edge a -> b of the triangle
+    for (int I = 0; I < 4; ++I) for (int q = 0; q < SQ; ++q) e[I][q] = 0.0;
     if (a == b) return;
-    const double tx = g.xl[b][0] - g.xl[a][0], ty = g.xl[b][1] - g.xl[a][1];
-    e[b][0] += 1.0; e[a][0] -= 1.0;
-    for (int N : {a, b}) { e[N][1] += -0.5 * ty; e[N][2] += 0.5 * tx; }
+    edge_strain_op(g.xl[b][0] - g.xl[a][0], g.xl[b][1] - g.xl[a][1], g.xl[b][2] - g.xl[a][2], a, b, nl, e);
   };
-  double eA[3][3], eB[3][3], eC[3][3];
+  double eA[4][SQ], eB[4][SQ], eC[4][SQ];
   edge(o[0], o[3], eA); edge(o[0], o[1], eB); edge(o[1], o[2], eC);  // the top edge (o[3] -> o[2]) is degenerate
   double jxi[2] = {0, 0}, jet[2] = {0, 0};
   for (int I = 0; I < 4; ++I)
@@ -386,7 +427,7 @@ void tri_degenerate_shear_ops(const Geo& g, int k, const double c[2], double G[4
   const double det = jxi[0] * jet[1] - jxi[1] * jet[0];
   const double i00 = jet[1] / det, i01 = -jxi[1] / det, i10 = -jet[0] / det, i11 = jxi[0] / det;
   for (int I = 0; I < 3; ++I)
-    for (int q = 0; q < 3; ++q) {
+    for (int q = 0; q < SQ; ++q) {
       const double gcc = 0.5 * (-eA[I][q] + eB[I][q] + eC[I][q]);
       const double u1 = 0.25 * eB[I][q] + c[0] * gcc, u2 = 0.25 * (eA[I][q] + eC[I][q]) + c[1] * gcc;
       G[0][I][q] = i00 * u1 + i01 * u2;
@@ -394,7 +435,7 @@ void tri_degenerate_shear_ops(const Geo& g, int k, const double c[2], double G[4
       G[2][I][q] = gcc;
       G[3][I][q] = 0.0;
     }
-  for (int q = 0; q < 4; ++q) for (int a = 0; a < 3; ++a) G[q][3][a] = 0.0;
+  for (int q = 0; q < 4; ++q) for (int a = 0; a < SQ; ++a) G[q][3][a] = 0.0;
   // weak stiffness of the circulation: 0.001 Cs_eff / 12 with Cs_eff the mean of the inverse metric diagonal
   const double m00 = jxi[0] * jxi[0] + jxi[1] * jxi[1], m11 = jet[0] * jet[0] + jet[1] * jet[1];
   const double m01 = jxi[0] * jet[0] + jxi[1] * jet[1], dm = m00 * m11 - m01 * m01;
@@ -474,6 +515,7 @@ class ShellGroup : public ElementGroup {
   bool enhanced_hg(int e) const { return sec[e]->hg_enhanced || (sec[e]->hg_default && hyper(e)); }
   double nu_eff(int e) const { return mat[e]->elastic ? mat[e]->nu : (hyper(e) ? 0.49 : 0.3); }
 
+  std::vector<double> nrm;        // averaged nodal normals, local components in the reference element frame (3 per node)
   std::vector<double> ts_factor;  // transverse shear stiffness factor (thin elements)
   std::vector<int> tri_k;         // triangles: degenerate corner of the shear formulation
   std::vector<double> tri_c;      // triangles: crop-circle coefficients (2 per element)
@@ -481,6 +523,69 @@ class ShellGroup : public ElementGroup {
     const Section& s = *sec[e];
     double k = s.has_ts ? (dir == 0 ? s.ts_k11 : s.ts_k22) : 5.0 / 6.0 * mat[e]->shear_modulus() * s.thickness;
     return ts_factor.empty() ? k : k * ts_factor[e];
+  }
+
+  // Nodal normals of the shells, as Abaqus averages them: at each node, the normals of the shell elements sharing it
+  // (quadrilateral: cross product of the two edges at that corner; triangle: its normal) are grouped, an element
+  // joining the group when its normal is within 20 degrees of a member; a group whose normals are all within 20
+  // degrees of each other gets their mean with equal weights, otherwise each element keeps its own normal; no
+  // averaging at nodes shared by more than 30 shell elements (Abaqus/Standard data checks: equal weights whatever the
+  // element areas and angles, corner normals of warped quadrilaterals, no averaging across a 25 degree fold). They
+  // only enter the transverse shear, through the directors at the edge midpoints (S4R, S3R).
+  void nodal_normals(const Model& m) {
+    nrm.clear();
+    if (type != ElType::S4R && type != ElType::S3R) return;
+    auto shell = [](ElType t) { return t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS; };
+    std::vector<std::vector<std::pair<int, int>>> at(m.X.size());
+    for (int ge = 0; ge < (int)m.elems.size(); ++ge)
+      if (shell(m.elems[ge].type))
+        for (int k = 0; k < (int)m.elems[ge].nodes.size(); ++k) at[m.elems[ge].nodes[k]].push_back({ge, k});
+    auto corner_normal = [&](int ge, int k) {
+      const std::vector<int>& nd = m.elems[ge].nodes;
+      if (nd.size() == 3) return normalized(cross(m.X[nd[1]] - m.X[nd[0]], m.X[nd[2]] - m.X[nd[0]]));
+      const Vec3 p = m.X[nd[k]];
+      return normalized(cross(m.X[nd[(k + 1) % 4]] - p, m.X[nd[(k + 3) % 4]] - p));
+    };
+    const double c20 = std::cos(20.0 * M_PI / 180.0);
+    nrm.assign(size() * nen * 3, 0.0);
+    bool any = false;
+    for (int e = 0; e < size(); ++e) {
+      double X[12];
+      for (int I = 0; I < nen; ++I) store3(X + 3 * I, m.X[conn[e * nen + I]]);
+      Geo g;
+      geometry(X, nen, g);
+      for (int I = 0; I < nen; ++I) {
+        const auto& L = at[conn[e * nen + I]];
+        int self = -1;
+        for (int j = 0; j < (int)L.size(); ++j) if (L[j].first == ids[e]) self = j;
+        Vec3 nv = corner_normal(ids[e], I);
+        if (self >= 0 && L.size() > 1 && L.size() <= 30) {
+          std::vector<Vec3> ns(L.size());
+          for (int j = 0; j < (int)L.size(); ++j) ns[j] = corner_normal(L[j].first, L[j].second);
+          std::vector<char> in(L.size(), 0);
+          in[self] = 1;
+          for (bool grown = true; grown;) {
+            grown = false;
+            for (int j = 0; j < (int)L.size(); ++j)
+              if (!in[j])
+                for (int k = 0; k < (int)L.size(); ++k)
+                  if (in[k] && dot(ns[j], ns[k]) >= c20) { in[j] = 1; grown = true; break; }
+          }
+          bool all = true;
+          Vec3 sum;
+          for (int j = 0; j < (int)L.size() && all; ++j)
+            if (in[j]) {
+              sum += ns[j];
+              for (int k = 0; k < (int)L.size(); ++k) if (in[k] && dot(ns[j], ns[k]) < c20) { all = false; break; }
+            }
+          if (all) nv = normalized(sum);
+        }
+        double* o = &nrm[(e * nen + I) * 3];
+        o[0] = dot(nv, g.e1); o[1] = dot(nv, g.e2); o[2] = dot(nv, g.e3);
+        any |= std::fabs(o[0]) > 1e-12 || std::fabs(o[1]) > 1e-12;
+      }
+    }
+    if (!any) nrm.clear();
   }
 
   void setup(const Model& m) override {
@@ -531,6 +636,7 @@ class ShellGroup : public ElementGroup {
         ts_factor[e] = 5.0 * t > L ? 1.0 : fp * t / (2.4 * L);
       }
     }
+    nodal_normals(m);
     for (int e = 0; e < size(); ++e) {
       const Section& s = m.sections[m.elems[ids[e]].section];
       sec[e] = &s;
@@ -691,15 +797,31 @@ class ShellGroup : public ElementGroup {
     dg[0] += thy / n;
     dg[1] += -thx / n;
     // uniform transverse shear from the edge strains (edge_shear_ops, tri_shear_ops)
-    double Gm[4][4][3], invm[4] = {0, 0, 0, 0}, cwm = 0;
+    const double (*nl)[3] = nrm.empty() ? nullptr : reinterpret_cast<const double(*)[3]>(&nrm[e * n * 3]);
+    double Gm[4][4][SQ], invm[4] = {0, 0, 0, 0}, cwm = 0;
     double ggm = 4.0;
     if (n == 4 && type == ElType::S4) edge_shear_ops(gm.xl, Gm, invm);
-    else if (n == 4) ggm = quad_shear_ops(gm, Gm);
+    else if (n == 4) ggm = quad_shear_ops(gm, nl, Gm, &cwm);
     else if (type == ElType::S3RS) tri_edge_shear_ops(gm, Gm);
-    else tri_degenerate_shear_ops(gm, tri_k[e], &tri_c[e * 2], Gm, cwm);
-    dg[0] = dg[1] = 0;
-    for (int I = 0; I < n; ++I)
-      for (int c = 0; c < 2; ++c) dg[c] += Gm[c][I][0] * du[I][2] + Gm[c][I][1] * dth[I][0] + Gm[c][I][2] * dth[I][1];
+    else tri_degenerate_shear_ops(gm, tri_k[e], &tri_c[e * 2], nl, Gm, cwm);
+    // local dof q of node I in the order of the shear operators (w, theta_x, theta_y, u, v, theta_z)
+    auto ldof = [&](int I, int q) {
+      switch (q) {
+        case 0: return du[I][2];
+        case 1: return dth[I][0];
+        case 2: return dth[I][1];
+        case 3: return du[I][0];
+        case 4: return du[I][1];
+        default: return dth[I][2];
+      }
+    };
+    auto shear_inc = [&](const double Gc[4][SQ]) {
+      double v = 0;
+      for (int I = 0; I < n; ++I) for (int q = 0; q < SQ; ++q) v += Gc[I][q] * ldof(I, q);
+      return v;
+    };
+    dg[0] = shear_inc(Gm[0]);
+    dg[1] = shear_inc(Gm[1]);
     for (int i = 0; i < 3; ++i) { S.em[i] += de[i]; S.kap[i] += dk[i]; }
 
     double dtemp = 0;
@@ -917,7 +1039,7 @@ class ShellGroup : public ElementGroup {
         double bb = 0;
         for (int I = 0; I < 4; ++I) bb += Gm[0][I][0] * Gm[0][I][0] + Gm[1][I][0] * Gm[1][I][0];
         kv[0] = sc.hg_scale * kts * gm.A * bb / (12.0 * std::max(ggm - 2.0, 1e-3));
-        kv[1] = 0.0;
+        kv[1] = kts * cwm;  // weak stiffness of the circulation (crop circle) mode
       } else {
         kv[0] = kts * cwm;
       }
@@ -1043,25 +1165,24 @@ class ShellGroup : public ElementGroup {
     double fl[4][6];
     std::memset(fl, 0, sizeof(fl));
     const double A = g1.A;
-    double G1[4][4][3], inv1[4], cw1;
+    double G1[4][4][SQ], inv1[4], cw1;
     if (n == 4 && type == ElType::S4) edge_shear_ops(g1.xl, G1, inv1);
-    else if (n == 4) quad_shear_ops(g1, G1);
+    else if (n == 4) quad_shear_ops(g1, nl, G1);
     else if (type == ElType::S3RS) tri_edge_shear_ops(g1, G1);
-    else tri_degenerate_shear_ops(g1, tri_k[e], &tri_c[e * 2], G1, cw1);
+    else tri_degenerate_shear_ops(g1, tri_k[e], &tri_c[e * 2], nl, G1, cw1);
     for (int I = 0; I < n; ++I) {
       double b1 = g1.B1[I], b2 = g1.B2[I];
       fl[I][0] += A * (b1 * N[0] + b2 * N[2]);
       fl[I][1] += A * (b2 * N[1] + b1 * N[2]);
       fl[I][3] += A * (-b2 * M[1] - b1 * M[2]);
       fl[I][4] += A * (b1 * M[0] + b2 * M[2]);
-      for (int q = 0; q < 3; ++q) fl[I][2 + q] += A * (G1[0][I][q] * Q[0] + G1[1][I][q] * Q[1]);
+      for (int q = 0; q < SQ; ++q) fl[I][SQ_FORCE[q]] += A * (G1[0][I][q] * Q[0] + G1[1][I][q] * Q[1]);
     }
     if (n == 3 && type != ElType::S3RS) {  // rotational part of the shear field of the triangle (physical shear energy)
-      double dgc = 0;
-      for (int I = 0; I < 3; ++I) dgc += Gm[2][I][0] * du[I][2] + Gm[2][I][1] * dth[I][0] + Gm[2][I][2] * dth[I][1];
+      const double dgc = shear_inc(Gm[2]);
       S.hgs[0] += kv[0] * dgc;
       for (int I = 0; I < 3; ++I)
-        for (int q = 0; q < 3; ++q) fl[I][2 + q] += G1[2][I][q] * S.hgs[0];
+        for (int q = 0; q < SQ; ++q) fl[I][SQ_FORCE[q]] += G1[2][I][q] * S.hgs[0];
     }
     if (n == 4) {  // hourglass control (stiffness form, incremental)
       // warping correction: on a warped element (nodes off the mean plane by z_I), a rigid rotation moves the
@@ -1074,10 +1195,10 @@ class ShellGroup : public ElementGroup {
         const double zI = gm.xl[I][2];
         dqx += gm.gam[I] * (du[I][0] - zI * thy); dqy += gm.gam[I] * (du[I][1] + zI * thx);
         dqtx += gm.gam[I] * dth[I][0]; dqty += gm.gam[I] * dth[I][1];
-        // variations of the edge shear strains across the element
-        dgx += Gm[2][I][0] * du[I][2] + Gm[2][I][1] * dth[I][0] + Gm[2][I][2] * dth[I][1];
-        dgy += Gm[3][I][0] * du[I][2] + Gm[3][I][1] * dth[I][0] + Gm[3][I][2] * dth[I][1];
       }
+      // variations of the edge shear strains across the element
+      dgx = shear_inc(Gm[2]);
+      dgy = shear_inc(Gm[3]);
       double o[6] = {S.hgm[0], S.hgm[1], S.hgb[0], S.hgb[1], S.hgs[0], S.hgs[1]};
       // membrane modes (u_x, u_y); rotation modes: theta_y acts as u_x and -theta_x as u_y
       S.hgm[0] += Em * (kxx * dqx + kxy * dqy); S.hgm[1] += Em * (kxy * dqx + kyy * dqy);
@@ -1121,7 +1242,7 @@ class ShellGroup : public ElementGroup {
         fl[I][4] -= 0.25 * gz * hf[0]; fl[I][3] += 0.25 * gz * hf[1];
         fl[I][3] += gI * hf[2];
         fl[I][4] += gI * hf[3];
-        for (int q = 0; q < 3; ++q) fl[I][2 + q] += G1[2][I][q] * Gx + G1[3][I][q] * Gy;
+        for (int q = 0; q < SQ; ++q) fl[I][SQ_FORCE[q]] += G1[2][I][q] * Gx + G1[3][I][q] * Gy;
       }
     }
     // drilling. Static procedures: corner rotation against the spin of the bilinear field at that corner (quads),

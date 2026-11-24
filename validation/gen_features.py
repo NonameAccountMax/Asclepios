@@ -457,6 +457,33 @@ def element_features():
              'the fourth: drilling, transverse shear, membrane and rotation hourglass stiffness.', mon, fix, True,
              'linear', 'linear', category='feature', group='element', twin=False)
 
+    # averaged nodal normals of a coarse curved mesh (directors of the transverse shear at the edge midpoints):
+    # cylindrical panels of 15 degree elements (S4R, S3R) clamped along a generator and loaded on the free one, and a
+    # single warped S4R (corner normals)
+    d = Deck('shell_nodal_normals', 'Coarse cylindrical panels (S4R, S3R) and a warped S4R: averaged nodal normals')
+    R, nth, ny = 10.0, 4, 2
+    mon, fix, loads = [], [], []
+    for k, etype in enumerate(('S4R', 'S3R')):
+        y0 = 20.0 * k
+        g = [[d.node(R * math.sin(math.radians(15.0 * i)), y0 + 3.0 * j, R * math.cos(math.radians(15.0 * i)) - R)
+              for j in range(ny + 1)] for i in range(nth + 1)]
+        quads = [[g[i][j], g[i + 1][j], g[i + 1][j + 1], g[i][j + 1]] for i in range(nth) for j in range(ny)]
+        conns = quads if etype == 'S4R' else [c for q in quads for c in ([q[0], q[1], q[2]], [q[0], q[2], q[3]])]
+        shell(d, etype, conns, 0.2, 'STEEL', elset='P%d' % (k + 1))
+        fix += g[0]
+        mon.append(g[nth][1])
+        loads += ['%d, 3, -1.' % n for n in g[nth]]
+    w = [d.node(x, 40.0 + y, z) for (x, y, z) in ((0, 0, 0), (2, 0, 0.3), (2, 2, 0), (0, 2, 0.3))]
+    shell(d, 'S4R', [w], 0.2, 'STEEL', elset='P3')
+    fix += [w[0], w[3]]
+    mon.append(w[2])
+    loads += ['%d, 3, -1.' % w[1], '%d, 3, -1.' % w[2]]
+    d.steps += static_step('Load', ['*Boundary', 'FIX, ENCASTRE', '*Cload'] + loads, False, rot=True, nframes=1)
+    register(d, 'static', 'S4R', 'averaged nodal normals', 'Cylindrical panels of 15-degree S4R and S3R elements '
+             'clamped along a generator with a transverse load on the free generator, and a single warped S4R: the '
+             'shell directors at the edge midpoints follow the averaged (corner) nodal normals.', mon, fix, True,
+             'linear', 'linear', category='feature', group='element')
+
     # in-plane dynamics of a single row of S4R elements: carried by the membrane hourglass and drilling
     # stiffnesses (explicit values of the membrane hourglass factor)
     d = Deck('s4r_inplane_cantilever_xpl', 'S4R strip, in-plane tip load (explicit): membrane hourglass')

@@ -3918,7 +3918,55 @@
   "known_quantities": [
    "RM"
   ],
-  "known_quantities_note": "Reaction moments not compared: transverse shear of the strongly distorted quad (probe 4) and drilling stiffness of distorted quads.",
+  "known_quantities_note": "Reaction moments not compared: the thick, strongly distorted quad (probe 4) carries a transverse shear term of Abaqus (crop-circle mode added to the homogeneous shear with coefficients of the geometry) whose rule is not reproduced",
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": null,
+  "literature": null,
+  "energies": null,
+  "deferred": false
+ },
+ {
+  "name": "shell_nodal_normals",
+  "category": "feature",
+  "group": "element",
+  "procedure": "static",
+  "element": "S4R",
+  "mode": "averaged nodal normals",
+  "description": "Cylindrical panels of 15-degree S4R and S3R elements clamped along a generator with a transverse load on the free generator, and a single warped S4R: the shell directors at the edge midpoints follow the averaged (corner) nodal normals.",
+  "mon": [
+   14,
+   29,
+   33
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   16,
+   17,
+   18,
+   31,
+   34
+  ],
+  "mone": [
+   1,
+   5,
+   8
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.02,
+   "RF": 0.02,
+   "S": 0.05,
+   "E": 0.03
+  },
+  "analysis": "linear",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -7737,10 +7785,8 @@
   "analysis": "linear",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [
-   "RM"
-  ],
-  "known_quantities_note": "Reaction moments along the diaphragms not compared on this coarse curved mesh (8 x 8, 5 degrees per element): they differ from the reference by a discretisation term that vanishes with refinement (23 / 3 / 0.5 / 0.1 % on 4 x 4 / 8 x 8 / 16 x 16 / 32 x 32 meshes, displacements identical; the single-element stiffness matrices agree to 0.4 %)",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -7788,10 +7834,8 @@
   "analysis": "linear",
   "known": null,
   "reference": "abaqus",
-  "known_quantities": [
-   "RM"
-  ],
-  "known_quantities_note": "Reaction moments along the diaphragms not compared on this coarse curved mesh (8 x 8, 5 degrees per element): they differ from the reference by a discretisation term that vanishes with refinement (23 / 3 / 0.5 / 0.1 % on 4 x 4 / 8 x 8 / 16 x 16 / 32 x 32 meshes, displacements identical; the single-element stiffness matrices agree to 0.4 %)",
+  "known_quantities": [],
+  "known_quantities_note": null,
   "supported": true,
   "unsupported_reason": null,
   "twin_of": null,
@@ -15263,6 +15307,54 @@
   "supported": true,
   "unsupported_reason": null,
   "twin_of": "elem_spring_dashpot_mass",
+  "literature": null,
+  "energies": null,
+  "deferred": false
+ },
+ {
+  "name": "shell_nodal_normals_xpl",
+  "category": "feature",
+  "group": "element",
+  "procedure": "explicit",
+  "element": "S4R",
+  "mode": "averaged nodal normals",
+  "description": "Cylindrical panels of 15-degree S4R and S3R elements clamped along a generator with a transverse load on the free generator, and a single warped S4R: the shell directors at the edge midpoints follow the averaged (corner) nodal normals.",
+  "mon": [
+   14,
+   29,
+   33
+  ],
+  "fix": [
+   1,
+   2,
+   3,
+   16,
+   17,
+   18,
+   31,
+   34
+  ],
+  "mone": [
+   1,
+   5,
+   8
+  ],
+  "mone_type": "S4R",
+  "rot": true,
+  "tol": {
+   "U": 0.06,
+   "RF": 0.1,
+   "S": 0.12,
+   "E": 0.06
+  },
+  "analysis": "quasi-static explicit",
+  "known": null,
+  "reference": "abaqus",
+  "known_quantities": [],
+  "known_quantities_note": null,
+  "supported": true,
+  "unsupported_reason": null,
+  "twin_of": "shell_nodal_normals",
   "literature": null,
   "energies": null,
   "deferred": false

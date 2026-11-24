@@ -43,14 +43,10 @@ KNOWN_QUANTITIES['xpl_damping_alpha_torsion_std'] = (['U', 'S', 'RM'], TORSION_U
 KNOWN_QUANTITIES['s3r_pressure_pulse'] = (['RM'], 'Total reaction moment not compared: on this plate clamped on its '
                                          'four edges it is a residual of about 20 % of the largest edge moment; '
                                          'the edge moments agree with the reference within 1.5 % (dynamic pulse)')
-SCORDELIS_RM = ('Reaction moments along the diaphragms not compared on this coarse curved mesh (8 x 8, 5 degrees per '
-                'element): they differ from the reference by a discretisation term that vanishes with refinement '
-                '(23 / 3 / 0.5 / 0.1 % on 4 x 4 / 8 x 8 / 16 x 16 / 32 x 32 meshes, displacements identical; the '
-                'single-element stiffness matrices agree to 0.4 %)')
-for _n in ('scordelis_lo_s4r', 'scordelis_lo_s3r'):
-    KNOWN_QUANTITIES[_n] = (['RM'], SCORDELIS_RM)
-KNOWN_QUANTITIES['s4r_single_element_probes'] = (['RM'], 'Reaction moments not compared: transverse shear of the strongly distorted '
-                                                 'quad (probe 4) and drilling stiffness of distorted quads.')
+KNOWN_QUANTITIES['s4r_single_element_probes'] = (['RM'], 'Reaction moments not compared: the thick, strongly '
+                                                 'distorted quad (probe 4) carries a transverse shear term of '
+                                                 'Abaqus (crop-circle mode added to the homogeneous shear with '
+                                                 'coefficients of the geometry) whose rule is not reproduced')
 # duration of the quasi-static explicit twins: a few periods of the lowest mode, loads following a smooth step
 QS_DURATION.update({
     'c3d8r_bending': 0.02, 'c3d8_bending': 0.02, 'c3d4_bending': 0.01,

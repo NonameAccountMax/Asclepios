@@ -102,7 +102,11 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   increment and L_b the area over the longest midline (quadrilaterals) or the shortest edge (triangles). S4R: one-point membrane and bending; transverse shear from the covariant shear
   strains of the four edges (no shear for any Kirchhoff state), uniform part at the centre with the stiffness
   κGt/(1 + 0.25·10⁻⁴ A/t²) plus one stabilised mode (half the sum of the edge-strain variations, projected on the
-  bilinear hourglass vector); hourglass stiffness of the membrane and rotation modes in Flanagan-Belytschko form
+  bilinear hourglass vector) and a weak stiffness 0.001·Cs/12 on their circulation; the shell director at each edge
+  midpoint is the mean of the nodal normals of its two nodes, less its component along the edge (nodal normals
+  averaged as Abaqus does: equal weights over the shell elements sharing the node whose normals lie within 20° of
+  each other, corner normals for warped quadrilaterals), which couples the in-plane displacements and drilling
+  rotations of a curved mesh to the transverse shear; hourglass stiffness of the membrane and rotation modes in Flanagan-Belytschko form
   (static: membrane 0.005 G, the documented default, rotations 0.18; explicit: instantaneous stiffnesses 0.2·G·t·A·ΣB²
   and 0.2·G·t³·A·ΣB², relaxed as for C3D8R with 500 undamped element increments), or the stiffness of an
   incompatible-mode element with `HOURGLASS=ENHANCED` (the default for hyperelastic materials; their hourglass and
@@ -117,7 +121,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   orthogonal to it (thin shells: the increment does not depend on the thickness). S3R: constant membrane strain and curvature; transverse shear of the
   triangle seen as a degenerate quadrilateral whose two merged corners sit at its most isosceles vertex (homogeneous part from the covariant edge
   strains plus a shape-dependent share of their circulation, weak stiffness 0.001 on the circulation, same thin-shell
-  factor as S4R), drilling on the corner rotations (explicit: against the element spin, the first node counted twice).
+  factor and edge directors as S4R), drilling on the corner rotations (explicit: against the element spin, the first node counted twice).
   S3RS: membrane, curvature and drilling as S3R; uniform transverse shear from the three edge strains (the shear field
   whose tangential components at the edge midpoints reproduce them, one point at the centroid, no stiffness on their
   circulation); full shear stiffness k G t on thick elements (t > L/5, L the shortest edge), a penalty
@@ -312,7 +316,10 @@ Features exercised by the validation suite and not supported yet:
 
 Accuracy and performance:
 
-- Shells: drilling rotations and element stresses of static in-plane problems.
+- Shells: drilling rotations and element stresses of static in-plane problems; transverse shear of strongly distorted
+  quadrilaterals and of non-isosceles triangles (Abaqus adds the circulation of the edge strains to the homogeneous
+  shear with coefficients of the geometry: approximated for triangles, not reproduced for quadrilaterals; 1 to 5 %
+  on the rotation terms of a single distorted element).
 - Dynamics: beam-to-solid impact (displacements within 11 %, stresses 15 %); beam-to-shell impact
   (reactions within 14 %, energy 6 %, beam end rotations 13 %); a shell sheet dropped
   on a beam stops like the reference at the first contact increment, then its contact force stays up to 25 % lower; self-contact of a coiled strip (first contact within 7 %; the later chatter of the coil on the clamped edge, which

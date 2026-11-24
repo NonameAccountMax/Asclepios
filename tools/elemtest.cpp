@@ -1,6 +1,7 @@
 // Element check: finite-difference stiffness of the first element of a deck; symmetry and eigenvalues.
 #include <Eigen/Dense>
 #include <cstdio>
+#include <cstdlib>
 #include "element/element.hpp"
 #include "model/model.hpp"
 using namespace abq;
@@ -21,6 +22,11 @@ int main(int argc, char** argv) {
     du[j] = -h; std::vector<double> f2(nd); out.f = f2.data(); G.compute(0, in, out, false);
     du[j] = 0;
     for (int i = 0; i < nd; ++i) K(i, j) = (f1[i] - f2[i]) / (2 * h);
+  }
+  if (const char* path = std::getenv("ELEMTEST_DUMP")) {  // stiffness matrix as text, one row per line
+    FILE* fp = std::fopen(path, "w");
+    for (int i = 0; i < nd; ++i) { for (int j = 0; j < nd; ++j) std::fprintf(fp, " %.10e", K(i, j)); std::fprintf(fp, "\n"); }
+    std::fclose(fp);
   }
   double asym = (K - K.transpose()).norm() / K.norm();
   printf("type %s nen %d  |K-K^T|/|K| = %.3e  dt_stable %.4e\n", eltype_name(G.type), nen, asym, out.dt_stable);
