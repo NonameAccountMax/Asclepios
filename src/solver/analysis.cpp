@@ -10,6 +10,7 @@
 #include <map>
 
 #include "contact/contact.hpp"
+#include "contact/pairs.hpp"
 #include "core/log.hpp"
 #include "output/output.hpp"
 

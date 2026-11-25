@@ -1,0 +1,72 @@
+*Heading
+S4R sheet dropped on one large clamped S4R element, linear softened pressure-overclosure law (no reverse contact)
+*Node
+1, 0., 0., 0.
+2, 1, 0., 0.
+3, 0., 1, 0.
+4, 1, 1, 0.
+5, 0.31, 0.33, 0.25
+6, 0.71, 0.33, 0.25
+7, 0.31, 0.73, 0.25
+8, 0.71, 0.73, 0.25
+*Element, type=S4R, elset=PLATE
+1, 1, 2, 4, 3
+*Element, type=S4R, elset=SHEET
+2, 5, 6, 8, 7
+*Nset, nset=SHEETN
+5, 6, 7, 8
+*Nset, nset=MON
+5, 8
+*Nset, nset=FIX
+1, 2, 3, 4
+*Elset, elset=PLATE
+1
+*Elset, elset=SHEET
+2
+*Elset, elset=MONE
+1
+*Shell Section, elset=PLATE, material=STEEL
+0.2, 5
+*Shell Section, elset=SHEET, material=ALU
+0.2, 5
+*Surface Interaction, name=IP
+*Surface Behavior, pressure-overclosure=LINEAR
+1000.
+*Material, name=ALU
+*Density
+2.7e-09
+*Elastic
+70000., 0.33
+*Material, name=STEEL
+*Density
+7.85e-09
+*Elastic
+210000., 0.3
+*Expansion
+1.2e-05
+*Initial Conditions, type=VELOCITY
+SHEETN, 3, -1000.
+*Step, name=Drop, nlgeom=YES
+*Dynamic, Explicit
+, 0.0001
+*Boundary
+FIX, ENCASTRE
+*Contact
+*Contact Inclusions, ALL EXTERIOR
+*Contact Property Assignment
+ , , IP
+*Output, field, number interval=200, time marks=YES
+*Node Output
+U, RF, UR, RM, V
+*Element Output, elset=MONE
+S, SF
+*Output, history, variable=PRESELECT, time interval=5e-07
+*Output, history, time interval=5e-07
+*Incrementation Output
+DT, DMASS
+*Output, history, frequency=1
+*Node Output, nset=FIX
+RF1, RF2, RF3
+*Node Output, nset=MON
+U1, U2, U3, UR1, UR2, UR3
+*End Step

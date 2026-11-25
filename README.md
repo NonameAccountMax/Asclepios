@@ -13,13 +13,13 @@ replacement for a commercial package.
 | Area | Supported |
 |---|---|
 | Input | `*INCLUDE`, `*PARAMETER` (expressions), `*PART` / `*ASSEMBLY` / `*INSTANCE` (translation, rotation), `Assembly.Instance.set` names, `*NODE`, `*ELEMENT`, `*NSET` / `*ELSET` (GENERATE, INSTANCE, `*NSET, ELSET=`), `*SURFACE` (ELEMENT SPOS/SNEG/S1…S6, NODE, CYLINDER), `*ORIENTATION` (rectangular, LOCAL DIRECTIONS) |
-| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN, JOIN, HINGE, BEAM, BUSHING; linear damping), T3D2 (truss), SPRINGA / DASHPOTA / MASS, R3D4 / R3D3 (rigid) |
+| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN, JOIN, HINGE, BEAM, BUSHING; linear damping), T3D2 (truss), SPRINGA / DASHPOTA / MASS, R3D4 / R3D3 (rigid), SFM3D4R / SFM3D3 (surface elements: no stiffness, `*SURFACE SECTION` DENSITY as mass per unit area) |
 | Materials | isotropic `*ELASTIC` (temperature-dependent rows), `*ELASTIC, TYPE=ENGINEERING CONSTANTS` (orthotropic, solids), tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), linear `HARDENING=KINEMATIC` (solids), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL (solids; fibre directions from `*ORIENTATION, LOCAL DIRECTIONS`), `*HYPERELASTIC` NEO HOOKE / MOONEY-RIVLIN / YEOH / OGDEN (Ogden: solids), superelastic shape memory alloys (material named `ABQ_SUPER_ELASTIC…` with its `*USER MATERIAL` constants; solids), linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*DYNAMIC` implicit (HHT-α: APPLICATION=MODERATE DISSIPATION, TRANSIENT FIDELITY, QUASI-STATIC, ALPHA), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
 | Loads | `*BOUNDARY` (displacement, velocity, acceleration, ENCASTRE…, OP=NEW), `*CLOAD` (FOLLOWER), `*DSLOAD` / `*DLOAD` P (follower pressure), `*DLOAD` GRAV, `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, EQUALLY SPACED, PERIODIC, DECAY, step or total time), `*INITIAL CONDITIONS` (VELOCITY, TEMPERATURE, STRESS), `*TRANSFORM` (rectangular: loads and zero conditions in local axes); loads propagate between steps |
 | Constraints | `*TIE` (surface ties of solid faces and shells, non-matching meshes; ADJUST, POSITION TOLERANCE, NO ROTATION), `*COUPLING` (`*KINEMATIC`, `*DISTRIBUTING` with UNIFORM / LINEAR / QUADRATIC / CUBIC weighting, constrained degrees of freedom), `*RIGID BODY` (REF NODE, ELSET, PIN / TIE NSET, ANALYTICAL SURFACE), `*EQUATION`, `*MPC` (BEAM, TIE, PIN), CONN3D2 JOIN |
-| Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`; node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), rigid surfaces (R3D4 / R3D3 elements, analytical `*SURFACE, TYPE=CYLINDER`), node-to-beam segment |
+| Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), `*CONTACT EXCLUSIONS`, global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`, `*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=TABULAR / LINEAR / EXPONENTIAL` (softened); node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), rigid surfaces (R3D4 / R3D3 elements, analytical `*SURFACE, TYPE=CYLINDER`), surface elements, node-to-beam segment, beam-to-beam edge contact; explicit `*CONTACT PAIR` (kinematic hard contact, balanced or pure master-slave, WEIGHT) |
 | Output | `*OUTPUT, FIELD` (NUMBER INTERVAL / TIME INTERVAL; FREQUENCY in static steps, ignored in explicit ones as Abaqus/Explicit does), `*OUTPUT, HISTORY` (number of intervals) |
 
 Unknown keywords produce a single warning and are ignored.
@@ -176,7 +176,24 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   most half the facet size), so that the contact surface does not extend beyond the edge. The normal force is updated
   incrementally, so it does not jump when the stiffness changes, when a node moves to another facet, or when a contact
   is detected already penetrated. Initial overclosures are removed by a strain-free adjustment (half the
-  penetration on each side, reported in the displacements). Coulomb friction.
+  penetration on each side, reported in the displacements). Coulomb friction (the stored tangential force is kept
+  while the node stays on the same facet, either triangle of a quadrilateral). Beam segments contact each other edge to edge (closest points inside both segments, each pair once). Softened
+  contact: the pressure of the overclosure acts on the tributary area of the slave node, with a weight of 0.7 per
+  pass when the reverse pass is active too (a node of the master facet in contact as a slave) and 1 otherwise, as
+  measured node by node in Abaqus/Explicit; its contact damping (3 % of critical) and the increment bound use the
+  slope of the law. `*CONTACT EXCLUSIONS` remove the node-to-facet contacts between the two surfaces of a pair (both
+  ways) and their edge contacts. Surface elements (SFM3D4R / SFM3D3) are two-sided facets without thickness whose
+  nodes are slaves too; without mass (no DENSITY) they carry no contact stiffness, as in Abaqus/Explicit where such
+  a crimper passes through the tube.
+- **Contact pairs** (`*CONTACT PAIR`, explicit): kinematic hard contact. At the end of each increment the next one is
+  predicted without contact; the slave nodes that would penetrate the master surface are put back on it by
+  corrections of the current accelerations that conserve momentum (resisting force m·d/Δt² distributed to the master
+  nodes with the bilinear weights of the contact point together with the slave mass, master correction = force /
+  (mass + distributed slave masses), slave correction onto the corrected master surface). Between two deformable
+  surfaces both passes are averaged (WEIGHT, default 0.5) and a second, unweighted correction removes the remaining
+  penetration; rigid or massless surfaces are always masters. Shell surfaces are offset by the half thickness on
+  their side (SPOS / SNEG). The corrections count as contact forces at the current time, as Abaqus/Explicit
+  reports them (kinetic energy, reactions, contact work); impacts are plastic.
 - **Constraints**: every constraint is a set of linear dependencies u_dependent = Σ c·u_independent. Implicit
   procedures eliminate the dependent degrees of freedom; explicit procedures move the forces and masses of a dependent
   node onto its independent nodes with the same coefficients (an offset mass adds its m·d² to their rotary inertia)
@@ -189,7 +206,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   least-squares rotation of the coupling nodes (weights: tributary areas).
 - **Loads**: gravity from the lumped nodal masses; follower concentrated loads rotated with the node (rotation
   composed increment by increment); prescribed accelerations integrated into the velocities, their reactions include
-  the inertia of the node; temperature-dependent linear elasticity in total form, σ = C(T) (ε − α (T − T_initial)),
+  the inertia of the node, and the external work includes the kinetic energy given to prescribed nodes; temperature-dependent linear elasticity in total form, σ = C(T) (ε − α (T − T_initial)),
   so that a loaded bar lengthens when its modulus drops; initial stresses of solids released by the first step.
 - **Connectors**: CARTESIAN and BUSHING measure the position of node b in the axes that follow node a (with
   NLGEOM; without, u_b − u_a − θ_a × d), and the moment of the force pair across the offset goes to node a, so that
@@ -302,8 +319,9 @@ Mesh-convergence curves and deformed shapes of every benchmark: [validation/LITE
 
 Features exercised by the validation suite and not supported yet:
 
-- Contact: beam-to-beam edge contact, contact pairs (`*CONTACT PAIR`), contact in implicit procedures, one-sided
-  SPOS/SNEG contact, analytical surfaces other than CYLINDER (REVOLUTION, SEGMENTS).
+- Contact: contact in implicit procedures; contact pairs with penalty enforcement, friction or softened behaviour;
+  surface-specific contact property assignments; one-sided SPOS/SNEG surfaces in general contact; analytical
+  surfaces other than CYLINDER (REVOLUTION, SEGMENTS).
 - Constraints: connector stops; rigid links that follow large rotations exactly (the dependencies are linear in the
   rotations).
 - Elements: C3D10M, C3D6, M3D4R, B32; beam sections BOX and I; shell offsets and composite sections.

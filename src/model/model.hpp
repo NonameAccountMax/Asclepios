@@ -9,9 +9,11 @@
 
 namespace abq {
 
-enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, R3D4, R3D3, SPRINGA, DASHPOTA, MASS, UNKNOWN };
+enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, R3D4, R3D3, SFM3D4, SFM3D3, SPRINGA, DASHPOTA, MASS, UNKNOWN };
 const char* eltype_name(ElType t);
 inline bool is_rigid_type(ElType t) { return t == ElType::R3D4 || t == ElType::R3D3; }
+// surface elements (SFM3D4R, SFM3D3): facets without stiffness or mass, moved by their boundary conditions
+inline bool is_surface_type(ElType t) { return t == ElType::SFM3D4 || t == ElType::SFM3D3; }
 inline bool is_solid_type(ElType t) { return t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4; }
 ElType eltype_from(const std::string& abaqus_name, int& nnodes);
 
@@ -98,7 +100,8 @@ struct ConnectorBehavior {
 };
 
 struct Section {
-  enum Kind { SOLID, SHELL, BEAM, CONNECTOR, DISCRETE } kind = SOLID;
+  enum Kind { SOLID, SHELL, BEAM, CONNECTOR, DISCRETE, SURFACE } kind = SOLID;
+  double area_density = 0;  // *SURFACE SECTION, DENSITY: mass per unit area of surface elements
   // discrete elements (*SPRING, *DASHPOT, *MASS): stiffness or table (force, relative displacement), damping
   // coefficient, point mass
   double spring_k = 0, dashpot_c = 0, point_mass = 0;
@@ -148,6 +151,10 @@ struct FaceRef {
   int elem;  // global element index
   int face;  // shells: +1 SPOS, -1 SNEG, 0 both/unspecified; solids: 1..6 (S1..S6); beams: 0
 };
+// nodes of one face of an element (local indices, closed loop; shells, rigid and surface elements: all their nodes,
+// beams and trusses: both nodes); returns their number, 0 for an invalid face
+int face_local_nodes(ElType t, int face, int nen, int* out);
+
 struct Surface {
   std::string name;
   bool node_based = false;
@@ -196,6 +203,16 @@ struct NodePairMpc {
 struct SurfaceInteraction {
   std::string name;
   double friction = 0;
+  // *SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE: HARD (penalty), or a softened law p(h) of the overclosure h (negative:
+  // clearance): TABULAR (points (p, h), linear beyond the last one), EXPONENTIAL (zero at the clearance c0, p0 at
+  // contact), LINEAR (slope k)
+  enum Law { HARD, TABULAR, EXPONENTIAL, LINEAR } law = HARD;
+  std::vector<double> tab_p, tab_h;
+  double c0 = 0, p0 = 0, slope = 0;
+  // clearance at which the pressure starts (>= 0)
+  double clearance() const;
+  // contact pressure at the overclosure h and its slope dp/dh
+  double pressure(double h, double* dpdh) const;
 };
 
 // One prescribed quantity on one node degree of freedom (BC, concentrated load, temperature, field).
@@ -269,6 +286,12 @@ struct Step {
   bool contact_all_exterior = false;
   std::vector<std::string> contact_surfaces;
   int contact_property = -1;
+  // *CONTACT EXCLUSIONS: surface pairs (second name empty: self-contact of the first)
+  std::vector<std::pair<std::string, std::string>> contact_exclusions;
+  // *CONTACT PAIR (explicit, kinematic hard contact): first and second surface, interaction, weighting factor of the
+  // first surface as master (WEIGHT; < 0: default, balanced 0.5 between deformable surfaces)
+  struct ContactPair { std::string first, second; int interaction = -1; double weight = -1; };
+  std::vector<ContactPair> contact_pairs;
   // output
   OutputRequest output;
   bool output_defined = false;

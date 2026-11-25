@@ -26,7 +26,8 @@ std::vector<std::unique_ptr<ElementGroup>> make_element_groups(const Model& m) {
         case ElType::B31: grp = make_beam_group(); break;
         case ElType::CONN3D2: grp = make_connector_group(); break;
         case ElType::T3D2: grp = make_truss_group(); break;
-        case ElType::SPRINGA: case ElType::DASHPOTA: case ElType::MASS: grp = make_discrete_group(); break;
+        case ElType::SPRINGA: case ElType::DASHPOTA: case ElType::MASS: case ElType::SFM3D4: case ElType::SFM3D3:
+          grp = make_discrete_group(); break;
         default: continue;
       }
       grp->type = t;
@@ -35,9 +36,10 @@ std::vector<std::unique_ptr<ElementGroup>> make_element_groups(const Model& m) {
     bool kind_ok = (s.kind == Section::SOLID && (t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4 || t == ElType::T3D2)) ||
                    (s.kind == Section::SHELL && (t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS)) ||
                    (s.kind == Section::BEAM && t == ElType::B31) || (s.kind == Section::CONNECTOR && t == ElType::CONN3D2) ||
-                   (s.kind == Section::DISCRETE && (t == ElType::SPRINGA || t == ElType::DASHPOTA || t == ElType::MASS));
+                   (s.kind == Section::DISCRETE && (t == ElType::SPRINGA || t == ElType::DASHPOTA || t == ElType::MASS)) ||
+                   (s.kind == Section::SURFACE && is_surface_type(t));
     if (!kind_ok) throw std::runtime_error("element " + m.elem_name(e) + ": section type does not match element type");
-    if (s.kind != Section::CONNECTOR && s.kind != Section::DISCRETE && s.material < 0) throw std::runtime_error("element " + m.elem_name(e) + ": section without material");
+    if (s.kind != Section::CONNECTOR && s.kind != Section::DISCRETE && s.kind != Section::SURFACE && s.material < 0) throw std::runtime_error("element " + m.elem_name(e) + ": section without material");
     it->second->ids.push_back(e);
     for (int n : el.nodes) it->second->conn.push_back(n);
   }

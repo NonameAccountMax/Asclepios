@@ -8,6 +8,7 @@
 #include <cstdlib>
 
 #include "contact/contact.hpp"
+#include "contact/pairs.hpp"
 #include "core/binio.hpp"
 #include "core/log.hpp"
 #include "output/output.hpp"
@@ -120,6 +121,8 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
   } else if (st.contact_defined) {
     A.contact->define(st);
   }
+  if (!A.pairs) A.pairs = std::make_unique<ContactPairs>(A);
+  A.pairs->define(st);  // contact pairs of the step (model-level pairs are copied into every step)
   if (!resume) {
     A.temperatures(0.0, A.total_time);
     A.temp_prev = A.temp;
@@ -159,7 +162,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
   };
   const int nhist = std::max(1, st.output.history_intervals);
   const double hist_dt = st.period / nhist;
-  std::vector<double> fint_old, fext_old, fcon_old, fd(6 * nn, 0.0), presc_acc(6 * nn, 0.0);
+  std::vector<double> fint_old, fext_old, fcon_old, fd(6 * nn, 0.0), presc_acc(6 * nn, 0.0), fkin(6 * nn, 0.0);
   double next_frame, next_hist, next_print, dt_prev, t, dt_el, dt;
   int crit = -1, inc, ms_counter = 0, nfail_tot = 0, nfail_inc = 0;
   double ke_rot_last = 0;
@@ -377,10 +380,13 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     double hdt = 0.5 * (dt_prev + dt);
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
     for (int i = 0; i < 6 * nn; ++i) A.v[i] += hdt * A.a[i];
-    // prescribed motion
+    // prescribed motion; the work of the reactions includes the inertia of the prescribed dofs (change of their
+    // kinetic energy between the half steps, as reported in the kinetic energy)
     std::fill(presc_acc.begin(), presc_acc.end(), 0.0);
+    double dWin = 0;
     for (auto& b : A.loads.bcs) {
       int i = 6 * b.node + b.dof;
+      const double vold = A.v[i], mi = b.dof < 3 ? A.mt[b.node] : A.mr[b.node];
       double target = A.loads.value(b, tn, ttn, A.m);
       if (b.acceleration) { A.v[i] += hdt * target; presc_acc[i] = target; }  // fixed dof: own acceleration zero
       else if (b.velocity) A.v[i] = target;
@@ -388,8 +394,14 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       // condition is redefined keeps its current position as the reference, as in Abaqus/Explicit
       else if (b.amp >= 0) A.v[i] = (target - A.loads.value(b, t, A.total_time, A.m)) / dt;
       else A.v[i] = (target - A.u[i]) / dt;
+      dWin += 0.5 * mi * (A.v[i] * A.v[i] - vold * vold);
     }
-    for (auto& b : A.m.model_bcs) { int i = 6 * b.node + b.dof; A.v[i] = (b.value - A.u[i]) / dt; }
+    for (auto& b : A.m.model_bcs) {
+      int i = 6 * b.node + b.dof;
+      const double vold = A.v[i], mi = b.dof < 3 ? A.mt[b.node] : A.mr[b.node];
+      A.v[i] = (b.value - A.u[i]) / dt;
+      dWin += 0.5 * mi * (A.v[i] * A.v[i] - vold * vold);
+    }
     if (!A.links.empty()) A.spread_links(A.v);  // dependent dofs follow their (possibly prescribed) terms
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
     for (int i = 0; i < 6 * nn; ++i) A.du[i] = dt * A.v[i];
@@ -404,6 +416,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     nfail_tot += S.failed;
     A.external_forces(tn, ttn, A.fext);
     if (A.contact->active()) A.contact->compute(dt, A.fcon, A.en, A.total_increments);
+    else if (A.pairs->active()) std::fill(A.fcon.begin(), A.fcon.end(), 0.0);  // forces of the pairs added below
     // damping forces (mass proportional, half-step velocity)
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
     for (int n = 0; n < nn; ++n) {
@@ -438,8 +451,9 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     A.en.plastic += S.e_plastic;
     A.en.artificial += S.e_art;
     A.en.internal += dWi - S.e_visc + S.e_corr;
-    A.en.external += dWe;
+    A.en.external += dWe + dWin;
     A.en.contact += -dWc;  // work absorbed by contact (penalty energy + friction)
+
     A.en.damping += dWd;
 
     if (trace >= 0) {
@@ -478,6 +492,25 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       }
     }
     if (has_links) A.link_accelerations(A.res);
+    if (A.pairs->active()) {
+      // kinematic contact pairs: the next increment predicted with the current velocities and accelerations (same
+      // increment size), the accelerations corrected so that it ends without penetration; the corrections act as
+      // contact forces at the current time (reactions of prescribed dofs, contact work over this increment and the
+      // next one, trapezoidal rule as for the other forces)
+      std::fill(fkin.begin(), fkin.end(), 0.0);
+      std::vector<double> dpred(6 * nn);
+      for (int i = 0; i < 6 * nn; ++i) dpred[i] = A.du[i] + dt * (A.v[i] + dt * A.a[i]);
+      A.pairs->correct(dt * dt, dpred, A.a, fkin);
+      double wc = 0, we = 0;
+      for (int i = 0; i < 6 * nn; ++i) {
+        if (fkin[i] == 0) continue;
+        A.fcon[i] += fkin[i];
+        wc += 0.5 * fkin[i] * A.du[i];
+        if (A.fixed[i]) { A.rf[i] -= fkin[i]; we -= 0.5 * fkin[i] * A.du[i]; }
+      }
+      A.en.contact -= wc;
+      A.en.external += we;
+    }
 #pragma omp parallel for num_threads(A.nthreads) reduction(+ : ke, ker) schedule(static)
     for (int n = 0; n < nn; ++n)
       for (int k = 0; k < 6; ++k) {

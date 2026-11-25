@@ -48,8 +48,8 @@ int vtk_type(ElType t, int nen) {
   switch (t) {
     case ElType::C3D8R: case ElType::C3D8: case ElType::C3D8I: return 12;
     case ElType::C3D4: return 10;
-    case ElType::S4R: case ElType::S4: return 9;
-    case ElType::S3R: case ElType::S3RS: return 5;
+    case ElType::S4R: case ElType::S4: case ElType::SFM3D4: return 9;
+    case ElType::S3R: case ElType::S3RS: case ElType::SFM3D3: return 5;
     default: return nen == 1 ? 1 : 3;  // vertex (point mass), line
   }
 }

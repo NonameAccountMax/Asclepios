@@ -7,6 +7,8 @@
 //    boundary the contact is with the rounded edge (closest point), so no gap between facets;
 //    beam nodes contact facets and segments, shell nodes only facets; the free shell edges contact
 //    the beam segments (edge to segment, closest points of the two segments);
+//  - beam segments contact each other edge to edge (closest points of the two segments, inside both; each pair once,
+//    equal weighting), the ends of the segments by their nodes;
 //  - free shell edges are rounded within the shell: the nodes of a free edge are moved back into the
 //    shell plane by the half thickness (perpendicular to the edge, along the bisector at a corner;
 //    at most half the facet size and 0.6 x facet size x sine of the angle to each edge), so that
@@ -21,10 +23,16 @@
 //  - normal viscous damping of 3 % of the critical damping of the contact spring (slave mass, or reduced mass of the
 //    slave and of the master facet when the master side sets the stiffness), not
 //    bounded by the spring force (slightly tensile total force when overlapping nodes separate fast);
-//  - Coulomb friction, tangential penalty stiffness equal to the normal one;
+//  - softened contact (*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE = TABULAR / LINEAR / EXPONENTIAL): pressure of the
+//    overclosure on the tributary area of the slave node, weight 0.7 per pass when the reverse pass is active too,
+//    3 % damping on its stiffness, which also bounds the increment;
+//  - Coulomb friction, tangential penalty stiffness equal to the normal one (stored force kept while the master stays
+//    the same facet);
 //  - incremental normal force (no jump when k changes, when a node switches facet or when a
 //    contact is found deep); initial overclosures act as offsets released as the nodes separate;
-//  - candidate pairs from a bucket grid, rebuilt when nodes moved more than half the margin.
+//  - candidate pairs from a bucket grid, rebuilt when nodes moved more than half the margin;
+//  - *CONTACT EXCLUSIONS: no contact between the nodes of one surface of an excluded pair and the facets or segments
+//    of the other (both ways), nor between the elements of the two surfaces for edge contacts.
 #include "contact/contact.hpp"
 
 #include <omp.h>
@@ -39,6 +47,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "contact/geom.hpp"
 #include "core/log.hpp"
 #include "solver/analysis.hpp"
 
@@ -64,17 +73,6 @@ struct HitV3 {  // restart files before contact.v4
   int side = 0;
 };
 
-// barycentric coordinates of the projection of p on the plane of the triangle abc (outside [0, 1] beyond its edges)
-void plane_coords(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c, double w[3]) {
-  const Vec3 e1 = b - a, e2 = c - a, d = p - a;
-  const double d11 = dot(e1, e1), d12 = dot(e1, e2), d22 = dot(e2, e2), det = d11 * d22 - d12 * d12;
-  if (!(det > 0)) { w[0] = 1; w[1] = w[2] = 0; return; }
-  const double p1 = dot(d, e1), p2 = dot(d, e2);
-  w[1] = (d22 * p1 - d12 * p2) / det;
-  w[2] = (d11 * p2 - d12 * p1) / det;
-  w[0] = 1 - w[1] - w[2];
-}
-
 // closest points of the segments p1-q1 and p2-q2 (Ericson): parameters s on the first, t on the second
 void closest_seg_seg(const Vec3& p1, const Vec3& q1, const Vec3& p2, const Vec3& q2, double& s, double& t) {
   const Vec3 d1 = q1 - p1, d2 = q2 - p2, r = p1 - p2;
@@ -88,35 +86,6 @@ void closest_seg_seg(const Vec3& p1, const Vec3& q1, const Vec3& p2, const Vec3&
   t = (b * s + f) / e;
   if (t < 0) { t = 0; s = std::clamp(-c / a, 0.0, 1.0); }
   else if (t > 1) { t = 1; s = std::clamp((b - c) / a, 0.0, 1.0); }
-}
-
-// closest point on a triangle (Ericson), barycentric weights; interior = projection inside
-Vec3 closest_on_tri(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c, double w[3], bool& interior) {
-  Vec3 ab = b - a, ac = c - a, ap = p - a;
-  double d1 = dot(ab, ap), d2 = dot(ac, ap);
-  interior = false;
-  if (d1 <= 0 && d2 <= 0) { w[0] = 1; w[1] = w[2] = 0; return a; }
-  Vec3 bp = p - b;
-  double d3 = dot(ab, bp), d4 = dot(ac, bp);
-  if (d3 >= 0 && d4 <= d3) { w[1] = 1; w[0] = w[2] = 0; return b; }
-  double vc = d1 * d4 - d3 * d2;
-  if (vc <= 0 && d1 >= 0 && d3 <= 0) { double v = d1 / (d1 - d3); w[0] = 1 - v; w[1] = v; w[2] = 0; return a + ab * v; }
-  Vec3 cp = p - c;
-  double d5 = dot(ab, cp), d6 = dot(ac, cp);
-  if (d6 >= 0 && d5 <= d6) { w[2] = 1; w[0] = w[1] = 0; return c; }
-  double vb = d5 * d2 - d1 * d6;
-  if (vb <= 0 && d2 >= 0 && d6 <= 0) { double v = d2 / (d2 - d6); w[0] = 1 - v; w[2] = v; w[1] = 0; return a + ac * v; }
-  double va = d3 * d6 - d5 * d4;
-  if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
-    double v = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-    w[1] = 1 - v; w[2] = v; w[0] = 0;
-    return b + (c - b) * v;
-  }
-  double den = 1.0 / (va + vb + vc);
-  double v = vb * den, ww = vc * den;
-  w[0] = 1 - v - ww; w[1] = v; w[2] = ww;
-  interior = true;
-  return a + ab * v + ac * ww;
 }
 
 }  // namespace
@@ -152,27 +121,53 @@ struct GeneralContact::Impl {
   std::vector<double> slave_h;
   // free shell edges: element nodes of each shell element touching a free edge (4, -1 padded) and its size,
   // free edges (two nodes and the element), nodes on free edges with their edges, current offset of every node
-  std::vector<int> fe_elem;
+  std::vector<int> fe_elem, fe_gelem;  // fe_gelem: global element
   std::vector<double> fe_size;
   std::vector<int> fedge;
   std::vector<int> fnode, fn_off, fn_edge;
   std::vector<Vec3> shift;
   std::vector<int> slave_of;  // node -> slave index or -1
   std::vector<char> beam_node;  // node of a beam element (only these contact beam segments node-to-segment)
+  std::vector<char> sfm_node;   // node of a surface element (SFM3D4R, SFM3D3)
+  // softened pressure-overclosure law (null: hard contact, penalty), its clearance, contact area of each entity
+  const SurfaceInteraction* soft = nullptr;
+  double clear = 0;
+  std::vector<double> area;
+  std::vector<int> tri_elem, seg_elem;  // element of each triangle and segment
+  // excluded surface pairs: elements and nodes of each side (self-contact exclusion: the same surface twice)
+  struct Exclusion { std::vector<char> ea, eb, na, nb; };
+  std::vector<Exclusion> excl;
+  bool excluded(int node, int elem) const {
+    for (const auto& x : excl) if ((x.na[node] && x.eb[elem]) || (x.nb[node] && x.ea[elem])) return true;
+    return false;
+  }
+  bool excluded_elems(int e1, int e2) const {
+    for (const auto& x : excl) if ((x.ea[e1] && x.eb[e2]) || (x.eb[e1] && x.ea[e2])) return true;
+    return false;
+  }
   // contact entities: the slave nodes (0 .. ns - 1), then, when there are beam segments, the free shell edges
-  // (edge-to-segment contact: the shell perimeter against the beams, Abaqus/Explicit general contact)
-  int nent = 0;
+  // (edge-to-segment contact: the shell perimeter against the beams, Abaqus/Explicit general contact), then the beam
+  // segments (edge to edge between beams)
+  int nent = 0, nfe = 0;
   std::vector<int> efedge;  // edges of the edge entities (two nodes and the element of fe_elem)
   std::vector<int> vowner;  // per node: the edge entity that owns its vertex contacts (lowest index)
+  std::vector<int> bedge;   // segment of each beam edge entity
+  // the two nodes of an edge entity
+  const int* edge_nodes(int ei) const {
+    const int k = ei - (int)slaves.size();
+    return k < nfe ? &efedge[3 * k] : &seg[2 * bedge[k - nfe]];
+  }
   int slave_nodes(int ei, const Hit& h, int sn[2], double sw[2]) const {
     if (ei < (int)slaves.size()) { sn[0] = slaves[ei]; sw[0] = 1; return 1; }
-    const int* ed = &efedge[3 * (ei - (int)slaves.size())];
+    const int* ed = edge_nodes(ei);
     sn[0] = ed[0]; sn[1] = ed[1]; sw[0] = 1 - h.ws; sw[1] = h.ws;
     return 2;
   }
   double ent_h(int ei) const {  // half thickness of a contact entity
     if (ei < (int)slaves.size()) return slave_h[ei];
-    const int* ed = &efedge[3 * (ei - (int)slaves.size())];
+    const int k = ei - (int)slaves.size();
+    if (k >= nfe) return seg_r[bedge[k - nfe]];
+    const int* ed = &efedge[3 * k];
     return std::min(slave_h[slave_of[ed[0]]], slave_h[slave_of[ed[1]]]);
   }
   void resize_state(int n) {
@@ -226,10 +221,12 @@ bool GeneralContact::define(const Step& st) {
     for (auto& f : s.faces) incl[f.elem] = 1;
   }
   std::vector<double> node_h(m.nn(), 1e30);
+  std::vector<double> node_area(m.nn(), 0.0);  // contact area of each node (share of its facets)
   std::vector<std::array<int, 4>> sfaces;  // faces of the included solids, oriented outward (4th node -1: triangle)
   std::vector<std::vector<int>> solid_elems;  // nodes of the included solid elements
   P.beam_node.assign(m.nn(), 0);
   std::vector<std::array<int, 4>> shells;  // included shell elements (nodes, -1 padded)
+  std::vector<int> shell_elem, sface_elem;  // their elements, and those of the solid faces
   for (auto& gp : A_.groups) {
     ElementGroup& G = *gp;
     for (int e = 0; e < G.size(); ++e) {
@@ -249,6 +246,7 @@ bool GeneralContact::define(const Step& st) {
         double h = std::min(0.5 * G.contact_thickness(e), 0.3 * hmin);
         auto add = [&](int a, int b, int c, int half) {
           P.tri.insert(P.tri.end(), {a, b, c});
+          P.tri_elem.push_back(ge);
           P.tri_h.push_back(h);
           P.fac.insert(P.fac.end(), {cn[0], cn[1], cn[2], G.nen == 4 ? cn[3] : -1});
           P.fac_half.push_back((signed char)half);
@@ -258,13 +256,23 @@ bool GeneralContact::define(const Step& st) {
         if (G.nen == 4) { add(cn[0], cn[1], cn[2], 0); add(cn[0], cn[2], cn[3], 1); }
         else add(cn[0], cn[1], cn[2], 0);
         for (int I = 0; I < G.nen; ++I) node_h[cn[I]] = std::min(node_h[cn[I]], h);
+        {
+          const double ar = G.nen == 4 ? 0.5 * norm(cross(p[2] - p[0], p[3] - p[1])) : 0.5 * norm(cross(p[1] - p[0], p[2] - p[0]));
+          for (int I = 0; I < G.nen; ++I) node_area[cn[I]] += ar / G.nen;
+        }
         shells.push_back({cn[0], cn[1], cn[2], G.nen == 4 ? cn[3] : -1});
+        shell_elem.push_back(ge);
       } else if (G.type == ElType::B31) {
         double L = norm(m.X[cn[1]] - m.X[cn[0]]);
         double r = std::min(0.5 * G.contact_thickness(e), 0.3 * L);
         P.seg.insert(P.seg.end(), {cn[0], cn[1]});
+        P.seg_elem.push_back(ge);
         P.seg_r.push_back(r);
-        for (int I = 0; I < 2; ++I) { node_h[cn[I]] = std::min(node_h[cn[I]], r); P.beam_node[cn[I]] = 1; }
+        for (int I = 0; I < 2; ++I) {
+          node_h[cn[I]] = std::min(node_h[cn[I]], r);
+          P.beam_node[cn[I]] = 1;
+          node_area[cn[I]] += L * r;  // half the length times the diameter
+        }
       } else if (G.type == ElType::C3D8R || G.type == ElType::C3D8 || G.type == ElType::C3D8I ||
                  G.type == ElType::C3D4) {
         // faces in local node numbers, oriented by the element centroid below
@@ -281,25 +289,31 @@ bool GeneralContact::define(const Step& st) {
           const Vec3 fc = q[3] >= 0 ? (a + b + c + m.X[q[3]]) * 0.25 : (a + b + c) * (1.0 / 3);
           if (dot(nrm, fc - ctr) < 0) std::swap(q[1], q[q[3] >= 0 ? 3 : 2]);
           sfaces.push_back(q);
+          sface_elem.push_back(ge);
         }
         solid_elems.emplace_back(cn, cn + G.nen);
       }
     }
   }
-  // rigid elements (R3D4, R3D3): two-sided facets without thickness; facets of analytical rigid surfaces: one-sided
-  // (normal to the left of the profile direction), a node coming from behind never contacts them; the nodes of
-  // rigid facets carry no mass and are never slaves (the rigid surface is always the master)
+  // rigid elements (R3D4, R3D3) and surface elements (SFM3D4R, SFM3D3): two-sided facets without thickness; facets of
+  // analytical rigid surfaces: one-sided (normal to the left of the profile direction), a node coming from behind
+  // never contacts them; the nodes of rigid facets carry no mass and are never slaves (always the master), those of
+  // surface elements are slaves too
+  P.sfm_node.assign(m.nn(), 0);
+  for (int ge = 0; ge < m.ne(); ++ge)
+    if (is_surface_type(m.elems[ge].type)) for (int n : m.elems[ge].nodes) P.sfm_node[n] = 1;
   std::vector<char> one_sided(m.ne(), 0);  // facets of analytical rigid surfaces: one-sided
   for (const auto& cp : m.couplings) if (!cp.analytic.empty()) for (int e : cp.rigid_elems) one_sided[e] = 1;
   for (int ge = 0; ge < m.ne(); ++ge) {
     const Element& el = m.elems[ge];
-    if (!is_rigid_type(el.type) || !incl[ge]) continue;
+    if (!(is_rigid_type(el.type) || is_surface_type(el.type)) || !incl[ge]) continue;
     double lmax = 0;
     for (size_t I = 0; I < el.nodes.size(); ++I) lmax = std::max(lmax, norm(m.X[el.nodes[(I + 1) % el.nodes.size()]] - m.X[el.nodes[I]]));
     const int* cn = el.nodes.data();
     const int nv = (int)el.nodes.size();
     auto add = [&](int a, int b, int c, int half) {
       P.tri.insert(P.tri.end(), {a, b, c});
+      P.tri_elem.push_back(ge);
       P.tri_h.push_back(0.0);
       P.fac.insert(P.fac.end(), {cn[0], cn[1], cn[2], nv == 4 ? cn[3] : -1});
       P.fac_half.push_back((signed char)half);
@@ -308,6 +322,11 @@ bool GeneralContact::define(const Step& st) {
     };
     if (nv == 4) { add(cn[0], cn[1], cn[2], 0); add(cn[0], cn[2], cn[3], 1); }
     else if (nv == 3) add(cn[0], cn[1], cn[2], 0);
+    if (is_surface_type(el.type)) {  // slaves too, no thickness
+      const Vec3 a = m.X[cn[0]], b = m.X[cn[1]], c = m.X[cn[2]];
+      const double ar = nv == 4 ? 0.5 * norm(cross(c - a, m.X[cn[3]] - b)) : 0.5 * norm(cross(b - a, c - a));
+      for (int I = 0; I < nv; ++I) { node_h[cn[I]] = 0.0; node_area[cn[I]] += ar / nv; }
+    }
   }
   {  // free shell edges: element edges used by a single included shell element
     std::vector<std::pair<uint64_t, int>> edges;  // (sorted node pair, element)
@@ -331,6 +350,7 @@ bool GeneralContact::define(const Step& st) {
         elem_id[k] = (int)P.fe_size.size();
         const auto& q = shells[k];
         P.fe_elem.insert(P.fe_elem.end(), q.begin(), q.end());
+        P.fe_gelem.push_back(shell_elem[k]);
         Vec3 a = m.X[q[0]], b = m.X[q[1]], c = m.X[q[2]];
         double area = q[3] >= 0 ? 0.5 * norm(cross(c - a, m.X[q[3]] - b)) : 0.5 * norm(cross(b - a, c - a));
         P.fe_size.push_back(std::sqrt(area));
@@ -373,12 +393,16 @@ bool GeneralContact::define(const Step& st) {
       for (int half = 0; half < nv - 2; ++half) {
         P.tri_depth.push_back(0.5 * hmin);
         P.tri.insert(P.tri.end(), {q[0], q[half + 1], q[half + 2]});
+        P.tri_elem.push_back(sface_elem[keyed[i].second]);
         P.tri_h.push_back(0.0);
         P.fac.insert(P.fac.end(), {q[0], q[1], q[2], q[3]});
         P.fac_half.push_back((signed char)half);
         P.tri_solid.push_back(1);
       }
       for (int I = 0; I < nv; ++I) node_h[q[I]] = 0.0;
+      const Vec3 a = m.X[q[0]], b = m.X[q[1]], c = m.X[q[2]];
+      const double ar = nv == 4 ? 0.5 * norm(cross(c - a, m.X[q[3]] - b)) : 0.5 * norm(cross(b - a, c - a));
+      for (int I = 0; I < nv; ++I) node_area[q[I]] += ar / nv;
     }
   }
   {  // facets of the solid surfaces around each node (folds of the surface: closest edge or vertex shared)
@@ -444,8 +468,17 @@ bool GeneralContact::define(const Step& st) {
     for (int k = 0; k < nedge; ++k)
       for (int j = 0; j < 2; ++j) P.vowner[fe[3 * k + j]] = std::min(P.vowner[fe[3 * k + j]], ns + k);
   }
-  P.nent = ns + nedge;
+  P.nfe = nedge;
+  for (int sg = 0; sg < (int)P.seg_r.size(); ++sg)
+    if (P.slave_of[P.seg[2 * sg]] >= 0 && P.slave_of[P.seg[2 * sg + 1]] >= 0) P.bedge.push_back(sg);
+  P.nent = ns + nedge + (int)P.bedge.size();
   P.resize_state(P.nent);
+  P.area.assign(P.nent, 0.0);
+  for (int si = 0; si < ns; ++si) P.area[si] = node_area[P.slaves[si]];
+  for (int ei = ns; ei < P.nent; ++ei) {  // edge contacts: length times the thickness (diameter)
+    const int* ed = P.edge_nodes(ei);
+    P.area[ei] = norm(m.X[ed[1]] - m.X[ed[0]]) * 2 * P.ent_h(ei);
+  }
   {
     std::vector<char> tr(m.nn(), 0);
     for (int n : P.slaves) tr[n] = 1;
@@ -453,7 +486,30 @@ bool GeneralContact::define(const Step& st) {
     for (int n : P.seg) tr[n] = 1;
     for (int n = 0; n < m.nn(); ++n) if (tr[n]) P.tracked.push_back(n);
   }
+  for (const auto& pr : st.contact_exclusions) {
+    Impl::Exclusion x;
+    x.ea.assign(m.ne(), 0); x.na.assign(m.nn(), 0);
+    const Surface& sa = m.surfaces.at(pr.first);
+    auto fill = [&](const Surface& S, std::vector<char>& em, std::vector<char>& nm) {
+      for (int n : S.nodes) nm[n] = 1;
+      for (const FaceRef& f : S.faces) {
+        const Element& el = m.elems[f.elem];
+        em[f.elem] = 1;
+        int loc[4];
+        const int k = face_local_nodes(el.type, f.face, (int)el.nodes.size(), loc);
+        for (int i = 0; i < k; ++i) nm[el.nodes[loc[i]]] = 1;
+      }
+    };
+    fill(sa, x.ea, x.na);
+    if (pr.second.empty()) { x.eb = x.ea; x.nb = x.na; }
+    else { x.eb.assign(m.ne(), 0); x.nb.assign(m.nn(), 0); fill(m.surfaces.at(pr.second), x.eb, x.nb); }
+    P.excl.push_back(std::move(x));
+  }
   P.mu = st.contact_property >= 0 ? m.interactions[st.contact_property].friction : 0.0;
+  if (st.contact_property >= 0 && m.interactions[st.contact_property].law != SurfaceInteraction::HARD) {
+    P.soft = &m.interactions[st.contact_property];
+    P.clear = P.soft->clearance();
+  }
   double lsum = 0, hmax = 0;
   int cnt = 0;
   for (size_t t = 0; t < P.tri_h.size(); ++t) {
@@ -462,11 +518,12 @@ bool GeneralContact::define(const Step& st) {
   }
   for (size_t s = 0; s < P.seg_r.size(); ++s) { lsum += norm(m.X[P.seg[2 * s + 1]] - m.X[P.seg[2 * s]]); ++cnt; hmax = std::max(hmax, P.seg_r[s]); }
   double lavg = cnt ? lsum / cnt : 1.0;
-  P.margin = std::max(0.25 * lavg, hmax);
+  P.margin = std::max(0.25 * lavg, hmax) + P.clear;
   P.cell = 2 * lavg + 2 * hmax + P.margin;
   active_ = !P.slaves.empty() && (!P.tri.empty() || !P.seg.empty());
-  info("  general contact: %zu facets, %zu segments, %d nodes, %d shell edges against segments, friction %.3g",
-       P.tri_h.size(), P.seg_r.size(), ns, nedge, P.mu);
+  info("  general contact: %zu facets, %zu segments, %d nodes, %d shell edges against segments, friction %.3g%s%s",
+       P.tri_h.size(), P.seg_r.size(), ns, nedge, P.mu, P.excl.empty() ? "" : ", with exclusions",
+       P.soft ? ", softened" : "");
   return active_;
 }
 
@@ -594,12 +651,14 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         if (id >= 0) {
           const int* tn = &P.tri[3 * id];
           if (near(tn[0]) || near(tn[1]) || near(tn[2])) continue;  // facets touching the node's elements
+          if (!P.excl.empty() && P.excluded(n, P.tri_elem[id])) continue;
           double w[3]; bool in;
           Vec3 q = closest_on_tri(x, Xs(tn[0]), Xs(tn[1]), Xs(tn[2]), w, in);
-          if (norm(x - q) > P.slave_h[si] + P.tri_h[id] + P.margin) continue;
+          if (norm(x - q) > P.slave_h[si] + P.tri_h[id] + P.clear + P.margin) continue;
         } else {
           int s = -1 - id;
           if (near(P.seg[2 * s]) || near(P.seg[2 * s + 1])) continue;
+          if (!P.excl.empty() && P.excluded(n, P.seg_elem[s])) continue;
           // shell nodes do not contact beam segments (the shell perimeter does, edge to segment; free S4R sheet
           // dropped on a clamped B31 rod in Abaqus/Explicit: only the edges crossing the rod are stopped)
           if (!P.beam_node[n]) continue;
@@ -609,9 +668,13 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     }
     lists.resize(nent);
 #pragma omp parallel for num_threads(A.nthreads) schedule(dynamic, 64)
-    for (int ei = ns; ei < nent; ++ei) {  // free shell edges: segments in the cells crossed by the edge
-      const int* ed = &P.efedge[3 * (ei - ns)];
-      const int* q = &P.fe_elem[4 * ed[2]];
+    for (int ei = ns; ei < nent; ++ei) {  // edges (free shell edges, beam segments): segments in the cells crossed
+      const bool shell_edge = ei < ns + P.nfe;
+      const int* ed = P.edge_nodes(ei);
+      const int own = shell_edge ? -1 : P.bedge[ei - ns - P.nfe];  // segment of a beam edge
+      const int* q = shell_edge ? &P.fe_elem[4 * ed[2]] : ed;
+      const int nq = shell_edge ? 4 : 2;
+      const int eown = shell_edge ? P.fe_gelem[ed[2]] : P.seg_elem[own];
       const Vec3 a = Xs(ed[0]), b = Xs(ed[1]);
       const int64_t i0 = (int64_t)std::floor(std::min(a.x, b.x) / cs), i1 = (int64_t)std::floor(std::max(a.x, b.x) / cs);
       const int64_t j0 = (int64_t)std::floor(std::min(a.y, b.y) / cs), j1 = (int64_t)std::floor(std::max(a.y, b.y) / cs);
@@ -627,9 +690,10 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
               const int id = it->second;
               if (id >= 0) continue;
               const int sg = -1 - id;
+              if (sg <= own) continue;  // beam edges: each pair of segments once
               bool adj = false;  // segment attached to the element of the edge
-              for (int v = 0; v < 4 && q[v] >= 0; ++v) adj |= q[v] == P.seg[2 * sg] || q[v] == P.seg[2 * sg + 1];
-              if (!adj) L.push_back(id);
+              for (int v = 0; v < nq && q[v] >= 0; ++v) adj |= q[v] == P.seg[2 * sg] || q[v] == P.seg[2 * sg + 1];
+              if (!adj && !(P.excl.size() && P.excluded_elems(eown, P.seg_elem[sg]))) L.push_back(id);
             }
           }
       std::sort(L.begin(), L.end());
@@ -674,9 +738,11 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     const double g = P.node_g[nd];
     return sl ? P.node_w2[nd] : P.node_w2[nd] / (g * g);
   };
+  // massless nodes: rigid facets are infinitely stiff, massless surface elements (SFM without DENSITY) carry no
+  // contact stiffness (Abaqus/Explicit: a crimper of massless SFM3D4R elements passes through the tube)
   auto node_k = [&](int nd, double w2, bool sl) {
     const double mi = A.mt[nd];
-    if (!(mi > 0)) return 1e300;
+    if (!(mi > 0)) return P.sfm_node[nd] ? 0.0 : 1e300;
     const double r = std::min(node_w(nd, sl) / w2, 1.0 / 1.1);
     return 2 * mi * w2 * (1 - r) / (1 - 0.5 * r);
   };
@@ -688,8 +754,9 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
 #pragma omp parallel for num_threads(A.nthreads) reduction(+ : ninit) schedule(dynamic, 64)
   for (int si = 0; si < nent; ++si) {
     Hit bt, bs;
-    if (si >= ns) {  // free shell edge against beam segments: closest points of the two segments
-      const int* ed = &P.efedge[3 * (si - ns)];
+    if (si >= ns) {  // edge against beam segments: closest points of the two segments
+      const bool shell_edge = si < ns + P.nfe;
+      const int* ed = P.edge_nodes(si);
       const Vec3 p1 = Xs(ed[0]), q1 = Xs(ed[1]);
       const double he = P.ent_h(si);
       for (int c = P.cand_off[si]; c < P.cand_off[si + 1]; ++c) {
@@ -697,12 +764,14 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         const Vec3 a = X(P.seg[2 * sg]), b = X(P.seg[2 * sg + 1]);
         double se, te;
         closest_seg_seg(p1, q1, a, b, se, te);
-        // closest point at a vertex: one contact, held by one of the edges meeting there
-        if ((se <= 0 && P.vowner[ed[0]] != si) || (se >= 1 && P.vowner[ed[1]] != si)) continue;
+        // shell edges, closest point at a vertex: one contact, held by one of the edges meeting there; beam edges:
+        // inside both segments only (the nodes contact the segments)
+        if (shell_edge && ((se <= 0 && P.vowner[ed[0]] != si) || (se >= 1 && P.vowner[ed[1]] != si))) continue;
+        if (!shell_edge && !(se > 0 && se < 1 && te > 0 && te < 1)) continue;
         const Vec3 d = (p1 + (q1 - p1) * se) - (a + (b - a) * te);
         const double dist = norm(d);
         if (dist < 1e-14) continue;
-        const double pen = he + P.seg_r[sg] - dist;
+        const double pen = he + P.seg_r[sg] + P.clear - dist;
         if (pen <= 0 || pen <= bs.pen) continue;
         Hit h;
         h.master = id;
@@ -749,7 +818,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         Vec3 d = x - q;
         double s = dot(d, nrm);
         double lat = in ? 0.0 : norm(d - nrm * s);  // distance beyond the facet boundary, in its plane
-        const double hsum = hs + P.tri_h[id];
+        const double hsum = hs + P.tri_h[id] + P.clear;  // softened contact: from the clearance on
         if (P.tri_solid[id]) {  // solid face: one-sided, outward normal
           // no thickness: within the facet up to round-off (a node on the diagonal between the two triangles of a
           // quadrilateral face is otherwise outside both)
@@ -831,7 +900,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         double dist = norm(d);
         if (dist < 1e-14) continue;
         h.w[0] = h.wf[0] = 1 - l; h.w[1] = h.wf[1] = l;
-        h.pen = hs + P.seg_r[sg] - dist;
+        h.pen = hs + P.seg_r[sg] + P.clear - dist;
         h.n = d / dist;
       }
       if (h.pen <= 0) continue;
@@ -907,9 +976,9 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       Hit& bt = P.hit_t[si];
       Hit& bs = P.hit_s[si];
       const Hit& h = (bt.master != INT_MIN && (bs.master == INT_MIN || bt.pen >= bs.pen)) ? bt : bs;
-      if (h.master == INT_MIN || !(h.pen > 0)) continue;
+      if (h.master == INT_MIN || !(h.pen - P.clear > 0)) continue;
       const int n = P.slaves[si];
-      for (int k = 0; k < 3; ++k) A_.u[6 * n + k] += 0.5 * h.pen * h.n[k];
+      for (int k = 0; k < 3; ++k) A_.u[6 * n + k] += 0.5 * (h.pen - P.clear) * h.n[k];
       bt = Hit(); bs = Hit();
       ++nadj;
     }
@@ -925,6 +994,13 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
   // k_pair / k_node (weighted by the contact point coordinates on the master side); a node used beyond 1 has its
   // nodal stiffness divided by u in the pair stiffness
   std::vector<double> ksum(nn, 0.0);
+  // softened contact: nodes in contact as slaves this increment (the reverse pass of a two-way contact)
+  std::vector<char> node_hit;
+  if (P.soft) {
+    node_hit.assign(nn, 0);
+    for (int si = 0; si < ns; ++si)
+      if (P.hit_t[si].master != INT_MIN || P.hit_s[si].master != INT_MIN) node_hit[P.slaves[si]] = 1;
+  }
   for (int si = 0; si < nent; ++si) {
     for (int pass = 0; pass < 2; ++pass) {
       const Hit& h = pass ? P.hit_s[si] : P.hit_t[si];
@@ -985,14 +1061,34 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       const bool master_limits = flex > 0 && (sflex <= 0 || 1.0 / flex < 1.0 / sflex);
       const double mdamp = master_limits && mms > 0 ? msl * mms / (msl + mms) : msl;
       const bool rigid_master = !(mms > 0);
-      dtmn = std::min(dtmn, (pass ? P.cdt_s : P.cdt_t)[si]);
+      if (!P.soft) dtmn = std::min(dtmn, (pass ? P.cdt_s : P.cdt_t)[si]);
       Vec3 dum;
       int nf;
       const int* mf = P.master_nodes(h, nf);
       for (int i = 0; i < nf; ++i) dum += load3(&A.du[6 * mf[i]]) * h.wf[i];
       double Fn;
       const double appr = std::max(0.0, -dot(dus - dum, h.n));  // relative approach in this increment
-      if (pp >= 0) {
+      double kd = k;  // stiffness of the damper
+      if (P.soft) {
+        // softened contact: pressure of the overclosure on the contact area of the slave entity (tributary area
+        // of the node). When the reverse pass is active too (a node of the master facet in contact as a slave),
+        // each pass carries 0.7 of it: total force 0.68 to 0.83 x (both passes at full area) in Abaqus/Explicit,
+        // 1.0 with a single pass (sheets of one S4R element dropped on 2 x 2 plates of various sizes, per-node
+        // contact forces and openings)
+        double wp = 1.0;
+        {
+          int nf;
+          const int* mf = P.master_nodes(h, nf);
+          for (int i = 0; i < nf; ++i) if (node_hit[mf[i]]) wp = 0.7;
+        }
+        double dp;
+        Fn = P.area[si] * wp * P.soft->pressure(h.pen - P.clear, &dp);
+        kd = P.area[si] * wp * dp;
+        double w2s = 0;
+        for (int i = 0; i < nsn; ++i) w2s = std::max(w2s, node_w(sn[i], true));
+        const double msl0 = (pass ? P.md_s : P.md_t)[si];
+        if (kd > 0 && msl0 > 0) dtmn = std::min(dtmn, 1.0 / std::sqrt(w2s + kd / (4 * msl0)));
+      } else if (pp >= 0) {
         // the force grows at most with the actual approach (a jump of the penetration after a change of
         // master facet or of contact geometry is not loaded)
         Fn = std::min(fn + k * std::min(h.pen - pp, appr), k * h.pen);
@@ -1011,7 +1107,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       // force stays compressive
       double Ft = Fn;
       if (dt > 0) {
-        const double c = 2 * 0.03 * std::sqrt(k * mdamp);
+        const double c = 2 * 0.03 * std::sqrt(kd * mdamp);
         Ft = Fn > 0 ? Fn - c * dot(dus - dum, h.n) / dt : 0.0;
         if (rigid_master) Ft = std::max(Ft, 0.0);
         // dissipated by the damper, integrated as the work of the contact forces (trapezoidal rule)
@@ -1019,15 +1115,19 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
       }
       F = h.n * Ft;
       if (trace)  // ABQ_CONTACT_TRACE: every contact force (stderr), for comparisons with nodal contact output
-        std::fprintf(stderr, "CTRACE inc %d node %d pass %d k %.6e hk %.6e pen %.6e appr %.6e fn %.6e ft %.6e vn %.6e m %.6e\n",
+        std::fprintf(stderr, "CTRACE inc %d node %d pass %d k %.6e hk %.6e pen %.6e appr %.6e fn %.6e ft %.6e vn %.6e m %.6e master %d side %d n %.4f %.4f %.4f\n",
                      increment, si < ns ? P.slaves[si] : -1, pass, k, h.k, h.pen, appr, Fn, Ft,
-                     dt > 0 ? dot(dus - dum, h.n) / dt : 0.0, mdamp);
+                     dt > 0 ? dot(dus - dum, h.n) / dt : 0.0, mdamp, h.master, h.side, h.n.x, h.n.y, h.n.z);
       ++ncont;
       const bool fric = pass == 0 || P.hit_t[si].master == INT_MIN;
       if (fric && P.mu > 0) {
         Vec3 dr = dus - dum;
         Vec3 dtg = dr - h.n * dot(dr, h.n);
-        Vec3 f0 = P.last_master[si] == h.master ? P.ft[si] : Vec3();
+        // stored tangential force kept while the master stays the same facet (either triangle of a quadrilateral:
+        // a node on the diagonal switches triangle without slipping) or segment
+        const int lm = P.last_master[si];
+        const bool same = lm == h.master || (lm >= 0 && h.master >= 0 && std::equal(&P.fac[4 * lm], &P.fac[4 * lm] + 4, &P.fac[4 * h.master]));
+        Vec3 f0 = same ? P.ft[si] : Vec3();
         f0 -= h.n * dot(f0, h.n);
         Vec3 ftr = f0 - dtg * k;
         double fmax = P.mu * Fn, fm = norm(ftr);
@@ -1037,6 +1137,9 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         }
         P.ft[si] = ftr;
         F += ftr;
+        if (trace)
+          std::fprintf(stderr, "FTRACE inc %d node %d master %d fn %.6e ft %.6e %.6e %.6e slip %.6e %.6e %.6e\n", increment,
+                       si < ns ? P.slaves[si] : -1, h.master, Fn, ftr.x, ftr.y, ftr.z, dtg.x, dtg.y, dtg.z);
       }
     }
     const Hit& bt = P.hit_t[si];

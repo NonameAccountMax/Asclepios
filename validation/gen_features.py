@@ -95,7 +95,7 @@ def contact_features():
                              general_contact(d), rot=True)
     register(d, 'explicit', 'B31', 'contact beam-beam', 'Steel rod dropped at 2 m/s across a fixed perpendicular rod, '
              'crossing between nodes (edge-to-edge general contact).', [top[4], low[4]], [low[0], low[-1]], True,
-             'contact', category='feature', group='contact', supported=False, reason=NS + 'beam-to-beam edge contact')
+             'contact', category='feature', group='contact', supported=True)
 
     d = Deck('contact_self_shell', 'S4R strip coiled by an end moment until it touches itself (self-contact)')
     quads, ids = quad_plate(d, 40, 2, 40.0, 4.0)
@@ -159,7 +159,7 @@ def contact_features():
                                               'SSHEET, SPLATE'], rot=True)
     register(d, 'explicit', 'S4R', 'contact pair', 'Sheet dropped at 2 m/s on a clamped plate with a '
              'surface-to-surface contact pair instead of general contact.', [ids[4, 4], sids[1, 1]], edge, True,
-             'contact', category='feature', group='contact', supported=False, reason=NS + '*CONTACT PAIR')
+             'contact', category='feature', group='contact', supported=True)
 
     d = Deck('contact_rigid_surface', 'S4R sheet dropped on a rigid R3D4 surface (explicit general contact)')
     rquads, rids = quad_plate(d, 4, 4, 20.0, 20.0)

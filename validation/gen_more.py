@@ -793,15 +793,30 @@ def more_features():
                                         'general contact', step_extra=['*Contact Exclusions', 'SSHEET, SPLATE'])
     register(d, 'explicit', 'S4R', 'contact exclusions', 'Sheet dropped on a plate with the sheet-plate pair excluded '
              'from general contact: the sheet passes through.', [ids[4, 4], sids[1, 1]], edge, True, 'contact',
-             category='feature', group='contact', supported=False, reason=NS + '*CONTACT EXCLUSIONS', twin=False)
+             category='feature', group='contact', supported=True, twin=False)
     d, ids, sids, edge = sheet_on_plate('contact_softened', 'S4R sheet dropped on a plate, exponential '
                                         'pressure-overclosure law', model_extra=['*Surface Behavior, '
                                                                                  'pressure-overclosure=TABULAR',
                                                                                  '0., 0.', '5., 0.1', '500., 0.2'])
     register(d, 'explicit', 'S4R', 'softened contact', 'Sheet dropped on a plate with a tabular softened '
              'pressure-overclosure law (pressure grows from zero over the first 0.1 mm of overclosure).', [ids[4, 4], sids[1, 1]],
-             edge, True, 'contact', category='feature', group='contact', supported=False,
-             reason=NS + 'softened pressure-overclosure laws', twin=False)
+             edge, True, 'contact', category='feature', group='contact', supported=True, twin=False)
+
+    d = Deck('contact_softened_single', 'S4R sheet dropped on one large clamped S4R element, linear softened '
+             'pressure-overclosure law (no reverse contact)')
+    pq, pids = quad_plate(d, 1, 1, 1.0, 1.0)
+    shell(d, 'S4R', pq, 0.2, 'STEEL', 'PLATE')
+    sq, sids = quad_plate(d, 1, 1, 0.4, 0.4, x0=(0.31, 0.33, 0.25))
+    shell(d, 'S4R', sq, 0.2, 'ALU', 'SHEET')
+    d.nset('SHEETN', list(sids.values()))
+    d.initial += ['*Initial Conditions, type=VELOCITY', 'SHEETN, 3, -1000.']
+    d.steps += explicit_step('Drop', 1e-4, ['*Boundary', 'FIX, ENCASTRE'] +
+                             general_contact(d, extra_model=['*Surface Behavior, pressure-overclosure=LINEAR', '1000.']),
+                             rot=True, nframes=200, time_marks=True)
+    register(d, 'explicit', 'S4R', 'softened contact, single pass', 'Small sheet (one element) dropped at 1 m/s on '
+             'one large clamped element with a linear softened law: no plate node lies under the sheet, so only the '
+             'sheet nodes are slaves and carry the full pressure of their tributary area.', [sids[0, 0], sids[1, 1]],
+             list(pids.values()), True, 'contact', category='feature', group='contact', twin=False)
 
     d = Deck('contact_analytical_cylinder', 'S4R strip pressed onto an analytical rigid cylinder (explicit)')
     quads, ids = quad_plate(d, 16, 2, 32.0, 4.0, x0=(-16.0, -2.0, 5.5))
@@ -832,7 +847,9 @@ def more_features():
         return ids
 
     d = Deck('crimp_sfm3d4', 'S4R tube crimped by a shrinking cylinder of SFM3D4 surface elements (explicit)')
-    tids = tube(d)
+    # thick tube (t/r = 0.16): a thin one (t = 0.2) buckles in plastic hoop compression between the contacts, a
+    # bifurcation that differs from run to run (Abaqus and asclepios alike)
+    tids = tube(d, t=0.8)
     cids = {}
     for i in range(24):
         a = 2 * math.pi * i / 24
@@ -840,17 +857,20 @@ def more_features():
             cids[i, k] = d.node(6.0 * math.cos(a), 6.0 * math.sin(a), -1.0 + 4.0 * k)
     d.elements('SFM3D4R', 'CRIMPER', [[cids[i, k], cids[(i + 1) % 24, k], cids[(i + 1) % 24, k + 1], cids[i, k + 1]]
                                      for i in range(24) for k in range(3)])
-    d.model += ['*Surface Section, elset=CRIMPER', '*Amplitude, name=CRIMP, definition=SMOOTH STEP',
+    # mass per unit area of a 0.2 mm steel sheet: without it the penalty of the massless crimper nodes is zero and
+    # the crimper passes through the tube (Abaqus/Explicit, first reference of this case)
+    d.model += ['*Surface Section, elset=CRIMPER, density=1.5e-09', '*Amplitude, name=CRIMP, definition=SMOOTH STEP',
                 '0., 0., 0.002, 1.']
     body = ['*Boundary, amplitude=CRIMP']
     for (i, k), n in sorted(cids.items()):
         x, y, z = d.nodes[n]
-        body += ['%d, 1, 1, %s' % (n, fmt(-x / 2)), '%d, 2, 2, %s' % (n, fmt(-y / 2)), '%d, 3, 3, 0.' % n]
+        body += ['%d, 1, 1, %s' % (n, fmt(-x / 4)), '%d, 2, 2, %s' % (n, fmt(-y / 4)), '%d, 3, 3, 0.' % n]
     d.nset('TUBEZ0', [tids[i, 0] for i in range(16)])
     d.steps += explicit_step('Crimp', 0.0025, body + ['*Boundary', 'TUBEZ0, 3, 3'] + general_contact(d, 0.1), rot=True)
     register(d, 'explicit', 'S4R + SFM3D4', 'crimping with surface elements', 'Tube of radius 5 crimped by a cylinder '
-             'of surface elements shrinking from radius 6 to 3.', [tids[0, 3], tids[4, 3]], [], True, 'contact',
-             category='feature', group='contact', supported=False, reason=NS + 'SFM3D4R surface elements', twin=False)
+             'of surface elements (mass per unit area 1.5e-9) shrinking from radius 6 to 4.5 (thick tube, t = 0.8).',
+             [tids[0, 3], tids[4, 3]],
+             [], True, 'contact', category='feature', group='contact', supported=True, twin=False)
 
     d = Deck('crimp_rigid_plates', 'S4R tube crimped by four rigid R3D4 plates moving radially (explicit)')
     tids = tube(d)

@@ -31,28 +31,6 @@ namespace abq {
 
 namespace {
 
-// nodes of one face of an element (local indices), in a closed loop
-int face_local_nodes(ElType t, int face, int nen, int* out) {
-  static const int hex[6][4] = {{0, 1, 2, 3}, {4, 7, 6, 5}, {0, 4, 5, 1}, {1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0}};
-  static const int tet[4][3] = {{0, 1, 2}, {0, 3, 1}, {1, 3, 2}, {2, 3, 0}};
-  if (t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I) {
-    if (face < 1 || face > 6) return 0;
-    for (int i = 0; i < 4; ++i) out[i] = hex[face - 1][i];
-    return 4;
-  }
-  if (t == ElType::C3D4) {
-    if (face < 1 || face > 4) return 0;
-    for (int i = 0; i < 3; ++i) out[i] = tet[face - 1][i];
-    return 3;
-  }
-  if (t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS) {
-    const int n = std::min(nen, 4);
-    for (int i = 0; i < n; ++i) out[i] = i;
-    return n;
-  }
-  return 0;
-}
-
 bool is_shell(ElType t) { return t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS; }
 
 struct Facet {

@@ -26,11 +26,68 @@ const char* eltype_name(ElType t) {
     case ElType::CONN3D2: return "CONN3D2";
     case ElType::R3D4: return "R3D4";
     case ElType::R3D3: return "R3D3";
+    case ElType::SFM3D4: return "SFM3D4";
+    case ElType::SFM3D3: return "SFM3D3";
     case ElType::SPRINGA: return "SPRINGA";
     case ElType::DASHPOTA: return "DASHPOTA";
     case ElType::MASS: return "MASS";
     default: return "UNKNOWN";
   }
+}
+
+double SurfaceInteraction::clearance() const {
+  if (law == TABULAR && !tab_h.empty()) return std::max(0.0, -tab_h.front());
+  if (law == EXPONENTIAL) return std::max(0.0, c0);
+  return 0.0;
+}
+
+double SurfaceInteraction::pressure(double h, double* dpdh) const {
+  *dpdh = 0;
+  switch (law) {
+    case TABULAR: {
+      const size_t n = tab_h.size();
+      if (n == 0 || h <= tab_h[0]) return 0.0;
+      if (n == 1) return 0.0;
+      size_t i = 1;
+      while (i + 1 < n && h > tab_h[i]) ++i;  // segment [i-1, i], the last one extended
+      *dpdh = (tab_p[i] - tab_p[i - 1]) / (tab_h[i] - tab_h[i - 1]);
+      return std::max(0.0, tab_p[i - 1] + *dpdh * (h - tab_h[i - 1]));
+    }
+    case EXPONENTIAL: {  // p = p0 / (e - 1) x (h/c0 + 1) (exp(h/c0 + 1) - 1)
+      if (!(c0 > 0) || h <= -c0) return 0.0;
+      const double x = h / c0 + 1, ex = std::exp(x), f = p0 / (std::exp(1.0) - 1);
+      *dpdh = f * ((ex - 1) + x * ex) / c0;
+      return f * x * (ex - 1);
+    }
+    case LINEAR:
+      if (h <= 0) return 0.0;
+      *dpdh = slope;
+      return slope * h;
+    default:
+      return 0.0;
+  }
+}
+
+int face_local_nodes(ElType t, int face, int nen, int* out) {
+  static const int hex[6][4] = {{0, 1, 2, 3}, {4, 7, 6, 5}, {0, 4, 5, 1}, {1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0}};
+  static const int tet[4][3] = {{0, 1, 2}, {0, 3, 1}, {1, 3, 2}, {2, 3, 0}};
+  if (t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I) {
+    if (face < 1 || face > 6) return 0;
+    for (int i = 0; i < 4; ++i) out[i] = hex[face - 1][i];
+    return 4;
+  }
+  if (t == ElType::C3D4) {
+    if (face < 1 || face > 4) return 0;
+    for (int i = 0; i < 3; ++i) out[i] = tet[face - 1][i];
+    return 3;
+  }
+  if (t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS || t == ElType::B31 ||
+      t == ElType::T3D2 || is_rigid_type(t) || is_surface_type(t)) {
+    const int n = std::min(nen, 4);
+    for (int i = 0; i < n; ++i) out[i] = i;
+    return n;
+  }
+  return 0;
 }
 
 ElType eltype_from(const std::string& n0, int& nn) {
@@ -48,6 +105,8 @@ ElType eltype_from(const std::string& n0, int& nn) {
   if (n == "CONN3D2") { nn = 2; return ElType::CONN3D2; }
   if (n == "R3D4") { nn = 4; return ElType::R3D4; }
   if (n == "R3D3") { nn = 3; return ElType::R3D3; }
+  if (n == "SFM3D4R" || n == "SFM3D4") { nn = 4; return ElType::SFM3D4; }
+  if (n == "SFM3D3") { nn = 3; return ElType::SFM3D3; }
   if (n == "SPRINGA") { nn = 2; return ElType::SPRINGA; }
   if (n == "DASHPOTA") { nn = 2; return ElType::DASHPOTA; }
   if (n == "MASS") { nn = 1; return ElType::MASS; }
@@ -592,6 +651,9 @@ class Builder {
       else if (t == "BUSHING") s.ctype = Section::BUSHING;
       else { s.ctype = Section::OTHER; warn_once("CONN" + t, "connector type " + t + " not supported (" + c.where() + ")"); }
       if (c.data.size() > 1 && !c.data[1].empty() && !c.data[1][0].empty()) p.orient_name = upper(c.data[1][0]);
+    } else if (c.keyword == "SURFACE SECTION") {  // surface elements: no stiffness, mass per unit area (DENSITY)
+      s.kind = Section::SURFACE;
+      s.area_density = c.getd("DENSITY", 0.0);
     }
     pend_sections.push_back(p);
   }
@@ -832,6 +894,34 @@ class Builder {
           st.contact_surfaces.push_back(n);
         }
       }
+    } else if (k == "CONTACT EXCLUSIONS") {
+      for (auto& d : c.data) {
+        if (d.empty() || d[0].empty()) continue;
+        std::string a = resolve_name(d[0], ""), b = d.size() > 1 && !d[1].empty() ? resolve_name(d[1], "") : "";
+        for (const auto& n : {a, b})
+          if (!n.empty() && !m.surfaces.count(n)) throw std::runtime_error("unknown contact surface '" + n + "' at " + c.where());
+        st.contact_exclusions.push_back({a, b});
+      }
+    } else if (k == "CONTACT PAIR") {
+      if (c.getu("MECHANICAL CONSTRAINT", "KINEMATIC") != "KINEMATIC")
+        warn_once("CPPEN", "*CONTACT PAIR, MECHANICAL CONSTRAINT=PENALTY not supported: kinematic contact used");
+      int ip = -1;
+      if (c.has("INTERACTION")) {
+        auto it = m.interaction_index.find(upper(c.get("INTERACTION")));
+        if (it == m.interaction_index.end()) throw std::runtime_error("unknown surface interaction at " + c.where());
+        ip = it->second;
+      }
+      for (auto& d : c.data) {
+        if (d.size() < 2 || d[0].empty() || d[1].empty()) continue;
+        Step::ContactPair cp;
+        cp.first = resolve_name(d[0], "");
+        cp.second = resolve_name(d[1], "");
+        for (const auto& n : {cp.first, cp.second})
+          if (!m.surfaces.count(n)) throw std::runtime_error("unknown contact surface '" + n + "' at " + c.where());
+        cp.interaction = ip;
+        cp.weight = c.has("WEIGHT") ? c.getd("WEIGHT", 0.5) : -1;
+        st.contact_pairs.push_back(cp);
+      }
     } else if (k == "CONTACT PROPERTY ASSIGNMENT") {
       for (auto& d : c.data) {
         if (d.size() >= 3 && d[0].empty() && d[1].empty()) {
@@ -854,6 +944,8 @@ class Builder {
     st.contact_all_exterior = model_contact.contact_all_exterior;
     st.contact_surfaces = model_contact.contact_surfaces;
     st.contact_property = model_contact.contact_property;
+    st.contact_exclusions = model_contact.contact_exclusions;
+    st.contact_pairs = model_contact.contact_pairs;
     st.name = sc.get("NAME", "Step-" + std::to_string(m.steps.size() + 1));
     const bool nlg_given = sc.has("NLGEOM");
     st.nlgeom = sc.getu("NLGEOM", "NO") == "YES" || (!nlg_given && !m.steps.empty() && m.steps.back().nlgeom);
@@ -1029,7 +1121,8 @@ class Builder {
     else if (k == "ELSET") card_set(c, sc, false);
     else if (k == "SURFACE") card_surface(c, sc);
     else if (k == "ORIENTATION") card_orientation(c, sc);
-    else if (k == "SHELL SECTION" || k == "SOLID SECTION" || k == "BEAM SECTION" || k == "CONNECTOR SECTION") card_section(c, sc);
+    else if (k == "SHELL SECTION" || k == "SOLID SECTION" || k == "BEAM SECTION" || k == "CONNECTOR SECTION" ||
+             k == "SURFACE SECTION") card_section(c, sc);
     else if (k == "SPRING" || k == "DASHPOT" || k == "MASS") card_discrete(c, sc);
     else if (k == "TRANSVERSE SHEAR" || k == "TRANSVERSE SHEAR STIFFNESS") {
       if (!pend_sections.empty() && !c.data.empty()) {
@@ -1071,9 +1164,33 @@ class Builder {
         continue;
       }
       if (ctx == CTX_INTERACTION && (k == "FRICTION" || k == "SURFACE BEHAVIOR" || k == "CONTACT DAMPING")) {
+        SurfaceInteraction& si = m.interactions[cur_interaction];
         if (k == "FRICTION" && !c.data.empty() && !c.data[0].empty() && !c.data[0][0].empty())
-          m.interactions[cur_interaction].friction = to_double(c.data[0][0], &c);
-        else if (k != "FRICTION") warn_once("INTKW" + k, "interaction option *" + k + " ignored");
+          si.friction = to_double(c.data[0][0], &c);
+        else if (k == "SURFACE BEHAVIOR") {
+          const std::string po = c.getu("PRESSURE-OVERCLOSURE", "HARD");
+          std::vector<std::vector<double>> rows;
+          for (auto& d : c.data) {
+            std::vector<double> r;
+            for (auto& t : d) if (!trim(t).empty()) r.push_back(to_double(t, &c));
+            if (!r.empty()) rows.push_back(r);
+          }
+          if (po == "TABULAR") {
+            si.law = SurfaceInteraction::TABULAR;
+            for (auto& r : rows) if (r.size() >= 2) { si.tab_p.push_back(r[0]); si.tab_h.push_back(r[1]); }
+            if (si.tab_h.size() < 2) throw std::runtime_error("*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=TABULAR: two points at least at " + c.where());
+          } else if (po == "EXPONENTIAL") {
+            si.law = SurfaceInteraction::EXPONENTIAL;
+            if (rows.empty() || rows[0].size() < 2) throw std::runtime_error("*SURFACE BEHAVIOR, EXPONENTIAL: c0, p0 expected at " + c.where());
+            si.c0 = rows[0][0];
+            si.p0 = rows[0][1];
+          } else if (po == "LINEAR") {
+            si.law = SurfaceInteraction::LINEAR;
+            if (rows.empty()) throw std::runtime_error("*SURFACE BEHAVIOR, LINEAR: slope expected at " + c.where());
+            si.slope = rows[0][0];
+          } else if (po != "HARD") warn_once("PO" + po, "pressure-overclosure " + po + " not supported: hard contact");
+          if (c.has("NO SEPARATION")) warn_once("NOSEP", "*SURFACE BEHAVIOR, NO SEPARATION not supported: ignored");
+        } else if (k != "FRICTION") warn_once("INTKW" + k, "interaction option *" + k + " ignored");
         continue;
       }
       if (ctx == CTX_COUPLING && (k == "KINEMATIC" || k == "DISTRIBUTING")) {
@@ -1383,7 +1500,7 @@ class Builder {
       for (int e : *es) m.elems[e].section = idx;
     }
     int missing = 0;
-    for (auto& e : m.elems) if (e.section < 0 && !is_rigid_type(e.type)) ++missing;
+    for (auto& e : m.elems) if (e.section < 0 && !is_rigid_type(e.type) && !is_surface_type(e.type)) ++missing;
     if (missing) warn("%d elements have no section and will be ignored", missing);
   }
 };

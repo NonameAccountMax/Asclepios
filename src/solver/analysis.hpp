@@ -36,6 +36,7 @@ struct LoadState {
 };
 
 class GeneralContact;
+class ContactPairs;
 class OutputWriter;
 
 struct Energies {
@@ -130,6 +131,7 @@ struct Analysis {
   double total_time = 0;
   int total_increments = 0;
   std::unique_ptr<GeneralContact> contact;
+  std::unique_ptr<ContactPairs> pairs;
   std::unique_ptr<OutputWriter> writer;
   int nthreads = 1;
   // restart: periodic save (total time interval, 0 = off) and resume from a restart file

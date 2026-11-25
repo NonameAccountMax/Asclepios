@@ -1,7 +1,7 @@
 # Validation
 
-The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 280
-small decks (224 cases and 56 twins), each running in seconds:
+The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 287
+small decks (228 cases and 59 twins), each running in seconds:
 
 - **elements and deformation modes**: every element type supported by asclepios (C3D8R, C3D8, C3D4, S4R, S3R, B31,
   CONN3D2) under tension, bending, torsion, shear, large rotations, pressure, hyperelasticity, plasticity with load
@@ -41,13 +41,13 @@ implemented (status NOT SUPPORTED, reason given in `RESULTS.md`).
 
 ## References
 
-- **Published values** (15 cases, `lit_*`, `gen_literature.py`): classic benchmarks of the finite element literature
+- **Published values** (17 cases, `lit_*`, `gen_literature.py`): classic benchmarks of the finite element literature
   (Scordelis-Lo roof, pinched cylinder, pinched hemisphere, twisted beam, Cook's membrane, NAFEMS LE1, clamped plate,
   Lame cylinder, elastica) on refined meshes, compared at the last frame with the converged value of the cited
   publication: nodal displacements, or a stress extrapolated to the published point from the element values next to
   it (quadratic through the first three elements). Tolerance per check (1 to 3 %): remaining discretisation error and
   spread of the published values. The values obtained are listed in the main README; `literature.py` (`make literature`) runs each benchmark on a series of meshes and writes the convergence curves and deformed shapes to `LITERATURE.md` and `literature/`.
-- **Closed form** (56 cases): wherever the nodal solution of the discrete model is known by hand, it is the reference
+- **Closed form** (62 cases): wherever the nodal solution of the discrete model is known by hand, it is the reference
   (ground truth): homogeneous states (tension, simple shear, hyperelastic membranes and blocks, plasticity with
   isotropic or kinematic hardening and load reversal, thermal stress, orthotropic elasticity, initial stress,
   temperature dependence), patch tests, constant moment (exact circular arcs, thin shells), uniform twisting, springs
@@ -55,7 +55,7 @@ implemented (status NOT SUPPORTED, reason given in `RESULTS.md`).
   systems, gravity) refined until the discretisation error is below 0.05 %, prescribed accelerations, amplitudes,
   steady conduction. Tolerance: 0.1 % on displacements, rotations, reaction forces, element stresses and energies.
   See `analytic.py`.
-- **Reference solver** (165 cases): the same decks run in a commercial solver that reads the same input format
+- **Reference solver** (208 cases): the same decks run in a commercial solver that reads the same input format
   (implicit or explicit according to the procedure), for the cases without a hand solution. These reference results
   are produced locally by each user who holds a licence of that solver; they and the comparisons with them are not
   distributed with the repository (licence terms of the reference solver).

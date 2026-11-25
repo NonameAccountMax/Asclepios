@@ -1,6 +1,7 @@
 // Discrete elements: SPRINGA (axial spring along the current line of its nodes, linear or tabulated force against
 // the change of length, linear beyond the table), DASHPOTA (axial damper on the relative velocity) and MASS (point
-// mass). The springs report their tangent stiffness to the driver for the nodal frequency bound.
+// mass), and the surface elements SFM3D4R / SFM3D3 (no stiffness, mass per unit area shared equally by the nodes).
+// The springs report their tangent stiffness to the driver for the nodal frequency bound.
 #include <cmath>
 
 #include "element/groups.hpp"
@@ -27,6 +28,11 @@ class DiscreteGroup : public ElementGroup {
   void mass(int e, const double* X, double* mt, double* mr) const override {
     for (int I = 0; I < nen; ++I) { mt[I] = 0; mr[I] = 0; }
     if (type == ElType::MASS) mt[0] = sec[e]->point_mass;
+    if (is_surface_type(type)) {
+      const Vec3 a = load3(X), b = load3(X + 3), c = load3(X + 6);
+      const double area = nen == 4 ? 0.5 * norm(cross(c - a, load3(X + 9) - b)) : 0.5 * norm(cross(b - a, c - a));
+      for (int I = 0; I < nen; ++I) mt[I] = sec[e]->area_density * area / nen;
+    }
   }
 
   static double table_force(const Section& s, double u, double* k) {
@@ -42,7 +48,7 @@ class DiscreteGroup : public ElementGroup {
   void compute(int e, const ElemIn& in, ElemOut& out, bool commit) override {
     for (int i = 0; i < 6 * nen; ++i) out.f[i] = 0;
     out.dt_stable = 1e30;
-    if (type == ElType::MASS) return;
+    if (type == ElType::MASS || is_surface_type(type)) return;
     const Section& s = *sec[e];
     const Vec3 a = load3(in.xo) + load3(in.du), b = load3(in.xo + 3) + load3(in.du + 6);
     const Vec3 d = in.nlgeom ? b - a : load3(in.X + 3) - load3(in.X);

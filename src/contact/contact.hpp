@@ -1,4 +1,5 @@
-// General contact (explicit): penalty node-to-facet with shell/beam thickness offsets and Coulomb friction.
+// General contact (explicit): penalty node-to-facet and edge-to-edge with shell/beam thickness offsets, softened
+// pressure-overclosure laws, exclusions and Coulomb friction.
 #pragma once
 #include <vector>
 
