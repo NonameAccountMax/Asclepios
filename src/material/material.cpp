@@ -603,18 +603,21 @@ bool hyper_ps(const Material& m, const double C2[3], double& lam3, double S[3], 
   if (lam3 > 0 && std::fabs(lam3 / guess - 1) < 0.2) guess = lam3;
   double x = guess, fx = s33(x, Sx, nullptr);
   double scale = std::fabs(Sx[0]) + std::fabs(Sx[1]) + std::fabs(Sx[3]) + 1e-9 * m.shear_modulus() + 1e-300;
+  // absolute floor: round-off of the volumetric term K (J - 1) near J = 1 (nearly unloaded points)
+  const double Kb = m.bulk_modulus(), floor = 1e-13 * std::max(std::isfinite(Kb) ? Kb : 0.0, m.shear_modulus());
+  const double tol = std::max(1e-10 * scale, floor), tol_loose = std::max(1e-6 * scale, 1e3 * floor);
   double lo = 0, hi = 1e300;
   bool ok = false;
   // safeguarded Newton (S33 increases with the thickness stretch)
   for (int it = 0; it < 60; ++it) {
-    if (std::fabs(fx) <= 1e-10 * scale) { ok = true; break; }
+    if (std::fabs(fx) <= tol) { ok = true; break; }
     if (fx > 0) hi = std::min(hi, x); else lo = std::max(lo, x);
     double h = 1e-7 * x;
     double fp = s33(x + h, Sx, nullptr);
     double d = (fp - fx) / h;
     double xn = (d > 0) ? x - fx / d : (fx > 0 ? 0.5 * (x + lo) : 2 * x);
     if (xn <= lo || xn >= hi) xn = hi < 1e299 ? 0.5 * (lo + hi) : (fx > 0 ? 0.5 * (x + lo) : 2 * x);
-    if (std::fabs(xn - x) <= 1e-14 * x) { x = xn; fx = s33(x, Sx, nullptr); ok = std::fabs(fx) <= 1e-6 * scale; break; }
+    if (std::fabs(xn - x) <= 1e-14 * x) { x = xn; fx = s33(x, Sx, nullptr); ok = std::fabs(fx) <= tol_loose; break; }
     x = xn;
     fx = s33(x, Sx, nullptr);
   }

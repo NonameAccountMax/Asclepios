@@ -18,6 +18,7 @@ MATERIALS = {
                  '*Plastic\n250., 0.\n300., 0.05\n340., 0.2\n360., 1.\n'),
     'ALU': '*Material, name=ALU\n*Density\n2.7e-09\n*Elastic\n70000., 0.33\n',
     'RUBBER': '*Material, name=RUBBER\n*Density\n1.1e-09\n*Hyperelastic, neo hooke\n0.5, 0.04\n',
+    'RUBBER_DAMP': '*Material, name=RUBBER_DAMP\n*Density\n1.1e-09\n*Hyperelastic, neo hooke\n0.5, 0.04\n*Damping, alpha=3000.\n',
     'FUNG': ('*Material, name=FUNG\n*Density\n1.06e-09\n'
              '*Anisotropic Hyperelastic, fung-anisotropic, local directions=2\n'
              '8., 0., 100., 0., 0., 8., 0., 0.\n'

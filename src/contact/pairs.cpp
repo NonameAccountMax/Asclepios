@@ -86,7 +86,7 @@ Side build_side(const Model& m, const Surface& S) {
     if (q[3] >= 0 && q[3] == q[2]) q[3] = -1;
     double h = 0;
     signed char s = 1;
-    const bool shell = el.type == ElType::S4R || el.type == ElType::S4 || el.type == ElType::S3R || el.type == ElType::S3RS;
+    const bool shell = is_shell_type(el.type);
     if (shell || is_rigid_type(el.type) || is_surface_type(el.type)) {
       if (f.face == 0) {
         static bool once = false;

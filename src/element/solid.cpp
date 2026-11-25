@@ -1,6 +1,7 @@
 // Continuum elements C3D8R (uniform strain, Flanagan-Belytschko hourglass control), C3D8I (incompatible modes),
-// C3D8 (selective
-// reduced / B-bar, 2x2x2) and C3D4 (constant strain). Incremental corotational formulation:
+// C3D8 (selective reduced / B-bar, 2x2x2), C3D6 (prism: 2 points in implicit procedures, a degenerate C3D8R in
+// explicit ones), C3D4 (constant strain) and the quadratic tetrahedra C3D10 / C3D10M (10 nodes, 4 Gauss points,
+// diagonal mass by scaling the consistent diagonal). Incremental corotational formulation:
 // strain increment from the mid-increment configuration, stresses rotated with Hughes-Winget.
 #include <cmath>
 #include <cstring>
@@ -20,6 +21,53 @@ const double HG[4][8] = {{1, 1, -1, -1, -1, -1, 1, 1},
                          {1, -1, 1, -1, 1, -1, 1, -1},
                          {-1, 1, -1, 1, 1, -1, 1, -1}};
 const double G8 = 0.5773502691896258;
+
+// quadratic tetrahedron (corners 1-4, mid-edge nodes 1-2, 2-3, 3-1, 1-4, 2-4, 3-4): derivatives of the shape
+// functions with respect to (r, s, t) = (L2, L3, L4), L1 = 1 - r - s - t
+void tet10_dN(double r, double s, double t, double dN[10][3]) {
+  const double L1 = 1 - r - s - t, L2 = r, L3 = s, L4 = t;
+  const double c1 = 4 * L1 - 1;
+  const double d[10][3] = {{-c1, -c1, -c1}, {4 * L2 - 1, 0, 0}, {0, 4 * L3 - 1, 0}, {0, 0, 4 * L4 - 1},
+                           {4 * (L1 - L2), -4 * L2, -4 * L2}, {4 * L3, 4 * L2, 0}, {-4 * L3, 4 * (L1 - L3), -4 * L3},
+                           {-4 * L4, -4 * L4, 4 * (L1 - L4)}, {4 * L4, 0, 4 * L2}, {0, 4 * L4, 4 * L3}};
+  std::memcpy(dN, d, sizeof(d));
+}
+// 4-point Gauss rule of the tetrahedron (weights 1/24)
+const double TQ_A = 0.5854101966249685, TQ_B = 0.1381966011250105;
+const double TET10_GP[4][3] = {{TQ_B, TQ_B, TQ_B}, {TQ_A, TQ_B, TQ_B}, {TQ_B, TQ_A, TQ_B}, {TQ_B, TQ_B, TQ_A}};
+// physical gradients at a Gauss point of the quadratic tetrahedron; returns det J x weight (volume share)
+double tet10_grad(const double* x, int g, Vec3 b[10]) {
+  double dN[10][3];
+  tet10_dN(TET10_GP[g][0], TET10_GP[g][1], TET10_GP[g][2], dN);
+  Mat3 J;
+  for (int I = 0; I < 10; ++I)
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j) J.m[i][j] += dN[I][i] * x[3 * I + j];
+  const double det = J.det();
+  const Mat3 Ji = J.inverse();
+  for (int I = 0; I < 10; ++I) b[I] = Ji * Vec3(dN[I][0], dN[I][1], dN[I][2]);
+  return det / 24.0;
+}
+
+// linear triangular prism: nodes 1-3 at zeta = -1, 4-6 at zeta = +1, triangle coordinates (r, s); two points
+// (triangle centroid, zeta = -/+ 1/sqrt(3)); returns det J x weight (volume share)
+double wedge_grad(const double* x, int g, Vec3 b[6]) {
+  const double z = (g == 0 ? -1.0 : 1.0) * G8, L[3] = {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0}, wt = 0.5;
+  const double dLr[3] = {-1, 1, 0}, dLs[3] = {-1, 0, 1};
+  double dN[6][3];
+  for (int k = 0; k < 2; ++k) {
+    const double h = 0.5 * (k == 0 ? 1 - z : 1 + z), dh = k == 0 ? -0.5 : 0.5;
+    for (int i = 0; i < 3; ++i) { dN[3 * k + i][0] = dLr[i] * h; dN[3 * k + i][1] = dLs[i] * h; dN[3 * k + i][2] = L[i] * dh; }
+  }
+  Mat3 J;
+  for (int I = 0; I < 6; ++I)
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j) J.m[i][j] += dN[I][i] * x[3 * I + j];
+  const double det = J.det();
+  const Mat3 Ji = J.inverse();
+  for (int I = 0; I < 6; ++I) b[I] = Ji * Vec3(dN[I][0], dN[I][1], dN[I][2]);
+  return wt * det;
+}
 
 // shape function derivatives of the trilinear hex at (r,s,t)
 void hex_dN(double r, double s, double t, double dN[8][3]) {
@@ -268,14 +316,16 @@ class SolidGroup : public ElementGroup {
   std::vector<double> fib;       // Holzapfel-Gasser-Ogden: 3 fibre directions per element (global, reference)
   std::vector<double> t_init;    // initial temperature of each element (temperature-dependent elasticity)
   std::vector<double> effm;      // superelastic, explicit: effective 2 mu and 3 K of each element (0: initial moduli)
+  std::vector<double> pbv_last;  // bulk viscosity pressure of the last increment (trapezoidal viscous energy)
 
   void setup(const Model& m) override {
     model = &m;
-    nen = type == ElType::C3D4 ? 4 : 8;
-    npt = (type == ElType::C3D8 || type == ElType::C3D8I) ? 8 : 1;
+    nen = type == ElType::C3D4 ? 4 : tet10() ? 10 : type == ElType::C3D6 ? 6 : 8;
+    npt = (type == ElType::C3D8 || type == ElType::C3D8I) ? 8 : tet10() ? 4 : type == ElType::C3D6 ? 2 : 1;
     rot = false;
     st.assign(size() * npt, PointState());
     effm.assign(2 * size(), 0.0);
+    pbv_last.assign(size(), 0.0);
     if (type == ElType::C3D8R) {
       hgq.assign(size() * 12, 0.0); hgv.assign(size() * 12, 0.0); hgf.assign(size() * 12, 0.0); hgr.assign(size(), 1); hgl.assign(size(), 0.0); hgs.assign(size(), 1.0); fdt.assign(size(), 1);
       hgKi.assign(size(), -1); hgK.clear();
@@ -339,12 +389,28 @@ class SolidGroup : public ElementGroup {
     }
   }
 
-  void save(BinOut& o) const override { ElementGroup::save(o); o.vec(st); o.vec(hgq); o.vec(hgv); o.vec(hgf); o.vec(hgl); o.vec(hgs); o.vec(effm); }
-  void load(BinIn& in) override { ElementGroup::load(in); in.vec(st); in.vec(hgq); in.vec(hgv); in.vec(hgf); in.vec(hgl); in.vec(hgs); in.vec(effm); }
+  void save(BinOut& o) const override { ElementGroup::save(o); o.vec(st); o.vec(hgq); o.vec(hgv); o.vec(hgf); o.vec(hgl); o.vec(hgs); o.vec(effm); o.vec(pbv_last); }
+  void load(BinIn& in) override { ElementGroup::load(in); in.vec(st); in.vec(hgq); in.vec(hgv); in.vec(hgf); in.vec(hgl); in.vec(hgs); in.vec(effm); in.vec(pbv_last); }
   double alpha_damping(int e) const override { return mat[e]->damp_alpha; }
 
+  bool tet10() const { return type == ElType::C3D10 || type == ElType::C3D10M; }
   void mass(int e, const double* X, double* mt, double* mr) const override {
-    double V = type == ElType::C3D4 ? tet_vol(X) : hex_vol(X);
+    if (tet10()) {  // diagonal of the consistent mass scaled to the total: corners 1/36, mid-edge nodes 4/27
+      Vec3 b[10];
+      double V = 0;
+      for (int g = 0; g < 4; ++g) V += tet10_grad(X, g, b);
+      const double m = mat[e]->density * V;
+      for (int I = 0; I < 10; ++I) { mt[I] = m * (I < 4 ? 1.0 / 36.0 : 4.0 / 27.0); mr[I] = 0; }
+      return;
+    }
+    if (input_type == ElType::C3D6 && type == ElType::C3D8R) {  // prism as a brick with a doubled first node
+      const double m = mat[e]->density * hex_vol(X) / 6.0;
+      for (int I = 0; I < 8; ++I) { mt[I] = (I == 1 || I == 5) ? 0.0 : m; mr[I] = 0; }
+      return;
+    }
+    double V = 0;
+    if (type == ElType::C3D6) { Vec3 b[6]; for (int g = 0; g < npt; ++g) V += wedge_grad(X, g, b); }
+    else V = type == ElType::C3D4 ? tet_vol(X) : hex_vol(X);
     double m = mat[e]->density * V / nen;
     for (int I = 0; I < nen; ++I) { mt[I] = m; mr[I] = 0; }
   }
@@ -479,7 +545,7 @@ class SolidGroup : public ElementGroup {
   void compute(int e, const ElemIn& in, ElemOut& out, bool commit) override {
     const Material& m = *mat[e];
     const int n = nen;
-    double xm[24], x1[24];
+    double xm[30], x1[30];
     const double* xref = in.nlgeom ? nullptr : in.X;
     for (int I = 0; I < n; ++I)
       for (int k = 0; k < 3; ++k) {
@@ -501,6 +567,10 @@ class SolidGroup : public ElementGroup {
       M += hgo_fibre_modulus(m, F0, &fib[e * 9]);
     }
     double Le, V1, Ldt = 0;  // Le: bulk viscosity and stable increment; Ldt: stable increment when larger
+    // bulk viscosity pressure of this increment; its dissipation is integrated with the trapezoidal rule, as the work
+    // of the element forces (and as Abaqus/Explicit reports ALLVD: a compression rate that changes sign every
+    // increment, the highest mode of an element, dissipates little)
+    double pbv_now = 0;
     double trd = 0;
     double ep_max = 0, mis_max = 0;
     Sym6 sig_avg, eps_avg;
@@ -566,7 +636,8 @@ class SolidGroup : public ElementGroup {
         double pbv = in.bv1 * rho * c * Lb * rate +
                      (in.initial ? 0.0 : rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate)));
         for (int i = 0; i < 3; ++i) s[i] += pbv;
-        out.e_visc += -(-pbv) * trd * V1;  // pbv * dvol (always >= 0)
+        pbv_now = pbv;
+        out.e_visc += 0.5 * (pbv_last[e] + pbv) * trd * V1;
       }
       for (int I = 0; I < n; ++I) {
         Vec3 f = Vec3(s[0] * b1[I].x + s[3] * b1[I].y + s[4] * b1[I].z, s[3] * b1[I].x + s[1] * b1[I].y + s[5] * b1[I].z,
@@ -803,67 +874,147 @@ class SolidGroup : public ElementGroup {
         double pbv = in.bv1 * rho * c * Lb * rate +
                      (in.initial ? 0.0 : rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate)));
         for (int I = 0; I < 8; ++I) add3(out.f + 6 * I, bbar[I] * (pbv * V1));
-        out.e_visc += pbv * trd * V1;
+        pbv_now = pbv;
+        out.e_visc += 0.5 * (pbv_last[e] + pbv) * trd * V1;
       }
-    } else {  // C3D8 selective reduced (B-bar)
+    } else if (tet10()) {  // quadratic tetrahedron, 4 Gauss points
+      Vec3 bm[4][10], b1[4][10], bo[4][10];
+      double d1[4];
+      V1 = 0;
+      double xo[30];
+      for (int i = 0; i < 30; ++i) xo[i] = xref ? xref[i] : in.xo[i];
+      for (int g = 0; g < 4; ++g) {
+        tet10_grad(xm, g, bm[g]);
+        d1[g] = tet10_grad(x1, g, b1[g]);
+        if (m.hyper()) tet10_grad(xo, g, bo[g]);
+        V1 += d1[g];
+      }
+      for (int g = 0; g < 4; ++g) {
+        Mat3 L;
+        for (int I = 0; I < 10; ++I)
+          for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) L.m[i][j] += in.du[6 * I + i] * bm[g][I][j];
+        Sym6 deps = Sym6::from(L);
+        Vec3 w(0.5 * (L.m[2][1] - L.m[1][2]), 0.5 * (L.m[0][2] - L.m[2][0]), 0.5 * (L.m[1][0] - L.m[0][1]));
+        Mat3 dF = Mat3::identity();
+        if (m.hyper())
+          for (int I = 0; I < 10; ++I)
+            for (int i = 0; i < 3; ++i)
+              for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[g][I][j];
+        PointState p = st[e * 4 + g];
+        double ec = 0;
+        Sym6 dsig;
+        double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig);
+        for (int i = 0; i < 6; ++i) { dsig_avg[i] += dsig[i] / 4; deps_avg[i] += deps[i] / 4; }
+        out.e_plastic += wp * d1[g];
+        out.e_corr += ec * d1[g];
+        const Sym6& sg = p.sig;
+        for (int I = 0; I < 10; ++I) {
+          const Vec3& b = b1[g][I];
+          Vec3 f(sg[0] * b.x + sg[3] * b.y + sg[4] * b.z, sg[3] * b.x + sg[1] * b.y + sg[5] * b.z,
+                 sg[4] * b.x + sg[5] * b.y + sg[2] * b.z);
+          add3(out.f + 6 * I, f * d1[g]);
+        }
+        if (commit) st[e * 4 + g] = p;
+        for (int i = 0; i < 6; ++i) { sig_avg[i] += p.sig[i] / 4; eps_avg[i] += p.eps[i] / 4; }
+        ep_max = std::max(ep_max, p.ep);
+        mis_max = std::max(mis_max, mises(p.sig));
+        trd += deps.trace() * d1[g];
+      }
+      trd /= V1;
+      if (m.sma && in.dynamic) M = sma_modulus(e, m, dsig_avg, deps_avg, commit);
+      // stable increment: Gershgorin bound of the scalar stiffness integral(b_I . b_J) over the diagonal masses
+      {
+        double om2 = 0;
+        for (int I = 0; I < 10; ++I) {
+          double row = 0;
+          for (int J = 0; J < 10; ++J) {
+            double kij = 0;
+            for (int g = 0; g < 4; ++g) kij += dot(b1[g][I], b1[g][J]) * d1[g];
+            row += std::fabs(kij);
+          }
+          om2 = std::max(om2, row / (V1 * (I < 4 ? 1.0 / 36.0 : 4.0 / 27.0)));
+        }
+        Le = 2.0 / std::sqrt(std::max(om2, 1e-300));
+      }
+      Vec3 bbar[10];
+      for (int g = 0; g < 4; ++g) for (int I = 0; I < 10; ++I) bbar[I] += b1[g][I] * (d1[g] / V1);
+      if (in.dynamic && in.dt > 0 && (in.bv1 > 0 || in.bv2 > 0)) {
+        double rate = trd / in.dt;
+        double c = std::sqrt(M / rho);
+        double pbv = in.bv1 * rho * c * Le * rate +
+                     (in.initial ? 0.0 : rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate)));
+        for (int I = 0; I < 10; ++I) add3(out.f + 6 * I, bbar[I] * (pbv * V1));
+        pbv_now = pbv;
+        out.e_visc += 0.5 * (pbv_last[e] + pbv) * trd * V1;
+      }
+    } else {
+      // C3D8: 2x2x2 points, selective reduced integration (B-bar); C3D6 (implicit procedures): 2 points (triangle
+      // centroid, zeta = -/+ 1/sqrt(3)), full integration of the volumetric part as well (static cantilever of
+      // prisms: Abaqus/Standard displacements and stresses to 1e-5)
+      const int ng = npt;
+      const bool bbar = type != ElType::C3D6;
+      auto grad = [&](const double* x, int g, Vec3* b) {
+        return type == ElType::C3D6 ? wedge_grad(x, g, b) : hex_grad(x, HEX_XI[g][0] * G8, HEX_XI[g][1] * G8, HEX_XI[g][2] * G8, b);
+      };
       Vec3 bm[8][8], b1[8][8];
       double dm[8], d1[8];
       Vec3 bbar_m[8], bbar_1[8];
       double Vm = 0;
       V1 = 0;
       for (int I = 0; I < 8; ++I) { bbar_m[I] = Vec3(); bbar_1[I] = Vec3(); }
-      for (int g = 0; g < 8; ++g) {
-        double r = HEX_XI[g][0] * G8, s = HEX_XI[g][1] * G8, t = HEX_XI[g][2] * G8;
-        dm[g] = hex_grad(xm, r, s, t, bm[g]);
-        d1[g] = hex_grad(x1, r, s, t, b1[g]);
+      for (int g = 0; g < ng; ++g) {
+        dm[g] = grad(xm, g, bm[g]);
+        d1[g] = grad(x1, g, b1[g]);
         Vm += dm[g]; V1 += d1[g];
-        for (int I = 0; I < 8; ++I) { bbar_m[I] += bm[g][I] * dm[g]; bbar_1[I] += b1[g][I] * d1[g]; }
+        for (int I = 0; I < n; ++I) { bbar_m[I] += bm[g][I] * dm[g]; bbar_1[I] += b1[g][I] * d1[g]; }
       }
-      for (int I = 0; I < 8; ++I) { bbar_m[I] = bbar_m[I] / Vm; bbar_1[I] = bbar_1[I] / V1; }
+      for (int I = 0; I < n; ++I) { bbar_m[I] = bbar_m[I] / Vm; bbar_1[I] = bbar_1[I] / V1; }
       {
         double bb = 0;
-        for (int I = 0; I < 8; ++I) bb += norm2(bbar_1[I]);
-        Le = 2.0 / std::sqrt(8 * bb);
+        for (int I = 0; I < n; ++I) bb += norm2(bbar_1[I]);
+        Le = 2.0 / std::sqrt(n * bb);
       }
       double vol_bar = 0;
-      for (int I = 0; I < 8; ++I) vol_bar += dot(bbar_m[I], load3(in.du + 6 * I));
-      for (int g = 0; g < 8; ++g) {
+      for (int I = 0; I < n; ++I) vol_bar += dot(bbar_m[I], load3(in.du + 6 * I));
+      for (int g = 0; g < ng; ++g) {
         Mat3 L;
-        for (int I = 0; I < 8; ++I)
+        for (int I = 0; I < n; ++I)
           for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j) L.m[i][j] += in.du[6 * I + i] * bm[g][I][j];
         Sym6 deps = Sym6::from(L);
-        double corr = (vol_bar - deps.trace()) / 3.0;
+        double corr = bbar ? (vol_bar - deps.trace()) / 3.0 : 0.0;
         for (int i = 0; i < 3; ++i) deps[i] += corr;
         Vec3 w(0.5 * (L.m[2][1] - L.m[1][2]), 0.5 * (L.m[0][2] - L.m[2][0]), 0.5 * (L.m[1][0] - L.m[0][1]));
         Mat3 dF = Mat3::identity();
         if (m.hyper()) {
           double xo[24];
-          for (int i = 0; i < 24; ++i) xo[i] = xref ? xref[i] : in.xo[i];
+          for (int i = 0; i < 3 * n; ++i) xo[i] = xref ? xref[i] : in.xo[i];
           Vec3 bo[8];
-          hex_grad(xo, HEX_XI[g][0] * G8, HEX_XI[g][1] * G8, HEX_XI[g][2] * G8, bo);
-          for (int I = 0; I < 8; ++I)
+          grad(xo, g, bo);
+          for (int I = 0; I < n; ++I)
             for (int i = 0; i < 3; ++i)
               for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[I][j];
         }
-        PointState p = st[e * 8 + g];
+        PointState p = st[e * npt + g];
         double ec = 0;
         Sym6 dsig;
         double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
                          orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig);
-        for (int i = 0; i < 6; ++i) { dsig_avg[i] += dsig[i] / 8; deps_avg[i] += deps[i] / 8; }
+        for (int i = 0; i < 6; ++i) { dsig_avg[i] += dsig[i] / ng; deps_avg[i] += deps[i] / ng; }
         out.e_plastic += wp * d1[g];
         out.e_corr += ec * d1[g];
         const Sym6& s = p.sig;
         double trs = s.trace() / 3.0;
-        for (int I = 0; I < 8; ++I) {
+        for (int I = 0; I < n; ++I) {
           const Vec3& b = b1[g][I];
           Vec3 f(s[0] * b.x + s[3] * b.y + s[4] * b.z, s[3] * b.x + s[1] * b.y + s[5] * b.z, s[4] * b.x + s[5] * b.y + s[2] * b.z);
-          f += (bbar_1[I] - b) * trs;
+          if (bbar) f += (bbar_1[I] - b) * trs;
           add3(out.f + 6 * I, f * d1[g]);
         }
-        if (commit) st[e * 8 + g] = p;
-        for (int i = 0; i < 6; ++i) { sig_avg[i] += p.sig[i] / 8; eps_avg[i] += p.eps[i] / 8; }
+        if (commit) st[e * npt + g] = p;
+        for (int i = 0; i < 6; ++i) { sig_avg[i] += p.sig[i] / ng; eps_avg[i] += p.eps[i] / ng; }
         ep_max = std::max(ep_max, p.ep);
         mis_max = std::max(mis_max, mises(p.sig));
       }
@@ -875,8 +1026,9 @@ class SolidGroup : public ElementGroup {
         const double Lb = in.initial ? std::max(Le, Ldt) : Le;  // increment 0: stable-increment length, linear term
         double pbv = in.bv1 * rho * c * Lb * rate +
                      (in.initial ? 0.0 : rho * in.bv2 * in.bv2 * Le * Le * rate * std::fabs(std::min(0.0, rate)));
-        for (int I = 0; I < 8; ++I) add3(out.f + 6 * I, bbar_1[I] * (pbv * V1));
-        out.e_visc += pbv * trd * V1;
+        for (int I = 0; I < n; ++I) add3(out.f + 6 * I, bbar_1[I] * (pbv * V1));
+        pbv_now = pbv;
+        out.e_visc += 0.5 * (pbv_last[e] + pbv) * trd * V1;
       }
     }
     // stable increment
@@ -889,6 +1041,7 @@ class SolidGroup : public ElementGroup {
     if (xi < 0) xi = 0;
     out.dt_stable = Le / c * (std::sqrt(1 + xi * xi) - xi) * std::sqrt(1.0);
     if (commit) {
+      pbv_last[e] = pbv_now;
       float* o = &this->out[e * N_OUT];
       o[OUT_MISES] = (float)mis_max;
       for (int i = 0; i < 6; ++i) o[OUT_S11 + i] = (float)sig_avg[i];

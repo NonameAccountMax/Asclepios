@@ -31,7 +31,7 @@ namespace abq {
 
 namespace {
 
-bool is_shell(ElType t) { return t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS; }
+bool is_shell(ElType t) { return is_shell_type(t); }
 
 struct Facet {
   int n = 0;

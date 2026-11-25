@@ -48,8 +48,11 @@ int vtk_type(ElType t, int nen) {
   switch (t) {
     case ElType::C3D8R: case ElType::C3D8: case ElType::C3D8I: return 12;
     case ElType::C3D4: return 10;
-    case ElType::S4R: case ElType::S4: case ElType::SFM3D4: return 9;
-    case ElType::S3R: case ElType::S3RS: case ElType::SFM3D3: return 5;
+    case ElType::C3D6: return 13;  // wedge (same node order)
+    case ElType::C3D10: case ElType::C3D10M: return 24;  // quadratic tetrahedron (same node order)
+    case ElType::S4R: case ElType::S4: case ElType::SFM3D4: case ElType::M3D4R: case ElType::M3D4: return 9;
+    case ElType::S3R: case ElType::S3RS: case ElType::SFM3D3: case ElType::M3D3: return 5;
+    case ElType::B32: return 4;  // poly-line through end, middle, end nodes
     default: return nen == 1 ? 1 : 3;  // vertex (point mass), line
   }
 }

@@ -318,7 +318,7 @@ Analysis::ElemSum Analysis::eval_elements(double dt, double bv1, double bv2, boo
     int dte = -1, nfail = 0;
 #pragma omp parallel num_threads(nthreads)
     {
-      double Xe[3 * 8], xo[3 * 8], due[6 * 8], t0[8], t1[8], fve[8];
+      double Xe[3 * 10], xo[3 * 10], due[6 * 10], t0[10], t1[10], fve[10];  // up to 10 nodes (C3D10)
       double my_dt = 1e30;
       int my_e = -1;
 #pragma omp for reduction(+ : ev, ep, ea, ec, nfail) schedule(static)
@@ -457,6 +457,7 @@ void Analysis::external_forces(double st, double tt, std::vector<double>& f) {
     double sgn = 1;
     switch (el.type) {
       case ElType::S4R: case ElType::S4: case ElType::S3R: case ElType::S3RS:
+      case ElType::M3D4R: case ElType::M3D4: case ElType::M3D3:
         nf = (int)el.nodes.size();
         for (int i = 0; i < nf; ++i) nodes[i] = el.nodes[i];
         sgn = pl.face.face < 0 ? -1.0 : 1.0;  // SPOS face: outward normal = +n
@@ -471,6 +472,12 @@ void Analysis::external_forces(double st, double tt, std::vector<double>& f) {
         int fi = std::max(1, pl.face.face) - 1;
         nf = 3;
         for (int i = 0; i < 3; ++i) nodes[i] = el.nodes[TETF[fi][i]];
+        break;
+      }
+      case ElType::C3D6: {
+        int ln[4];
+        nf = face_local_nodes(el.type, std::max(1, pl.face.face), (int)el.nodes.size(), ln);
+        for (int i = 0; i < nf; ++i) nodes[i] = el.nodes[ln[i]];
         break;
       }
       default: continue;

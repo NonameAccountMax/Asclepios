@@ -1,7 +1,7 @@
 # Validation
 
-The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 287
-small decks (228 cases and 59 twins), each running in seconds:
+The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 291
+small decks (231 cases and 60 twins), each running in seconds:
 
 - **elements and deformation modes**: every element type supported by asclepios (C3D8R, C3D8, C3D4, S4R, S3R, B31,
   CONN3D2) under tension, bending, torsion, shear, large rotations, pressure, hyperelasticity, plasticity with load
@@ -55,7 +55,7 @@ implemented (status NOT SUPPORTED, reason given in `RESULTS.md`).
   systems, gravity) refined until the discretisation error is below 0.05 %, prescribed accelerations, amplitudes,
   steady conduction. Tolerance: 0.1 % on displacements, rotations, reaction forces, element stresses and energies.
   See `analytic.py`.
-- **Reference solver** (208 cases): the same decks run in a commercial solver that reads the same input format
+- **Reference solver** (212 cases): the same decks run in a commercial solver that reads the same input format
   (implicit or explicit according to the procedure), for the cases without a hand solution. These reference results
   are produced locally by each user who holds a licence of that solver; they and the comparisons with them are not
   distributed with the repository (licence terms of the reference solver).

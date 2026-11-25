@@ -43,7 +43,8 @@ struct ElemOut {
 
 class ElementGroup {
  public:
-  ElType type = ElType::UNKNOWN;
+  ElType type = ElType::UNKNOWN;        // formulation computed by the group
+  ElType input_type = ElType::UNKNOWN;  // element type of the input (C3D6 in explicit procedures: computed as C3D8R)
   int nen = 0;
   bool rot = false;                // uses rotational dofs
   std::vector<int> ids;            // global element indices

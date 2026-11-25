@@ -1,4 +1,5 @@
 // S4R / S3R / S3RS shells: Belytschko-Lin-Tsay style corotational one-point element (C0 triangle for S3R, S3RS),
+// and the membranes M3D4R / M3D4 / M3D3 as their membrane part (no bending, transverse shear, drilling or rotations),
 // Simpson integration through the thickness, stiffness hourglass control derived from exact element
 // modes (in-plane bending of the membrane, curvature variation of the rotations, linear transverse
 // shear sampled at the edge midpoints) and a small drilling stiffness.
@@ -11,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <stdexcept>
 
 #include "element/groups.hpp"
@@ -153,8 +155,9 @@ struct Pt {      // section point state
 // 1 - eta^2 with Taylor's correction, so that the patch test is passed), statically condensed and projected
 // on the two hourglass displacement modes (u_x and u_y following h = (1, -1, 1, -1) without its linear
 // part). Plane stress, unit Young's modulus and thickness; k = {k_xx, k_yy, k_xy}. For a rectangle this is
-// the exact energy of pure in-plane bending of an element.
-void qm6_hourglass(const double xl[4][3], double nu, double k[3]) {
+// the exact energy of pure in-plane bending of an element. incompatible = false: plain bilinear element with 2 x 2
+// points (M3D4, which locks in in-plane bending: Abaqus/Standard and Abaqus/Explicit strips to 1e-4).
+void qm6_hourglass(const double xl[4][3], double nu, double k[3], bool incompatible = true) {
   const double c = 1.0 / (1 - nu * nu);
   const double D[3][3] = {{c, c * nu, 0}, {c * nu, c, 0}, {0, 0, c * (1 - nu) / 2}};
   const double XI[4] = {-1, 1, 1, -1}, ET[4] = {-1, -1, 1, 1};
@@ -201,9 +204,9 @@ void qm6_hourglass(const double xl[4][3], double nu, double k[3]) {
         }
     }
   // static condensation of the 4 internal modes
-  double Kii[4][4], inv[4][4];
+  double Kii[4][4], inv[4][4] = {};
   for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) Kii[i][j] = K[8 + i][8 + j];
-  {  // Gauss-Jordan inverse
+  if (incompatible) {  // Gauss-Jordan inverse
     double M[4][8];
     for (int i = 0; i < 4; ++i) for (int j = 0; j < 8; ++j) M[i][j] = j < 4 ? Kii[i][j] : (j - 4 == i);
     for (int c0 = 0; c0 < 4; ++c0) {
@@ -479,6 +482,7 @@ struct ElState {
   double Q[2];                 // transverse shear resultants
   double hgm[2], hgb[2], hgs[2];  // hourglass generalized forces (membrane, rotations, transverse shear)
   double hgmv[2], hgbv[2];        // relaxing parts of the membrane and rotation hourglass forces (explicit)
+  double hgwv;                    // membranes: relaxing part of the out-of-plane hourglass force
   double md[4];                // drilling moments
   double em[3];                // integrated membrane strain (e11, e22, 2e12)
   double kap[3];               // integrated curvature (k11, k22, 2k12)
@@ -490,9 +494,15 @@ struct ElState {
 
 class ShellGroup : public ElementGroup {
  public:
+  ElType kind = ElType::S4R;  // shell formulation: the membranes use those of S4R (M3D4R), S4 (M3D4), S3R (M3D3)
+  bool membrane = false;
   std::vector<ElState> st;
   std::vector<const Section*> sec;
-  std::vector<const Material*> mat;
+  std::vector<const Material*> mat;  // composite sections: equivalent elastic material (thickness averages)
+  // section points through the thickness: position from the reference surface and weight in thicknesses, material
+  struct Layout { int np = 0; double z[MAXPT], w[MAXPT]; const Material* m[MAXPT]; };
+  std::vector<Layout> lay;
+  std::deque<Material> eqmat;
   std::vector<double> ref;   // per element: dN/dX1 (4), dN/dX2 (4) in the reference material basis, A0
   std::vector<double> khg;   // quads: hourglass stiffness (unit modulus and thickness) xx, yy, xy
   std::vector<double> irot;  // rotary inertia per element node (unscaled)
@@ -510,6 +520,44 @@ class ShellGroup : public ElementGroup {
     for (int k = 0; k < n; ++k) w[k] /= s;
   }
 
+  // section points of element e: Simpson points through each layer (one layer of the section thickness when not
+  // composite), positions shifted by the offset of the reference surface; composite sections get an equivalent
+  // elastic material (thickness averages of E, nu and density) for the quantities of the whole section (stable
+  // increment, transverse shear, hourglass and drilling stiffnesses, mass)
+  void section_layout(const Model& m, const Section& s, int e) {
+    if ((int)lay.size() != size()) lay.assign(size(), Layout());
+    Layout& L = lay[e];
+    L.np = 0;
+    auto add_layer = [&](double zb, double tl, int nip, const Material* mt) {
+      if (nip % 2 == 0 && nip > 1) throw std::runtime_error("shell section: Simpson integration needs an odd number of points");
+      if (L.np + nip > MAXPT) throw std::runtime_error("shell section: at most 15 integration points");
+      double zk[MAXPT], wk[MAXPT];
+      simpson(nip, zk, wk);
+      for (int k = 0; k < nip; ++k, ++L.np) {
+        L.z[L.np] = zb + 0.5 * tl * (1 + zk[k]) - s.offset;
+        L.w[L.np] = wk[k] * tl;
+        L.m[L.np] = mt;
+      }
+    };
+    if (s.layers.empty()) {
+      add_layer(-0.5, 1.0, s.nip, mat[e]);
+      return;
+    }
+    double zb = -0.5, E = 0, nu = 0, rho = 0;
+    for (const auto& ly : s.layers) {
+      const Material* mt = &m.materials[ly.material];
+      if (!mt->elastic || mt->plastic() || mt->hyper())
+        throw std::runtime_error("composite shell section: elastic layers only (" + mt->name + ")");
+      const double f = ly.t / s.thickness;
+      add_layer(zb, f, ly.nip, mt);
+      zb += f;
+      E += f * mt->E; nu += f * mt->nu; rho += f * mt->density;
+    }
+    eqmat.push_back(*mat[e]);
+    eqmat.back().E = E; eqmat.back().nu = nu; eqmat.back().density = rho;
+    mat[e] = &eqmat.back();
+  }
+
   bool hyper(int e) const { return mat[e]->fung || mat[e]->neohooke; }
   // enhanced hourglass control: requested, or by default for hyperelastic materials (as Abaqus)
   bool enhanced_hg(int e) const { return sec[e]->hg_enhanced || (sec[e]->hg_default && hyper(e)); }
@@ -520,6 +568,7 @@ class ShellGroup : public ElementGroup {
   std::vector<int> tri_k;         // triangles: degenerate corner of the shear formulation
   std::vector<double> tri_c;      // triangles: crop-circle coefficients (2 per element)
   double ts_stiff(int e, int dir) const {
+    if (membrane) return 0.0;
     const Section& s = *sec[e];
     double k = s.has_ts ? (dir == 0 ? s.ts_k11 : s.ts_k22) : 5.0 / 6.0 * mat[e]->shear_modulus() * s.thickness;
     return ts_factor.empty() ? k : k * ts_factor[e];
@@ -534,7 +583,7 @@ class ShellGroup : public ElementGroup {
   // only enter the transverse shear, through the directors at the edge midpoints (S4R, S3R).
   void nodal_normals(const Model& m) {
     nrm.clear();
-    if (type != ElType::S4R && type != ElType::S3R) return;
+    if (membrane || (kind != ElType::S4R && kind != ElType::S3R)) return;
     auto shell = [](ElType t) { return t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS; };
     std::vector<std::vector<std::pair<int, int>>> at(m.X.size());
     for (int ge = 0; ge < (int)m.elems.size(); ++ge)
@@ -590,7 +639,9 @@ class ShellGroup : public ElementGroup {
 
   void setup(const Model& m) override {
     model = &m;
-    rot = true;
+    membrane = is_membrane_type(type);
+    kind = type == ElType::M3D4R ? ElType::S4R : type == ElType::M3D4 ? ElType::S4 : type == ElType::M3D3 ? ElType::S3R : type;
+    rot = !membrane;
     sec.resize(size());
     mat.resize(size());
     st.assign(size(), ElState());
@@ -603,7 +654,7 @@ class ShellGroup : public ElementGroup {
       ts_factor.assign(size(), 1.0);
       for (int e = 0; e < size(); ++e) {
         const Section& s = m.sections[m.elems[ids[e]].section];
-        if (type != ElType::S4R || s.has_ts) continue;
+        if (kind != ElType::S4R || s.has_ts) continue;
         const Vec3 p0 = m.X[conn[e * 4]], p1 = m.X[conn[e * 4 + 1]], p2 = m.X[conn[e * 4 + 2]], p3 = m.X[conn[e * 4 + 3]];
         const double area = 0.5 * norm(cross(p2 - p0, p3 - p1));
         ts_factor[e] = 1.0 / (1.0 + 0.25e-4 * area / (s.thickness * s.thickness));
@@ -622,7 +673,7 @@ class ShellGroup : public ElementGroup {
         tri_collapse_setup(g0, tri_k[e], &tri_c[e * 2]);
         if (s.has_ts) continue;
         const double t = s.thickness, fp = 1.0 / (1.0 + 0.25e-4 * g0.A / (t * t));
-        if (type != ElType::S3RS) { ts_factor[e] = fp; continue; }
+        if (kind != ElType::S3RS) { ts_factor[e] = fp; continue; }
         // S3RS: full shear stiffness on thick elements (t > L / 5, L the shortest edge; no thin-shell factor); on
         // thin ones the shear acts as a penalty scaled by t / (2.4 L) and by the thin-shell factor, independent of
         // the elastic constants (single-element probes: 6 shapes, thickness swept across the switch, three moduli
@@ -642,9 +693,8 @@ class ShellGroup : public ElementGroup {
       sec[e] = &s;
       mat[e] = &m.materials[s.material];
       if (mat[e]->hgo) throw std::runtime_error("Holzapfel-Gasser-Ogden material " + mat[e]->name + ": solid elements only");
-      if (s.nip > MAXPT) throw std::runtime_error("shell section: at most 15 integration points");
-      if (s.nip % 2 == 0 && s.nip > 1) throw std::runtime_error("shell section: Simpson integration needs an odd number of points");
       if (s.thickness <= 0) throw std::runtime_error("shell section: thickness must be positive");
+      section_layout(m, s, e);
       ElState& S = st[e];
       std::memset(&S, 0, sizeof(S));
       for (int k = 0; k < MAXPT; ++k) S.pt[k].lam3 = 1.0;
@@ -654,7 +704,7 @@ class ShellGroup : public ElementGroup {
       Geo g;
       geometry(X, nen, g);
       if (g.A <= 0) throw std::runtime_error("element " + m.elem_name(ids[e]) + ": zero or negative area");
-      if (nen == 4 && (enhanced_hg(e) || type == ElType::S4)) qm6_hourglass(g.xl, nu_eff(e), &khg[e * 3]);
+      if (nen == 4 && (enhanced_hg(e) || kind == ElType::S4)) qm6_hourglass(g.xl, nu_eff(e), &khg[e * 3], !(membrane && kind == ElType::S4));
       Vec3 m1 = g.e1;
       if (s.orientation >= 0) {
         // the axis following the axis of the additional rotation (default the local 1-axis, so the 2-axis) is
@@ -708,7 +758,7 @@ class ShellGroup : public ElementGroup {
       }
       const double a4 = L2 * L2 / 256.0, b4 = t * t * t * t / 36.0;
       // S3RS: nodal mass times max(A / 4, t^2 / 6) (single-element Abaqus/Explicit runs, 5 shapes, 3 thicknesses: 1e-5)
-      const double r2 = type == ElType::S3RS ? std::max(g.A / 4.0, t * t / 6.0)
+      const double r2 = kind == ElType::S3RS ? std::max(g.A / 4.0, t * t / 6.0)
                                              : g.A / 12.0 + std::pow(a4 * a4 + b4 * b4, 0.25);
       if (nen == 4) {
         // nodal masses of a quadrilateral: integral of the shape function over the element (row sums of the
@@ -724,7 +774,7 @@ class ShellGroup : public ElementGroup {
         if (std::fabs(j0) > 0)
           for (int I = 0; I < 4; ++I) mfr[e * 4 + I] = (j0 + (j1 * XI[I] + j2 * ET[I]) / 3.0) / (4.0 * j0);
       }
-      for (int I = 0; I < nen; ++I) irot[e * nen + I] = mtr * nen * mfr[e * nen + I] * r2;
+      for (int I = 0; I < nen; ++I) irot[e * nen + I] = membrane ? 0.0 : mtr * nen * mfr[e * nen + I] * r2;
     }
   }
 
@@ -738,7 +788,10 @@ class ShellGroup : public ElementGroup {
     double A = ref[e * 9 + 8];
     double m = mat[e]->density * sec[e]->thickness * A;
     const double t2 = sec[e]->thickness * sec[e]->thickness / 12.0;
-    for (int I = 0; I < nen; ++I) { mt[I] = m * mfr[e * nen + I]; mr[I] = physical_rotary ? mt[I] * t2 : irot[e * nen + I]; }
+    for (int I = 0; I < nen; ++I) {
+      mt[I] = m * mfr[e * nen + I];
+      mr[I] = membrane ? 0.0 : physical_rotary ? mt[I] * t2 : irot[e * nen + I];
+    }
   }
 
   // largest eigenvalue of the plane-stress hyperelastic tangent dS/dE at C (finite differences)
@@ -776,7 +829,7 @@ class ShellGroup : public ElementGroup {
     geometry(x1, n, g1);
     double du[4][3], dth[4][3];
     for (int I = 0; I < n; ++I) {
-      Vec3 u = load3(in.du + 6 * I), r = load3(in.du + 6 * I + 3);
+      Vec3 u = load3(in.du + 6 * I), r = membrane ? Vec3() : load3(in.du + 6 * I + 3);
       du[I][0] = dot(u, gm.e1); du[I][1] = dot(u, gm.e2); du[I][2] = dot(u, gm.e3);
       dth[I][0] = dot(r, gm.e1); dth[I][1] = dot(r, gm.e2); dth[I][2] = dot(r, gm.e3);
     }
@@ -800,9 +853,9 @@ class ShellGroup : public ElementGroup {
     const double (*nl)[3] = nrm.empty() ? nullptr : reinterpret_cast<const double(*)[3]>(&nrm[e * n * 3]);
     double Gm[4][4][SQ], invm[4] = {0, 0, 0, 0}, cwm = 0;
     double ggm = 4.0;
-    if (n == 4 && type == ElType::S4) edge_shear_ops(gm.xl, Gm, invm);
+    if (n == 4 && kind == ElType::S4) edge_shear_ops(gm.xl, Gm, invm);
     else if (n == 4) ggm = quad_shear_ops(gm, nl, Gm, &cwm);
-    else if (type == ElType::S3RS) tri_edge_shear_ops(gm, Gm);
+    else if (kind == ElType::S3RS) tri_edge_shear_ops(gm, Gm);
     else tri_degenerate_shear_ops(gm, tri_k[e], &tri_c[e * 2], nl, Gm, cwm);
     // local dof q of node I in the order of the shear operators (w, theta_x, theta_y, u, v, theta_z)
     auto ldof = [&](int I, int q) {
@@ -827,9 +880,10 @@ class ShellGroup : public ElementGroup {
     double dtemp = 0;
     if (in.temp0 && in.temp1) { for (int I = 0; I < n; ++I) dtemp += in.temp1[I] - in.temp0[I]; dtemp /= n; }
 
-    double zk[MAXPT], wk[MAXPT];
-    const int np = sc.nip;
-    simpson(np, zk, wk);
+    double zk[MAXPT], wk[MAXPT];  // section points: position from the reference surface in half thicknesses, weight
+    const Layout& LY = lay[e];
+    const int np = LY.np;
+    for (int k = 0; k < np; ++k) { zk[k] = 2.0 * LY.z[k]; wk[k] = LY.w[k]; }
     double N[3] = {0, 0, 0}, M[3] = {0, 0, 0};
     double tcur = t0;
     double stretch_fac = 1.0;  // push-forward of the material tangent (hyperelastic)
@@ -918,6 +972,7 @@ class ShellGroup : public ElementGroup {
       double tc = t0 * std::exp(S.pt[np / 2].e33);
       for (int k = 0; k < np; ++k) {
         Pt& p = S.pt[k];
+        const Material& m = *LY.m[k];
         double z = zk[k] * 0.5 * tc;
         double d11 = de[0] + z * dk[0] - m.alpha * dtemp;
         double d22 = de[1] + z * dk[1] - m.alpha * dtemp;
@@ -980,6 +1035,7 @@ class ShellGroup : public ElementGroup {
     const double mtr = rho * t0 * g1.A / n;
     double Imin = 1e300;
     for (int I = 0; I < n; ++I) Imin = std::min(Imin, irot[e * n + I] * msf[e]);
+    if (membrane) Imin = 1.0;  // no rotations (bending side of the bound unused)
     // hourglass (stiffness form) and drilling stiffnesses, evaluated here so that they enter the bound
     //  - membrane modes u_x, u_y and rotation modes theta_y, -theta_x (k, kb: 2x2 matrices per unit modulus,
     //    scaled by E t and E t^3/12):
@@ -1010,9 +1066,13 @@ class ShellGroup : public ElementGroup {
     if (n == 4) {
       const double r = sc.hg_scale;
       for (int I = 0; I < 4; ++I) gg += gm.gam[I] * gm.gam[I];
-      if (enhanced_hg(e) || type == ElType::S4) {  // S4 (full integration): stiffness of a physical element
-        const double f = r * (1 - nu * nu);
+      if (enhanced_hg(e) || kind == ElType::S4) {  // S4 (full integration): stiffness of a physical element
+        // membranes (hyperelastic M3D4R with the default enhanced control, M3D4): plane-stress modulus matrix itself,
+        // without the (1 - nu^2) factor of the shells (single neo-Hooke M3D4R runs, nu = 0.49: in-plane modes
+        // 1/(1 - nu^2) stiffer than the shell rule; M3D4 strips)
+        const double f = r * (membrane && (hyper(e) || kind == ElType::S4) ? 1.0 : (1 - nu * nu));
         kxx = kbx = f * khg[e * 3]; kyy = kby = f * khg[e * 3 + 1]; kxy = kbxy = f * khg[e * 3 + 2];
+        if (membrane) kbx = kby = kbxy = 0.0;
       } else {
         double bb = 0;
         for (int I = 0; I < 4; ++I) bb += gm.B1[I] * gm.B1[I] + gm.B2[I] * gm.B2[I];
@@ -1021,7 +1081,7 @@ class ShellGroup : public ElementGroup {
         // Explicit: instantaneous stiffnesses 0.2 G t A sum|B|^2 (membrane) and 0.2 G t^3 A sum|B|^2 (rotations)
         // for the vectors gamma, which relax (below); single-element Abaqus/Explicit runs, HOURGLASS=STIFFNESS
         kxx = kyy = (in.dynamic ? 0.2 : 0.005) * fb;
-        kbx = kby = (in.dynamic ? 2.4 : 0.18) * fb;
+        kbx = kby = membrane ? 0.0 : (in.dynamic ? 2.4 : 0.18) * fb;
       }
       klam = 0.5 * (kxx + kyy) + std::sqrt(0.25 * (kxx - kyy) * (kxx - kyy) + kxy * kxy);
       kblam = 0.5 * (kbx + kby) + std::sqrt(0.25 * (kbx - kby) * (kbx - kby) + kbxy * kbxy);
@@ -1029,7 +1089,7 @@ class ShellGroup : public ElementGroup {
     {
       // variation of the edge strains. Quad: linear across the element, integral of eta^2 (xi^2) = A / 3;
       // triangle: rotational part of the shear field, polar moment of the area
-      if (n == 4 && type == ElType::S4) {
+      if (n == 4 && kind == ElType::S4) {
         kv[0] = sc.hg_scale * kts * gm.A / 3.0 * (invm[0] * invm[0] + invm[2] * invm[2]);
         kv[1] = sc.hg_scale * kts * gm.A / 3.0 * (invm[1] * invm[1] + invm[3] * invm[3]);
       } else if (n == 4) {
@@ -1064,13 +1124,18 @@ class ShellGroup : public ElementGroup {
     // patterns, rectangles 1x1 to 10x2, t 0.1 to 1). Triangles: spin of the linear field (constant), a tenth of
     // the bending stiffness E t^3/12 A sum(B1^2 + B2^2)
     const double Gd = Eh / (2.0 * (1.0 + nu));
-    const double kd = Gd * tcur * g1.A * tcur * tcur / (24.0 * (tcur * tcur + 0.1 * g1.A));
+    const double kd = membrane ? 0.0 : Gd * tcur * g1.A * tcur * tcur / (24.0 * (tcur * tcur + 0.1 * g1.A));
     // bound on the element frequency: membrane | bending + transverse shear (coupled w / rotations);
     // hourglass modes: nodal stiffness k gamma gamma^T, largest eigenvalue k_max sum(gamma^2)
     // hourglass modes are orthogonal to the constant-strain modes (exactly for parallelograms): the largest
     // membrane frequency is the larger of the two families, not their sum
     // (drilling: its coupling to the in-plane displacements, corner gradients at most twice the mean ones)
-    double om_m2 = std::max(n * lam / rho, Em * klam * gg / mtr) + (n == 3 ? 4.2 : 1.0) * kd * BB / mtr;
+    // membranes, out-of-plane hourglass mode: M t (kxx + kyy) / 2 with the default control, M t (kxx + kyy) with
+    // the enhanced one (single M3D4R Abaqus/Explicit runs with prescribed nodal w: squares 1 and 2, 2 x 1
+    // rectangle, t 0.05 and 0.2, nu 0 to 0.49, neo-Hooke: forces within 0.03 %); the enhanced one can exceed the
+    // in-plane hourglass frequency and enters the bound
+    const double kw = membrane && n == 4 ? Em * (enhanced_hg(e) ? 1.0 : 0.5) * (kxx + kyy) : 0.0;
+    double om_m2 = std::max(std::max(n * lam / rho, Em * klam * gg / mtr), kw * gg / mtr) + (n == 3 ? 4.2 : 1.0) * kd * BB / mtr;
     // bending side. Quadrilaterals: the uniform transverse shear acts on the constant w gradients and the mean
     // rotations, orthogonal (lumped masses, exactly for parallelograms) to the curvature, rotation hourglass and
     // shear variation modes (zero-mean rotations, w hourglass): the largest frequency is the larger of the two
@@ -1153,7 +1218,7 @@ class ShellGroup : public ElementGroup {
       // the hourglass and drilling stiffnesses but takes 0.92 / 0.97 of the exact length): the smaller of the two
       // (contact stiffness from the stable increments of the nodes)
       if (in.dynamic && c > 0) dtm = std::min(dtm, Lm / c * (std::sqrt(1 + in.bv1 * in.bv1) - in.bv1));
-      dtb = 2.0 / om_b * (std::sqrt(1 + xib * xib) - xib);
+      dtb = membrane ? 1e30 : 2.0 / om_b * (std::sqrt(1 + xib * xib) - xib);
       static int trace_dt = std::getenv("ABQ_TRACE_DT") ? std::atoi(std::getenv("ABQ_TRACE_DT")) : -1;
       if (commit && model->elems[ids[e]].label == trace_dt)
         std::fprintf(stderr, "DTTRACE om_m %.3e xim %.3f dtm %.3e | om_b %.3e xib %.3f dtb %.3e | Imin %.3e mtr %.3e\n", om_m, xim, dtm, om_b, xib, dtb, Imin, mtr);
@@ -1166,9 +1231,9 @@ class ShellGroup : public ElementGroup {
     std::memset(fl, 0, sizeof(fl));
     const double A = g1.A;
     double G1[4][4][SQ], inv1[4], cw1;
-    if (n == 4 && type == ElType::S4) edge_shear_ops(g1.xl, G1, inv1);
+    if (n == 4 && kind == ElType::S4) edge_shear_ops(g1.xl, G1, inv1);
     else if (n == 4) quad_shear_ops(g1, nl, G1);
-    else if (type == ElType::S3RS) tri_edge_shear_ops(g1, G1);
+    else if (kind == ElType::S3RS) tri_edge_shear_ops(g1, G1);
     else tri_degenerate_shear_ops(g1, tri_k[e], &tri_c[e * 2], nl, G1, cw1);
     for (int I = 0; I < n; ++I) {
       double b1 = g1.B1[I], b2 = g1.B2[I];
@@ -1178,7 +1243,7 @@ class ShellGroup : public ElementGroup {
       fl[I][4] += A * (b1 * M[0] + b2 * M[2]);
       for (int q = 0; q < SQ; ++q) fl[I][SQ_FORCE[q]] += A * (G1[0][I][q] * Q[0] + G1[1][I][q] * Q[1]);
     }
-    if (n == 3 && type != ElType::S3RS) {  // rotational part of the shear field of the triangle (physical shear energy)
+    if (n == 3 && kind != ElType::S3RS) {  // rotational part of the shear field of the triangle (physical shear energy)
       const double dgc = shear_inc(Gm[2]);
       S.hgs[0] += kv[0] * dgc;
       for (int I = 0; I < 3; ++I)
@@ -1199,26 +1264,34 @@ class ShellGroup : public ElementGroup {
       // variations of the edge shear strains across the element
       dgx = shear_inc(Gm[2]);
       dgy = shear_inc(Gm[3]);
+      // membranes: out-of-plane hourglass mode w = (+1, -1, +1, -1) (no transverse shear to hold it), stiffness kw
+      // (see the stable increment)
+      double dqz = 0;
+      if (membrane) for (int I = 0; I < 4; ++I) dqz += gm.gam[I] * du[I][2];
       double o[6] = {S.hgm[0], S.hgm[1], S.hgb[0], S.hgb[1], S.hgs[0], S.hgs[1]};
       // membrane modes (u_x, u_y); rotation modes: theta_y acts as u_x and -theta_x as u_y
       S.hgm[0] += Em * (kxx * dqx + kxy * dqy); S.hgm[1] += Em * (kxy * dqx + kyy * dqy);
       S.hgb[0] += Db * (kby * dqtx - kbxy * dqty); S.hgb[1] += Db * (kbx * dqty - kbxy * dqtx);
       S.hgs[0] += kv[0] * dgx; S.hgs[1] += kv[1] * dgy;
+      if (membrane) S.hgs[0] = o[4] + kw * dqz;
       // relaxed stiffness of the membrane and rotation modes (explicit default, HOURGLASS=RELAX STIFFNESS), as for
       // C3D8R: force = Q_e - 0.9 Q_v, Q_v following Q_e with tau = 500 times the undamped stable increment of the
       // element, L / c_p with L^2 = max(1 / sum|B|^2, 0.92 L_m^2), L_m from the one-point membrane eigenvalue (the
-      // Abaqus element increment); transverse shear does not relax (single-element Abaqus/Explicit runs)
-      double hf[4] = {S.hgm[0], S.hgm[1], S.hgb[0], S.hgb[1]}, hfo[4] = {o[0], o[1], o[2], o[3]};
-      if (in.dynamic && sc.hg_relax && !enhanced_hg(e) && type != ElType::S4) {
+      // Abaqus element increment); transverse shear does not relax (single-element Abaqus/Explicit runs).
+      // Membranes: the out-of-plane mode relaxes too, and tau is 1000 stable increments for all modes (single
+      // M3D4R runs, in-plane and out-of-plane hourglass held after a ramp: force decay rates within 2 %)
+      double hf[5] = {S.hgm[0], S.hgm[1], S.hgb[0], S.hgb[1], S.hgs[0]}, hfo[5] = {o[0], o[1], o[2], o[3], o[4]};
+      const int nrel = membrane ? 5 : 4;
+      if (in.dynamic && sc.hg_relax && !enhanced_hg(e) && kind != ElType::S4) {
         double rb = 0, ra = 0;
         if (in.dt > 0) {
           const double L2 = std::max(1.0 / std::max(BB, 1e-300), 0.92 * std::min(4.0 * Me / std::max(n * lam, 1e-300), quad_len2));
-          const double tau = 500.0 * std::sqrt(L2 * rho / Me), x = in.dt / tau;
+          const double tau = (membrane ? 1000.0 : 500.0) * std::sqrt(L2 * rho / Me), x = in.dt / tau;
           rb = x < 1e-3 ? x * (1.0 - x * (0.5 - x / 6.0)) : 1.0 - std::exp(-x);
           ra = 1.0 - rb / x;
         }
-        double* v[4] = {&S.hgmv[0], &S.hgmv[1], &S.hgbv[0], &S.hgbv[1]};
-        for (int k = 0; k < 4; ++k) {
+        double* v[5] = {&S.hgmv[0], &S.hgmv[1], &S.hgbv[0], &S.hgbv[1], &S.hgwv};
+        for (int k = 0; k < nrel; ++k) {
           const double vo = *v[k];
           *v[k] = vo * (1.0 - rb) + hfo[k] * rb + (hf[k] - hfo[k]) * ra;
           hfo[k] -= 0.9 * vo;
@@ -1226,7 +1299,7 @@ class ShellGroup : public ElementGroup {
         }
       }
       out.e_art += 0.5 * ((hfo[0] + hf[0]) * dqx + (hfo[1] + hf[1]) * dqy + (hfo[2] + hf[2]) * dqtx +
-                          (hfo[3] + hf[3]) * dqty + (o[4] + S.hgs[0]) * dgx + (o[5] + S.hgs[1]) * dgy);
+                          (hfo[3] + hf[3]) * dqty + (membrane ? (hfo[4] + hf[4]) * dqz : (o[4] + S.hgs[0]) * dgx) + (o[5] + S.hgs[1]) * dgy);
       // no viscous term on the hourglass modes: the force of a single S4R launched at 1000 mm/s is the stiffness
       // force K u from the first increment (Abaqus/Explicit, free elements and a clamped plate kicked at one node:
       // same displacements to 1e-5, same spectrum up to the highest plate modes)
@@ -1242,7 +1315,8 @@ class ShellGroup : public ElementGroup {
         fl[I][4] -= 0.25 * gz * hf[0]; fl[I][3] += 0.25 * gz * hf[1];
         fl[I][3] += gI * hf[2];
         fl[I][4] += gI * hf[3];
-        for (int q = 0; q < SQ; ++q) fl[I][SQ_FORCE[q]] += G1[2][I][q] * Gx + G1[3][I][q] * Gy;
+        if (membrane) fl[I][2] += gI * hf[4];
+        else for (int q = 0; q < SQ; ++q) fl[I][SQ_FORCE[q]] += G1[2][I][q] * Gx + G1[3][I][q] * Gy;
       }
     }
     // drilling. Static procedures: corner rotation against the spin of the bilinear field at that corner (quads),
@@ -1322,7 +1396,7 @@ class ShellGroup : public ElementGroup {
                    out.dt_stable, S.Meff, Me, S.kap[0], S.kap[1], S.kap[2], S.em[0], S.em[1], S.em[2], N[0], N[1], N[2], M[0], M[1], M[2], Q[0], Q[1],
                    S.hgm[0], S.hgm[1], S.hgb[0], S.hgb[1], S.hgs[0], S.md[0], S.md[1], S.md[2], S.md[3], g1.A, (int)out.failed, S.pt[0].lam3, S.pt[np/2].lam3, S.pt[np-1].lam3);
     }
-    if (commit && type == ElType::S4) {
+    if (commit && kind == ElType::S4) {
       // S4 output at its four integration points: the linear variation of the strains across the element is the
       // field of the hourglass modes (total amplitudes from the stored forces, elastic), added to the stresses of
       // the bottom and top section points; largest von Mises stress over the 4 x 2 points
@@ -1374,9 +1448,14 @@ class ShellGroup : public ElementGroup {
       float* o = &this->out[e * N_OUT];
       o[OUT_MISES] = (float)mis;
       const double ca = oax[e * 2], sa = oax[e * 2 + 1], cc = ca * ca, ss = sa * sa, cs = ca * sa;
-      o[OUT_S11] = (float)((cc * N[0] + ss * N[1] + 2 * cs * N[2]) / tcur);
-      o[OUT_S22] = (float)((ss * N[0] + cc * N[1] - 2 * cs * N[2]) / tcur);
-      o[OUT_S12] = (float)((cs * (N[1] - N[0]) + (cc - ss) * N[2]) / tcur);
+      // membrane stress N / t; composite sections: mean of the bottom and top section points, as the Abaqus output
+      // at the default points (the two differ when the stress is not linear through the thickness)
+      double Ns[3] = {N[0] / tcur, N[1] / tcur, N[2] / tcur};
+      if (!sc.layers.empty())
+        for (int i = 0; i < 3; ++i) Ns[i] = 0.5 * (S.pt[0].s[i] + S.pt[np - 1].s[i]);
+      o[OUT_S11] = (float)(cc * Ns[0] + ss * Ns[1] + 2 * cs * Ns[2]);
+      o[OUT_S22] = (float)(ss * Ns[0] + cc * Ns[1] - 2 * cs * Ns[2]);
+      o[OUT_S12] = (float)(cs * (Ns[1] - Ns[0]) + (cc - ss) * Ns[2]);
       o[OUT_S33] = 0;
       o[OUT_S13] = (float)((ca * Q[0] + sa * Q[1]) / tcur); o[OUT_S23] = (float)((ca * Q[1] - sa * Q[0]) / tcur);
       o[OUT_PEEQ] = (float)epm;

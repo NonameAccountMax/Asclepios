@@ -122,6 +122,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     A.contact->define(st);
   }
   if (!A.pairs) A.pairs = std::make_unique<ContactPairs>(A);
+  const bool has_stops = has_connector_stops(A.m);
   A.pairs->define(st);  // contact pairs of the step (model-level pairs are copied into every step)
   if (!resume) {
     A.temperatures(0.0, A.total_time);
@@ -212,7 +213,9 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       // the global increments of Abaqus/Explicit (exact largest eigenvalue of clamped C3D8R blocks computed
       // separately: ratios 0.914 to 0.919; global estimate dropped below 1.05 times the element bound)
       const double r = 0.917 * 2.0 / std::sqrt(lam) * gdamp / dref;
-      gdt.ratio = r < 1.05 ? 1.0 : std::min(1.5, r);
+      // (at most twice the element bound: prisms computed as bricks with a doubled node, conservative element
+      // bound, reach 1.78 in Abaqus/Explicit)
+      gdt.ratio = r < 1.05 ? 1.0 : std::min(2.0, r);
       gdt.ok = 1;
       A.solid_dt_scale = gdt.ratio;
     }
@@ -416,7 +419,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
     nfail_tot += S.failed;
     A.external_forces(tn, ttn, A.fext);
     if (A.contact->active()) A.contact->compute(dt, A.fcon, A.en, A.total_increments);
-    else if (A.pairs->active()) std::fill(A.fcon.begin(), A.fcon.end(), 0.0);  // forces of the pairs added below
+    else if (A.pairs->active() || has_stops) std::fill(A.fcon.begin(), A.fcon.end(), 0.0);  // kinematic forces added below
     // damping forces (mass proportional, half-step velocity)
 #pragma omp parallel for num_threads(A.nthreads) schedule(static)
     for (int n = 0; n < nn; ++n) {
@@ -492,15 +495,16 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
       }
     }
     if (has_links) A.link_accelerations(A.res);
-    if (A.pairs->active()) {
-      // kinematic contact pairs: the next increment predicted with the current velocities and accelerations (same
-      // increment size), the accelerations corrected so that it ends without penetration; the corrections act as
-      // contact forces at the current time (reactions of prescribed dofs, contact work over this increment and the
-      // next one, trapezoidal rule as for the other forces)
+    if (A.pairs->active() || has_stops) {
+      // kinematic contact pairs and connector stops: the next increment predicted with the current velocities and
+      // accelerations (same increment size), the accelerations corrected so that it ends without penetration or
+      // stop violation; the corrections act as contact forces at the current time (reactions of prescribed dofs,
+      // contact work over this increment and the next one, trapezoidal rule as for the other forces)
       std::fill(fkin.begin(), fkin.end(), 0.0);
       std::vector<double> dpred(6 * nn);
       for (int i = 0; i < 6 * nn; ++i) dpred[i] = A.du[i] + dt * (A.v[i] + dt * A.a[i]);
-      A.pairs->correct(dt * dt, dpred, A.a, fkin);
+      if (A.pairs->active()) A.pairs->correct(dt * dt, dpred, A.a, fkin);
+      if (has_stops) connector_stops(A, dt * dt, dpred, A.a, fkin);
       double wc = 0, we = 0;
       for (int i = 0; i < 6 * nn; ++i) {
         if (fkin[i] == 0) continue;

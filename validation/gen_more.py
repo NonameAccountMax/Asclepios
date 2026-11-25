@@ -627,8 +627,7 @@ def more_features():
         d.steps += static_step('Load', ['*Boundary', 'FIX, ENCASTRE', '*Cload'] +
                                ['%d, 3, -50.' % n for n in tip], False, nframes=1)
         register(d, 'static', etype, 'element %s' % etype, 'Cantilever under a 200 N tip load.', tip, fix, False,
-                 'linear', 'linear', category='feature', group='element', supported=etype == 'C3D8I',
-                 reason=None if etype == 'C3D8I' else NS + '%s elements' % etype, twin=False)
+                 'linear', 'linear', category='feature', group='element', twin=False)
 
     for sec, dims, title in (('BOX', '4., 2., 0.2, 0.2, 0.2, 0.2', 'box'), ('I', '1.5, 3., 2., 2., 0.2, 0.2, 0.2', 'I')):
         d = Deck('beam_section_%s' % title.lower(), 'B31 cantilever with a %s section, tip loads' % title)
@@ -636,10 +635,12 @@ def more_features():
         beam(d, segs, sec, dims)
         d.steps += static_step('Load', ['*Boundary', '%d, ENCASTRE' % ids[0], '*Cload', '%d, 2, 1.' % ids[-1],
                                         '%d, 3, -2.' % ids[-1], '%d, 4, 50.' % ids[-1]], False, rot=True, nframes=1)
+        # open sections: the reference leaves the Saint-Venant torsion energy out of ALLIE (ETOTAL = -85 with an
+        # exact energy balance otherwise); external work only
         register(d, 'static', 'B31', '%s section' % title, 'Thin-walled %s section cantilever under bending in both '
                  'planes and torsion.' % title, [ids[-1], ids[10]], [ids[0]], True, 'linear', 'linear',
-                 category='feature', group='element', supported=False, reason=NS + '%s beam sections' % sec,
-                 twin=False)
+                 category='feature', group='element', supported=True, twin=False,
+                 energies=['ALLWK'] if sec == 'I' else None)
 
     # homogeneous material tests (closed form)
     for name, mat, title, u in (('mat_ogden', 'OGDEN', 'Ogden (N = 2) block, uniaxial stretch 1.5', 2.0),
@@ -718,9 +719,28 @@ def more_features():
              'law, loaded beyond its kink.', [b], [a], False, 'exact', reference='analytic', category='feature',
              group='constraint', twin=False)
 
+    # stop: a point mass on an axial spring (a block of one element rings near the highest frequency of the mesh, and
+    # the stop then engages and releases from one increment to the next); light damping and asymmetric stops give two
+    # clean impacts (upper, then lower) and no grazing afterwards; the mass starts at rest and is launched by a force
+    # pulse (with an initial velocity the reference offsets the spring by the displacement of the first increment, and
+    # the impacts move by a few increments)
+    d = Deck('connector_stop', 'Point mass on an axial connector spring with stops (explicit)')
+    g, b = d.node(0.0, 0.0, 0.0), d.node(10.0, 0.0, 0.0)
+    d.elements('CONN3D2', 'CONN', [[g, b]])
+    d.elements('MASS', 'EM', [[b]])
+    d.model += ['*Connector Section, elset=CONN, behavior=SPRING', 'AXIAL', '*Connector Behavior, name=SPRING',
+                '*Connector Elasticity, component=1', '100.', '*Connector Damping, component=1', '0.008',
+                '*Connector Stop, component=1', '9.97, 10.05', '*Mass, elset=EM', '6.28e-05',
+                '*Amplitude, name=PULSE', '0., 1., 0.001, 1., 0.001002, 0., 1., 0.']
+    d.steps += explicit_step('Oscillate', 0.01, ['*Boundary', '%d, 1, 3' % g, '%d, 2, 3' % b,
+                                                 '*Cload, amplitude=PULSE', '%d, 1, 8.' % b], fixed_dt=2e-06)
+    register(d, 'explicit', 'CONN3D2 + MASS', 'connector stop', 'Point mass on a lightly damped axial connector '
+             'spring pushed by a 1 ms force pulse: held on the upper stop (length 10.05) until the end of the pulse, '
+             'plastic impact on the lower stop (9.97), then free decay between the stops.',
+             [b], [g], False, 'dynamic', category='feature', group='constraint', twin=False)
+
     for name, kw, data, title, reason in (
-            ('connector_damping', '*Connector Damping, component=1', '0.05', 'damping', 'connector damping'),
-            ('connector_stop', '*Connector Stop, component=1', '9.95, 10.05', 'stop', 'connector stops')):
+            ('connector_damping', '*Connector Damping, component=1', '0.05', 'damping', 'connector damping'),):
         d = Deck(name, 'Mass on an axial connector with %s (explicit)' % title)
         hexes = hex_block(d, 1, 1, 1, 2.0, 2.0, 2.0, x0=(10.0, -1.0, -1.0))
         solid(d, 'C3D8R', hexes, 'HEAVY', 'MASS')
@@ -735,7 +755,7 @@ def more_features():
         d.steps += explicit_step('Oscillate', 0.01, ['*Boundary', 'GROUND, 1, 3', 'CUBE, 2, 3'])
         register(d, 'explicit', 'CONN3D2', 'connector %s' % title, 'Block on four axial connectors with %s, released '
                  'with 100 mm/s.' % title, cube[:2], ground, False, 'dynamic', category='feature', group='constraint',
-                 supported=name != 'connector_stop', reason=None if name != 'connector_stop' else NS + reason, twin=False)
+                 supported=True, twin=False)
 
     for name, ctype, title in (('connector_beam', 'BEAM', 'rigid BEAM connector'),
                                ('connector_bushing', 'BUSHING', 'BUSHING connector')):
@@ -910,7 +930,7 @@ def more_features():
                            rot=True, nframes=1)
     register(d, 'static', 'S4R', 'shell offset', 'Axial pull applied on the bottom (reference) surface of an offset '
              'strip: extension and bending.', tip + [ids[5, 1]], fix, True, 'linear', 'linear', category='feature',
-             group='element', supported=False, reason=NS + 'shell offsets', twin=False)
+             group='element', supported=True, twin=False)
 
     d = Deck('shell_composite', 'S4R cantilever strip with a two-layer composite section')
     quads, ids = quad_plate(d, 10, 2, 40.0, 10.0)
@@ -924,7 +944,7 @@ def more_features():
                            rot=True, nframes=1)
     register(d, 'static', 'S4R', 'composite section', 'Cantilever strip made of a steel and an aluminium layer, tip '
              'load (bending-extension coupling).', tip + [ids[5, 1]], fix, True, 'linear', 'linear',
-             category='feature', group='element', supported=False, reason=NS + 'composite shell sections', twin=False)
+             category='feature', group='element', supported=True, twin=False)
 
     # amplitudes and acceleration
     for name, amp, title in (('amp_decay', ['*Amplitude, name=AMP, definition=DECAY', '1., -1., 0., 0.3'], 'DECAY'),

@@ -233,7 +233,7 @@ bool GeneralContact::define(const Step& st) {
       int ge = G.ids[e];
       if (!incl[ge]) continue;
       const int* cn = &G.conn[e * G.nen];
-      if (G.type == ElType::S4R || G.type == ElType::S4 || G.type == ElType::S3R || G.type == ElType::S3RS) {
+      if (is_shell_type(G.type)) {
         Vec3 p[4];
         for (int I = 0; I < G.nen; ++I) p[I] = m.X[cn[I]];
         // smallest height of the triangular facets (a quadrilateral is split along its 0-2 diagonal)
@@ -274,15 +274,21 @@ bool GeneralContact::define(const Step& st) {
           node_area[cn[I]] += L * r;  // half the length times the diameter
         }
       } else if (G.type == ElType::C3D8R || G.type == ElType::C3D8 || G.type == ElType::C3D8I ||
-                 G.type == ElType::C3D4) {
+                 G.type == ElType::C3D4 || G.type == ElType::C3D6) {
         // faces in local node numbers, oriented by the element centroid below
         static const int hexf[6][4] = {{0, 1, 2, 3}, {4, 5, 6, 7}, {0, 1, 5, 4}, {1, 2, 6, 5}, {2, 3, 7, 6}, {3, 0, 4, 7}};
         static const int tetf[4][4] = {{0, 1, 2, -1}, {0, 1, 3, -1}, {1, 2, 3, -1}, {2, 0, 3, -1}};
-        const bool hex = G.nen == 8;
+        static const int wedf[5][4] = {{0, 1, 2, -1}, {3, 4, 5, -1}, {0, 1, 4, 3}, {1, 2, 5, 4}, {2, 0, 3, 5}};
+        // prisms computed as bricks with a doubled node (explicit): faces of the prism
+        const bool degen = G.input_type == ElType::C3D6 && G.nen == 8;
+        int c6[6];
+        if (degen) { static const int k6[6] = {0, 2, 3, 4, 6, 7}; for (int I = 0; I < 6; ++I) c6[I] = cn[k6[I]]; cn = c6; }
+        const int nen = degen ? 6 : G.nen;
+        const bool hex = nen == 8, wedge = nen == 6;
         Vec3 ctr;
-        for (int I = 0; I < G.nen; ++I) ctr += m.X[cn[I]] * (1.0 / G.nen);
-        for (int f = 0; f < (hex ? 6 : 4); ++f) {
-          const int* lf = hex ? hexf[f] : tetf[f];
+        for (int I = 0; I < nen; ++I) ctr += m.X[cn[I]] * (1.0 / nen);
+        for (int f = 0; f < (hex ? 6 : wedge ? 5 : 4); ++f) {
+          const int* lf = hex ? hexf[f] : wedge ? wedf[f] : tetf[f];
           std::array<int, 4> q = {cn[lf[0]], cn[lf[1]], cn[lf[2]], lf[3] >= 0 ? cn[lf[3]] : -1};
           const Vec3 a = m.X[q[0]], b = m.X[q[1]], c = m.X[q[2]];
           const Vec3 nrm = q[3] >= 0 ? cross(c - a, m.X[q[3]] - b) : cross(b - a, c - a);
@@ -291,7 +297,7 @@ bool GeneralContact::define(const Step& st) {
           sfaces.push_back(q);
           sface_elem.push_back(ge);
         }
-        solid_elems.emplace_back(cn, cn + G.nen);
+        solid_elems.emplace_back(cn, cn + nen);
       }
     }
   }

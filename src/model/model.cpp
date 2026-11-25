@@ -16,17 +16,24 @@ const char* eltype_name(ElType t) {
     case ElType::C3D8R: return "C3D8R";
     case ElType::C3D8: return "C3D8";
     case ElType::C3D8I: return "C3D8I";
+    case ElType::C3D6: return "C3D6";
     case ElType::C3D4: return "C3D4";
+    case ElType::C3D10: return "C3D10";
+    case ElType::C3D10M: return "C3D10M";
     case ElType::S4R: return "S4R";
     case ElType::S4: return "S4";
     case ElType::S3R: return "S3R";
     case ElType::S3RS: return "S3RS";
     case ElType::B31: return "B31";
+    case ElType::B32: return "B32";
     case ElType::T3D2: return "T3D2";
     case ElType::CONN3D2: return "CONN3D2";
     case ElType::R3D4: return "R3D4";
     case ElType::R3D3: return "R3D3";
     case ElType::SFM3D4: return "SFM3D4";
+    case ElType::M3D4R: return "M3D4R";
+    case ElType::M3D4: return "M3D4";
+    case ElType::M3D3: return "M3D3";
     case ElType::SFM3D3: return "SFM3D3";
     case ElType::SPRINGA: return "SPRINGA";
     case ElType::DASHPOTA: return "DASHPOTA";
@@ -71,17 +78,24 @@ double SurfaceInteraction::pressure(double h, double* dpdh) const {
 int face_local_nodes(ElType t, int face, int nen, int* out) {
   static const int hex[6][4] = {{0, 1, 2, 3}, {4, 7, 6, 5}, {0, 4, 5, 1}, {1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0}};
   static const int tet[4][3] = {{0, 1, 2}, {0, 3, 1}, {1, 3, 2}, {2, 3, 0}};
+  static const int wedge[5][4] = {{0, 1, 2, -1}, {3, 5, 4, -1}, {0, 3, 4, 1}, {1, 4, 5, 2}, {2, 5, 3, 0}};
+  if (t == ElType::C3D6) {
+    if (face < 1 || face > 5) return 0;
+    const int k = face <= 2 ? 3 : 4;
+    for (int i = 0; i < k; ++i) out[i] = wedge[face - 1][i];
+    return k;
+  }
   if (t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I) {
     if (face < 1 || face > 6) return 0;
     for (int i = 0; i < 4; ++i) out[i] = hex[face - 1][i];
     return 4;
   }
-  if (t == ElType::C3D4) {
+  if (t == ElType::C3D4 || t == ElType::C3D10 || t == ElType::C3D10M) {  // quadratic tetrahedra: corner nodes
     if (face < 1 || face > 4) return 0;
     for (int i = 0; i < 3; ++i) out[i] = tet[face - 1][i];
     return 3;
   }
-  if (t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS || t == ElType::B31 ||
+  if (is_shell_type(t) || t == ElType::B31 ||
       t == ElType::T3D2 || is_rigid_type(t) || is_surface_type(t)) {
     const int n = std::min(nen, 4);
     for (int i = 0; i < n; ++i) out[i] = i;
@@ -95,18 +109,25 @@ ElType eltype_from(const std::string& n0, int& nn) {
   if (n == "C3D8R") { nn = 8; return ElType::C3D8R; }
   if (n == "C3D8") { nn = 8; return ElType::C3D8; }
   if (n == "C3D8I") { nn = 8; return ElType::C3D8I; }
+  if (n == "C3D6") { nn = 6; return ElType::C3D6; }
   if (n == "C3D4") { nn = 4; return ElType::C3D4; }
+  if (n == "C3D10") { nn = 10; return ElType::C3D10; }
+  if (n == "C3D10M") { nn = 10; return ElType::C3D10M; }
   if (n == "S4R" || n == "S4RS" || n == "S4R5") { nn = 4; return ElType::S4R; }
   if (n == "S4") { nn = 4; return ElType::S4; }
   if (n == "S3R" || n == "S3") { nn = 3; return ElType::S3R; }
   if (n == "S3RS") { nn = 3; return ElType::S3RS; }
   if (n == "B31" || n == "B31H") { nn = 2; return ElType::B31; }
+  if (n == "B32") { nn = 3; return ElType::B32; }
   if (n == "T3D2") { nn = 2; return ElType::T3D2; }
   if (n == "CONN3D2") { nn = 2; return ElType::CONN3D2; }
   if (n == "R3D4") { nn = 4; return ElType::R3D4; }
   if (n == "R3D3") { nn = 3; return ElType::R3D3; }
   if (n == "SFM3D4R" || n == "SFM3D4") { nn = 4; return ElType::SFM3D4; }
   if (n == "SFM3D3") { nn = 3; return ElType::SFM3D3; }
+  if (n == "M3D4R") { nn = 4; return ElType::M3D4R; }
+  if (n == "M3D4") { nn = 4; return ElType::M3D4; }
+  if (n == "M3D3") { nn = 3; return ElType::M3D3; }
   if (n == "SPRINGA") { nn = 2; return ElType::SPRINGA; }
   if (n == "DASHPOTA") { nn = 2; return ElType::DASHPOTA; }
   if (n == "MASS") { nn = 1; return ElType::MASS; }
@@ -259,6 +280,7 @@ struct PendingSection {
   std::string prefix;
   std::string orient_name;
   std::string mat_name;
+  std::vector<std::string> layer_mats;  // composite shell sections
   std::string behavior_name;
   std::string controls_name;
   std::string where;
@@ -408,6 +430,7 @@ class Builder {
         throw std::runtime_error("element " + toks[0] + ": not enough nodes at " + c.where());
       }
       if ((t == ElType::S4R || t == ElType::S4) && e.nodes[2] == e.nodes[3]) { e.type = ElType::S3R; e.nodes.pop_back(); }
+      if ((t == ElType::M3D4R || t == ElType::M3D4) && e.nodes[2] == e.nodes[3]) { e.type = ElType::M3D3; e.nodes.pop_back(); }
       std::string key = sc.prefix + std::to_string(e.label);
       int idx = m.ne();
       elem_key[key] = idx;
@@ -619,10 +642,34 @@ class Builder {
     p.mat_name = upper(c.get("MATERIAL"));
     p.orient_name = upper(c.get("ORIENTATION"));
     p.controls_name = upper(c.get("CONTROLS"));
-    if (c.keyword == "SHELL SECTION") {
+    if (c.keyword == "MEMBRANE SECTION") {  // membranes: thickness, a single section point
       s.kind = Section::SHELL;
-      if (c.has("COMPOSITE")) warn_once("COMPOSITE", "composite shell sections not supported");
-      if (!c.data.empty()) {
+      s.membrane = true;
+      s.nip = 1;
+      if (!c.data.empty() && !c.data[0].empty() && !trim(c.data[0][0]).empty()) s.thickness = to_double(c.data[0][0], &c);
+      if (c.has("POISSON")) warn_once("MEMPOIS", "*MEMBRANE SECTION, POISSON ignored: thickness change from the material");
+    } else if (c.keyword == "SHELL SECTION") {
+      s.kind = Section::SHELL;
+      if (c.has("OFFSET")) {
+        const std::string o = c.getu("OFFSET");
+        s.offset = o == "SPOS" ? 0.5 : o == "SNEG" ? -0.5 : to_double(o, &c);
+      }
+      if (c.has("COMPOSITE")) {  // layer lines: thickness, section points, material[, orientation]
+        s.thickness = 0;
+        for (const auto& row : c.data) {
+          if (row.empty() || trim(row[0]).empty()) continue;
+          Section::Layer L;
+          L.t = to_double(row[0], &c);
+          if (row.size() > 1 && !trim(row[1]).empty()) L.nip = to_int(row[1], &c);
+          if (row.size() < 3 || trim(row[2]).empty()) throw std::runtime_error("composite shell section: layer without material at " + c.where());
+          if (row.size() > 3 && !trim(row[3]).empty()) warn_once("COMPLAYORI", "composite shell layers: orientation ignored");
+          p.layer_mats.push_back(upper(trim(row[2])));
+          s.layers.push_back(L);
+          s.thickness += L.t;
+        }
+        if (s.layers.empty()) throw std::runtime_error("composite shell section without layers at " + c.where());
+        if (p.mat_name.empty()) p.mat_name = p.layer_mats[0];
+      } else if (!c.data.empty()) {
         s.thickness = to_double(c.data[0][0], &c);
         if (c.data[0].size() > 1 && !c.data[0][1].empty()) s.nip = to_int(c.data[0][1], &c);
       }
@@ -637,8 +684,10 @@ class Builder {
       if (!c.data.empty()) for (auto& t : c.data[0]) if (!t.empty()) s.dims.push_back(to_double(t, &c));
       if (c.data.size() > 1 && c.data[1].size() >= 3)
         s.n1 = Vec3(to_double(c.data[1][0]), to_double(c.data[1][1]), to_double(c.data[1][2]));
-      if (s.shape != "CIRC" && s.shape != "RECT" && s.shape != "PIPE")
+      if (s.shape != "CIRC" && s.shape != "RECT" && s.shape != "PIPE" && s.shape != "BOX" && s.shape != "I")
         throw std::runtime_error("beam section " + s.shape + " not supported at " + c.where());
+      const size_t need = s.shape == "CIRC" ? 1 : s.shape == "BOX" ? 6 : s.shape == "I" ? 7 : 2;
+      if (s.dims.size() < need) throw std::runtime_error("beam section " + s.shape + ": " + std::to_string(need) + " dimensions expected at " + c.where());
     } else if (c.keyword == "CONNECTOR SECTION") {
       s.kind = Section::CONNECTOR;
       p.behavior_name = upper(c.get("BEHAVIOR"));
@@ -805,7 +854,13 @@ class Builder {
       if (c.has("NONLINEAR") || c.data.size() > 1) warn_once("CONNDAMPNL", "*CONNECTOR DAMPING: linear coefficient of the first row used");
       b.comp[comp - 1].damping = to_double(c.data.at(0).at(0), &c);
     } else if (c.keyword == "CONNECTOR STOP") {
-      warn_once("CONNSTOP", "*CONNECTOR STOP not supported: ignored");
+      const int comp = c.geti("COMPONENT", 1);
+      if (comp < 1 || comp > 6 || c.data.empty()) return;
+      ConnectorComponent& cc = b.comp[comp - 1];
+      const auto& d = c.data[0];
+      cc.stop = true;
+      if (d.size() > 0 && !trim(d[0]).empty()) cc.stop_lo = to_double(d[0], &c);
+      if (d.size() > 1 && !trim(d[1]).empty()) cc.stop_hi = to_double(d[1], &c);
     } else if (c.keyword == "CONNECTOR CONSTITUTIVE REFERENCE") {
       if (!c.data.empty())
         for (size_t i = 0; i < c.data[0].size() && i < 6; ++i)
@@ -1122,7 +1177,7 @@ class Builder {
     else if (k == "SURFACE") card_surface(c, sc);
     else if (k == "ORIENTATION") card_orientation(c, sc);
     else if (k == "SHELL SECTION" || k == "SOLID SECTION" || k == "BEAM SECTION" || k == "CONNECTOR SECTION" ||
-             k == "SURFACE SECTION") card_section(c, sc);
+             k == "SURFACE SECTION" || k == "MEMBRANE SECTION") card_section(c, sc);
     else if (k == "SPRING" || k == "DASHPOT" || k == "MASS") card_discrete(c, sc);
     else if (k == "TRANSVERSE SHEAR" || k == "TRANSVERSE SHEAR STIFFNESS") {
       if (!pend_sections.empty() && !c.data.empty()) {
@@ -1473,6 +1528,11 @@ class Builder {
         auto it = m.material_index.find(p.mat_name);
         if (it == m.material_index.end()) throw std::runtime_error("unknown material " + p.mat_name + " at " + p.where);
         s.material = it->second;
+      }
+      for (size_t k = 0; k < p.layer_mats.size(); ++k) {
+        auto it = m.material_index.find(p.layer_mats[k]);
+        if (it == m.material_index.end()) throw std::runtime_error("unknown material " + p.layer_mats[k] + " at " + p.where);
+        s.layers[k].material = it->second;
       }
       if (!p.orient_name.empty()) {
         auto it = m.orient_index.find(p.prefix + p.orient_name);

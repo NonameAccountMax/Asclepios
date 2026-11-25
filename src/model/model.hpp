@@ -9,12 +9,21 @@
 
 namespace abq {
 
-enum class ElType { C3D8R, C3D8, C3D8I, C3D4, S4R, S4, S3R, S3RS, B31, T3D2, CONN3D2, R3D4, R3D3, SFM3D4, SFM3D3, SPRINGA, DASHPOTA, MASS, UNKNOWN };
+enum class ElType { C3D8R, C3D8, C3D8I, C3D6, C3D4, C3D10, C3D10M, S4R, S4, S3R, S3RS, B31, B32, T3D2, CONN3D2, R3D4, R3D3, SFM3D4, SFM3D3, M3D4R, M3D4, M3D3, SPRINGA, DASHPOTA, MASS, UNKNOWN };
 const char* eltype_name(ElType t);
 inline bool is_rigid_type(ElType t) { return t == ElType::R3D4 || t == ElType::R3D3; }
 // surface elements (SFM3D4R, SFM3D3): facets without stiffness or mass, moved by their boundary conditions
 inline bool is_surface_type(ElType t) { return t == ElType::SFM3D4 || t == ElType::SFM3D3; }
-inline bool is_solid_type(ElType t) { return t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D4; }
+// membranes (M3D4R, M3D4, M3D3): in-plane forces only, no rotational degrees of freedom
+inline bool is_membrane_type(ElType t) { return t == ElType::M3D4R || t == ElType::M3D4 || t == ElType::M3D3; }
+// shells and membranes (elements of the shell group)
+inline bool is_shell_type(ElType t) {
+  return t == ElType::S4R || t == ElType::S4 || t == ElType::S3R || t == ElType::S3RS || is_membrane_type(t);
+}
+inline bool is_solid_type(ElType t) {
+  return t == ElType::C3D8R || t == ElType::C3D8 || t == ElType::C3D8I || t == ElType::C3D6 || t == ElType::C3D4 ||
+         t == ElType::C3D10 || t == ElType::C3D10M;
+}
 ElType eltype_from(const std::string& abaqus_name, int& nnodes);
 
 struct Orientation {
@@ -92,6 +101,8 @@ struct ConnectorComponent {
   bool has_ref = false;
   double ref = 0;                  // constitutive reference (e.g. free length)
   double damping = 0;              // *CONNECTOR DAMPING: linear coefficient on the relative velocity
+  bool stop = false;               // *CONNECTOR STOP: admissible range of the relative position (AXIAL: length)
+  double stop_lo = -1e300, stop_hi = 1e300;
   double force(double urel, double fv1, double* dFdu) const;
 };
 struct ConnectorBehavior {
@@ -114,10 +125,17 @@ struct Section {
   // shell
   double thickness = 0;
   int nip = 5;
+  // OFFSET: position of the reference surface (the nodes) from the mid-surface, in thicknesses, positive towards
+  // the positive face (SPOS = 0.5, SNEG = -0.5)
+  double offset = 0;
+  // COMPOSITE: layers from the negative face up (thickness, section points, material; orientation angle unused)
+  struct Layer { double t = 0; int nip = 3; int material = -1; };
+  std::vector<Layer> layers;
+  bool membrane = false;  // *MEMBRANE SECTION
   bool has_ts = false;
   double ts_k11 = 0, ts_k22 = 0;
   // beam
-  std::string shape;  // CIRC, RECT, PIPE
+  std::string shape;  // CIRC, RECT, PIPE, BOX, I
   std::vector<double> dims;
   Vec3 n1{0, 0, -1};
   double poisson = -1;

@@ -13,9 +13,9 @@ replacement for a commercial package.
 | Area | Supported |
 |---|---|
 | Input | `*INCLUDE`, `*PARAMETER` (expressions), `*PART` / `*ASSEMBLY` / `*INSTANCE` (translation, rotation), `Assembly.Instance.set` names, `*NODE`, `*ELEMENT`, `*NSET` / `*ELSET` (GENERATE, INSTANCE, `*NSET, ELSET=`), `*SURFACE` (ELEMENT SPOS/SNEG/S1…S6, NODE, CYLINDER), `*ORIENTATION` (rectangular, LOCAL DIRECTIONS) |
-| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D4, S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE sections), CONN3D2 (AXIAL, CARTESIAN, JOIN, HINGE, BEAM, BUSHING; linear damping), T3D2 (truss), SPRINGA / DASHPOTA / MASS, R3D4 / R3D3 (rigid), SFM3D4R / SFM3D3 (surface elements: no stiffness, `*SURFACE SECTION` DENSITY as mass per unit area) |
+| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D6 (prism: 2 points in static steps, degenerate C3D8R in explicit ones), C3D4, C3D10 (quadratic tetrahedron, 4 Gauss points), C3D10M (formulated as C3D10), S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE / BOX / I sections), B32 (quadratic Timoshenko beam, small displacements, static and implicit steps), CONN3D2 (AXIAL, CARTESIAN, JOIN, HINGE, BEAM, BUSHING; linear damping), T3D2 (truss), SPRINGA / DASHPOTA / MASS, R3D4 / R3D3 (rigid), SFM3D4R / SFM3D3 (surface elements: no stiffness, `*SURFACE SECTION` DENSITY as mass per unit area), M3D4R / M3D4 / M3D3 (membranes) |
 | Materials | isotropic `*ELASTIC` (temperature-dependent rows), `*ELASTIC, TYPE=ENGINEERING CONSTANTS` (orthotropic, solids), tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), linear `HARDENING=KINEMATIC` (solids), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL (solids; fibre directions from `*ORIENTATION, LOCAL DIRECTIONS`), `*HYPERELASTIC` NEO HOOKE / MOONEY-RIVLIN / YEOH / OGDEN (Ogden: solids), superelastic shape memory alloys (material named `ABQ_SUPER_ELASTIC…` with its `*USER MATERIAL` constants; solids), linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
-| Sections | `*SHELL SECTION` (Simpson integration, odd number of points), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
+| Sections | `*SHELL SECTION` (Simpson integration, odd number of points; OFFSET; COMPOSITE with elastic layers), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*MEMBRANE SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*DYNAMIC` implicit (HHT-α: APPLICATION=MODERATE DISSIPATION, TRANSIENT FIDELITY, QUASI-STATIC, ALPHA), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
 | Loads | `*BOUNDARY` (displacement, velocity, acceleration, ENCASTRE…, OP=NEW), `*CLOAD` (FOLLOWER), `*DSLOAD` / `*DLOAD` P (follower pressure), `*DLOAD` GRAV, `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, EQUALLY SPACED, PERIODIC, DECAY, step or total time), `*INITIAL CONDITIONS` (VELOCITY, TEMPERATURE, STRESS), `*TRANSFORM` (rectangular: loads and zero conditions in local axes); loads propagate between steps |
 | Constraints | `*TIE` (surface ties of solid faces and shells, non-matching meshes; ADJUST, POSITION TOLERANCE, NO ROTATION), `*COUPLING` (`*KINEMATIC`, `*DISTRIBUTING` with UNIFORM / LINEAR / QUADRATIC / CUBIC weighting, constrained degrees of freedom), `*RIGID BODY` (REF NODE, ELSET, PIN / TIE NSET, ANALYTICAL SURFACE), `*EQUATION`, `*MPC` (BEAM, TIE, PIN), CONN3D2 JOIN |
@@ -208,6 +208,41 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   composed increment by increment); prescribed accelerations integrated into the velocities, their reactions include
   the inertia of the node, and the external work includes the kinetic energy given to prescribed nodes; temperature-dependent linear elasticity in total form, σ = C(T) (ε − α (T − T_initial)),
   so that a loaded bar lengthens when its modulus drops; initial stresses of solids released by the first step.
+- **Connector stops** (`*CONNECTOR STOP`, length of AXIAL connectors, explicit): kinematic inequality constraints;
+  at the end of each increment, a connector whose predicted length leaves the admissible range is brought back to
+  the limit by corrections of the accelerations of its nodes along its line, shared by their masses (momentum
+  conserved, prescribed dofs immobile); the arrival on a stop is a plastic impact.
+- **Membranes** (M3D4R, M3D4, M3D3): the membrane part of S4R, S4 and S3R (same corotational frame, plane-stress
+  materials with the thickness change, membrane hourglass control), without bending, transverse shear, drilling or
+  rotational degrees of freedom; one-point quadrilaterals also control the out-of-plane hourglass mode, which no
+  shear holds in a membrane: stiffness M·t·(k_xx + k_yy)/2 of the in-plane hourglass matrix k with the default
+  control (relaxing like the in-plane modes), M·t·(k_xx + k_yy) with the enhanced one (the default for
+  hyperelastic materials, then built on the plane-stress modulus matrix itself); hourglass relaxation time 1000
+  stable increments (single M3D4R elements with prescribed hourglass motions, elastic with ν from 0 to 0.49 and
+  neo-Hooke: forces within 0.03 %). M3D4 is the plain bilinear element with 2 × 2 points and the plane-stress
+  modulus matrix, which locks in in-plane bending as the reference element does (no incompatible modes, unlike S4).
+- **Prisms** (C3D6): static and implicit steps, two points (triangle centroid, ζ = ±1/√3) without selective
+  reduction (Abaqus/Standard cantilever to 1e-5); explicit steps, the reduced-integration brick whose first node is
+  doubled (nodes 1 1 2 3 4 4 5 6: uniform strain, Flanagan-Belytschko hourglass forces and their relaxation, stable
+  increment of that brick) with equal nodal masses V/6 (single prisms with prescribed hourglass motions, four
+  triangle shapes: forces within 0.1 %; the stable increment of an equilateral prism is 6 % smaller than the
+  reference one). The global estimate of the stable increment may reach twice the element bound.
+- **B32**: three nodes, quadratic interpolation, two Gauss points for every term, elastic resultants, small
+  displacements and rotations (NLGEOM ignored with a warning), straight axis; lumped masses 1/6, 2/3, 1/6.
+- **Beam sections BOX and I**: thin-walled formulas on the wall mid-lines (Bredt torsion constant for BOX, open
+  section Σ b t³/3 for I, web of the I between the flanges), transverse shear factor 0.44, five Simpson points per
+  wall (section printout of the reference solver: identical properties, I11 of the I section 0.3 % larger).
+- **Shell offsets and composites**: section points shifted by the offset of the reference surface; composite
+  sections integrate each layer with its own Simpson points and material (elastic layers), the quantities of the
+  whole section (stable increment, transverse shear, hourglass and drilling stiffnesses, mass) use thickness
+  averages of E, ν and density; the stress output of composites is the mean of the bottom and top section points.
+- **Quadratic tetrahedra** (C3D10, C3D10M): 10 nodes, 4 Gauss points, diagonal mass from the consistent diagonal
+  scaled to the element mass (corners 1/36, mid-edge nodes 4/27); stable increment from a Gershgorin bound of the
+  element. C3D10 matches the element stiffness of the reference solver to round-off. Its C3D10M has an extra
+  internal node (hourglass-controlled, with mass) and softer high modes; here it is formulated as C3D10 (static
+  results within 1 %, 40 % more increments in explicit dynamics).
+- **Bulk viscosity energy**: integrated with the trapezoidal rule, as the work of the element forces (a compression
+  rate that changes sign every increment, the highest mode of an element, dissipates little).
 - **Connectors**: CARTESIAN and BUSHING measure the position of node b in the axes that follow node a (with
   NLGEOM; without, u_b − u_a − θ_a × d), and the moment of the force pair across the offset goes to node a, so that
   the element is in equilibrium; HINGE (relative rotation about the local axis 1 only) and BEAM (rigid link) are
@@ -249,9 +284,9 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-234 small decks, run after every change of the solver:
+291 small decks, run after every change of the solver:
 
-- every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2) under tension, bending, torsion, shear,
+- every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2, and the other element types of the feature table) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
   rigid rotation;
 - classic benchmarks of the finite element literature, compared with their published values (below);
@@ -322,9 +357,11 @@ Features exercised by the validation suite and not supported yet:
 - Contact: contact in implicit procedures; contact pairs with penalty enforcement, friction or softened behaviour;
   surface-specific contact property assignments; one-sided SPOS/SNEG surfaces in general contact; analytical
   surfaces other than CYLINDER (REVOLUTION, SEGMENTS).
-- Constraints: connector stops; rigid links that follow large rotations exactly (the dependencies are linear in the
+- Constraints: connector stops other than the length of AXIAL connectors, stops in static procedures; rigid links
+  that follow large rotations exactly (the dependencies are linear in the
   rotations).
-- Elements: C3D10M, C3D6, M3D4R, B32; beam sections BOX and I; shell offsets and composite sections.
+- Elements: the internal hourglass node of C3D10M; B32 with large displacements; layer orientations of composite
+  sections; pressure loads and contact on quadratic tetrahedra.
 - Loads and conditions: initial stresses in shells and beams; non-zero boundary conditions in transformed axes;
   output in transformed axes; follower loads in restart files.
 - Materials: viscoelasticity, rate dependence, damage, user materials (UMAT/VUMAT), Holzapfel-Gasser-Ogden

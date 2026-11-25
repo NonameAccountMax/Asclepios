@@ -340,8 +340,7 @@ def element_features():
         d.steps += static_step('Load', ['*Boundary', 'FIX, ENCASTRE', '*Cload'] +
                                ['%d, 3, %s' % (n, fmt(-200.0 / len(tip))) for n in tip], False, nframes=1)
         register(d, 'static', etype, 'element %s' % etype, 'Cantilever under a 200 N tip load.', tip[:3], fix, False,
-                 'linear', 'linear', category='feature', group='element', supported=False,
-                 reason=NS + '%s elements' % etype)
+                 'linear', 'linear', category='feature', group='element', supported=True)
     cantilever('elem_c3d10m', 'C3D10M', lambda d, h: tet10(d, tets_from_hexes(d, h)), 'C3D10M cantilever, tip load')
     cantilever('elem_c3d6', 'C3D6', lambda d, h: wedges(h), 'C3D6 cantilever, tip load')
 
@@ -406,8 +405,42 @@ def element_features():
     d.steps += static_step('Stretch', ['*Boundary', 'NALL, 3, 3', 'FIX, 1, 1', 'Y0, 2, 2', '*Boundary', 'X1, 1, 1, 0.02',
                                        'Y1, 2, 2, 0.01'], False, nframes=1)
     register(d, 'static', 'M3D4R', 'element M3D4R', 'Membrane square under homogeneous biaxial stretch (0.1 % x '
-             '0.05 %).', [ids[4, 4], ids[2, 2]], x0, False, 'linear', 'linear', category='feature', group='element',
-             supported=False, reason=NS + 'M3D4R membrane elements')
+             '0.05 %).', [ids[4, 4], ids[2, 2]], x0, False, 'linear', 'linear', category='feature', group='element')
+
+    # fully integrated membrane: in-plane bending of a strip (one-point elements would need their hourglass control)
+    d = Deck('elem_m3d4', 'M3D4 membrane strip under an in-plane tip shear')
+    quads, ids = quad_plate(d, 10, 2, 40.0, 10.0)
+    d.elements('M3D4', 'EALL', quads)
+    d.materials.add('STEEL')
+    d.model += ['*Membrane Section, elset=EALL, material=STEEL', '0.2']
+    d.nset('NALL', list(d.nodes))
+    fix = [ids[0, j] for j in range(3)]
+    tip = [ids[10, j] for j in range(3)]
+    QS_DURATION['elem_m3d4'] = 0.002
+    d.steps += static_step('Load', ['*Boundary', 'NALL, 3, 3', 'FIX, 1, 2', '*Cload'] +
+                           ['%d, 2, %s' % (n, fmt(10.0 * w)) for n, w in zip(tip, (0.25, 0.5, 0.25))], False, nframes=1)
+    register(d, 'static', 'M3D4', 'element M3D4', 'Membrane strip clamped at one end, in-plane shear load at the other '
+             '(in-plane bending).', tip + [ids[5, 1]], fix, False, 'linear', 'linear', category='feature',
+             group='element')
+
+    from deck import tris_from_quads
+    for etype in ('M3D4R', 'M3D3'):
+        name = 'membrane_inflation_%s' % etype.lower()
+        d = Deck(name, '%s rubber membrane clamped on a square and inflated by a follower pressure (explicit)' % etype)
+        quads, ids = quad_plate(d, 8, 8, 20.0, 20.0)
+        d.elements(etype, 'EALL', tris_from_quads(quads) if etype == 'M3D3' else quads)
+        # mass-proportional damping: without it the flat membrane rings at the amplitude of its static deflection and
+        # the energies are compared on the phase of that ringing
+        d.materials.add('RUBBER_DAMP')
+        d.model += ['*Membrane Section, elset=EALL, material=RUBBER_DAMP', '0.2', '*Surface, type=ELEMENT, name=STOP',
+                    'EALL, SPOS', '*Amplitude, name=INFL, definition=SMOOTH STEP', '0., 0., 0.004, 1.']
+        edge = d.select(lambda x, y, z: near(x, 0) or near(y, 0) or near(x, 20.0) or near(y, 20.0))
+        d.steps += explicit_step('Inflate', 0.006, ['*Boundary', 'FIX, ENCASTRE', '*Dsload, amplitude=INFL',
+                                                     'STOP, P, 0.015'], nframes=40)
+        register(d, 'explicit', etype, 'membrane inflation', 'Neo-Hookean membrane (thickness 0.2) clamped on a 20 mm '
+                 'square, inflated by a follower pressure ramped smoothly to 0.015 MPa: large deflection carried by '
+                 'membrane tension only, thickness change of the incompressible material, mass-proportional damping.', [ids[4, 4], ids[2, 2]],
+                 edge, False, 'nonlinear', category='feature', group='element', twin=False)
 
     d = Deck('elem_b32', 'B32 cantilever, tip load (Abaqus/Standard only)')
     nodes = [d.node(5.0 * i, 0.0, 0.0) for i in range(11)]
@@ -417,8 +450,7 @@ def element_features():
     d.steps += static_step('Load', ['*Boundary', '%d, ENCASTRE' % nodes[0], '*Cload', '%d, 3, -2.' % nodes[-1]], False,
                            rot=True, nframes=1)
     register(d, 'static', 'B32', 'element B32', 'Quadratic beam cantilever under a tip load.', [nodes[-1], nodes[5]],
-             [nodes[0]], True, 'linear', 'linear', category='feature', group='element', supported=False,
-             reason=NS + 'B32 elements', twin=False)
+             [nodes[0]], True, 'linear', 'linear', category='feature', group='element', supported=True, twin=False)
 
     d = Deck('elem_spring_dashpot_mass', 'Point mass on a SPRINGA spring and a DASHPOTA damper (explicit)')
     g, m = d.node(0.0, 0.0, 0.0), d.node(10.0, 0.0, 0.0)
