@@ -547,7 +547,9 @@ class SolidGroup : public ElementGroup {
         Sym6 h;
         for (int i = 0; i < 6; ++i) h[i] = hs[6 * t + i];
         if (rotate) h = abq::rotate(Q, h);
-        const double x = dtm / m.pr_tau[t], a = std::exp(-x), c = -std::expm1(-x);
+        // a = exp(-x), c = 1 - a, b = 1 - c / x (series below 1e-4: no cancellation)
+        const double x = dtm / m.pr_tau[t], a = std::exp(-x);
+        const double c = x < 1e-4 ? x * (1 - x * (0.5 - x / 6)) : 1 - a;
         const double b = x < 1e-4 ? x * (0.5 - x / 6) : 1 - c / x;
         for (int i = 0; i < 6; ++i) h[i] = a * h[i] + c * (ee[i] - d[i]) + b * d[i];
         const double hv = h.trace() / 3;
