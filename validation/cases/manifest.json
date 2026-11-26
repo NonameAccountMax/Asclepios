@@ -10624,7 +10624,7 @@
   "procedure": "heat transfer",
   "element": "DC3D8",
   "mode": "transient heat transfer",
-  "description": "Transient conduction along a bar from a hot end (backward Euler, increments limited by the temperature change).",
+  "description": "Transient conduction along a bar from a hot end (implicit Euler, increments limited by the temperature change).",
   "mon": [
    6
   ],

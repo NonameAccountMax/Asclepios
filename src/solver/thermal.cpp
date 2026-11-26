@@ -1,7 +1,7 @@
 // Heat conduction in the elements with temperature degrees of freedom (DC3D8, C3D8T): trilinear temperature,
 // conduction matrix k grad N . grad N integrated with 2 x 2 x 2 points on the reference geometry, lumped heat
 // capacity rho c integral of N. Prescribed temperatures: *BOUNDARY on degree of freedom 11 (kept with the
-// prescribed temperature fields). Steady state: K T = 0 with the prescribed values; transient: backward Euler,
+// prescribed temperature fields). Steady state: K T = 0 with the prescribed values; transient: implicit Euler,
 // (C / dt + K) T1 = C / dt T0. *HEAT TRANSFER steps, and the thermal half of *COUPLED TEMPERATURE-DISPLACEMENT
 // increments (the temperature does not depend on the deformation here: no heat generation, no gap conductance).
 #include <Eigen/Sparse>

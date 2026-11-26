@@ -320,7 +320,7 @@ struct Step {
   // responds instantaneously, or with the long-term moduli under LONG TERM
   bool visco = false, long_term = false;
   // heat transfer (*HEAT TRANSFER: proc HEAT) and fully coupled temperature-displacement (*COUPLED TEMPERATURE-
-  // DISPLACEMENT: proc STATIC with coupled): steady state or transient (backward Euler), largest temperature change
+  // DISPLACEMENT: proc STATIC with coupled): steady state or transient (implicit Euler), largest temperature change
   // of an increment (DELTMX, 0: none)
   bool coupled = false, heat_steady = false;
   double deltmx = 0;

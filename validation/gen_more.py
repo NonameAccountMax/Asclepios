@@ -1081,7 +1081,7 @@ def more_features():
                 'FIX, 11, 11, 20.', 'HOT, 11, 11, 100.', '*Output, field, number interval=10', '*Node Output', 'NT',
                 '*End Step']
     register(d, 'heat transfer', 'DC3D8', 'transient heat transfer', 'Transient conduction along a bar from a hot end '
-             '(backward Euler, increments limited by the temperature change).',
+             '(implicit Euler, increments limited by the temperature change).',
              d.select(lambda x, y, z: near(y, 0) and near(z, 0) and x in (10.0, 20.0, 30.0)), cold, False, 'linear',
              'linear', category='feature', group='procedure', twin=False)
 

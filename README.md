@@ -309,7 +309,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   modal damping; frequency points split at the eigenfrequencies inside the range, N points per interval on a
   logarithmic scale with the bias of the reference solver; real part of the response written.
 - **Heat transfer** (DC3D8, C3D8T): trilinear temperature, conduction matrix with 2 × 2 × 2 points on the reference
-  geometry, lumped heat capacity; steady state K T = 0, transient backward Euler (C/Δt + K) T₁ = C/Δt T₀, increments
+  geometry, lumped heat capacity; steady state K T = 0, transient implicit Euler (C/Δt + K) T₁ = C/Δt T₀, increments
   repeated and adapted so that no free node changes by more than DELTMX; prescribed temperatures applied at once in
   transient steps. Coupled temperature-displacement: in each increment the temperatures first, then the static
   equilibrium with the thermal strains of the new temperatures (no heat generation by deformation).
