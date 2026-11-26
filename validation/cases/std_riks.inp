@@ -56,7 +56,7 @@ Shallow B31 arch, snap-through under an apex load (arc-length method)
 *Elset, elset=MONE
 1, 11, 20
 *Beam Section, elset=EALL, material=STEEL, section=RECT
-1., 2.
+1., 1.
 0., 1., 0.
 *Material, name=STEEL
 *Density
@@ -67,7 +67,7 @@ Shallow B31 arch, snap-through under an apex load (arc-length method)
 1.2e-05
 *Step, name=Riks, nlgeom=YES, inc=300
 *Static, riks
-0.02, 1., 1e-06, 0.05, 1.5
+0.02, 1., 1e-06, 0.05, , 11, 3, -4.5
 *Boundary
 1, 1, 6
 21, 1, 6

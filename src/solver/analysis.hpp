@@ -141,6 +141,9 @@ struct Analysis {
   void save_state(BinOut& o) const;
   void load_state(BinIn& in);
   bool nlgeom = true;
+  // modes of the last *FREQUENCY step (mass-normalised, 6nn each) and their circular frequencies
+  std::vector<std::vector<double>> modes;
+  std::vector<double> mode_omega;
 
   explicit Analysis(Model& model);
   ~Analysis();

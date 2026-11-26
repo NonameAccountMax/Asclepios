@@ -21,6 +21,9 @@ class OutputWriter {
   void sta_line(const char* fmt, ...);
   void close();
   int frames() const { return nframes_; }
+  // eigenvalue of the next frame (mode shape): mode number and eigenvalue (frequency in cycles per time, or buckling
+  // load factor); every frame is listed in <job>_frames.csv with its step (from 0), mode (0: none) and eigenvalue
+  void next_frame_mode(int mode, double eig) { meta_mode_ = mode; meta_eig_ = eig; }
 
  private:
   Analysis& A_;
@@ -31,6 +34,9 @@ class OutputWriter {
   FILE* rfh_ = nullptr;
   FILE* monh_ = nullptr;
   int nframes_ = 0;
+  FILE* frl_ = nullptr;
+  int meta_mode_ = 0;
+  double meta_eig_ = 0;
   std::vector<std::string> pvd_entries_;
   void write_pvd();
 };

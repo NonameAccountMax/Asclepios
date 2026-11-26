@@ -289,7 +289,22 @@ struct OutputRequest {
 
 struct Step {
   std::string name;
-  enum Proc { EXPLICIT, STATIC } proc = EXPLICIT;
+  enum Proc { EXPLICIT, STATIC, FREQUENCY, BUCKLE, MODAL_DYNAMIC, STEADY_STATE } proc = EXPLICIT;
+  // linear perturbation step (*STEP, PERTURBATION; *FREQUENCY, *BUCKLE, *STEADY STATE DYNAMICS always): response about
+  // the base state, loads and boundary conditions of the step only, not carried over
+  bool perturbation = false;
+  int neig = 0;                      // *FREQUENCY / *BUCKLE: number of eigenvalues requested
+  double eig_max = 0;                // *BUCKLE: largest eigenvalue of interest (0: none); *FREQUENCY: highest frequency
+  double eig_min = 0;                // *FREQUENCY: lowest frequency of interest (cycles per time)
+  struct ModalDamping { int first = 1, last = 1; double ratio = 0; };
+  std::vector<ModalDamping> modal_damping;  // *MODAL DAMPING (fraction of critical damping per mode range)
+  double ssd_f0 = 0, ssd_f1 = 0, ssd_bias = 3; int ssd_points = 20;  // *STEADY STATE DYNAMICS frequency range
+  // arc length (*STATIC, RIKS): initial, minimum, maximum arc length increments and total arc length (period);
+  // end at a load proportionality factor or a displacement of a node
+  bool riks = false;
+  double riks_lpf_max = 0;           // 0: none
+  int riks_node = -1, riks_dof = 0;
+  double riks_u = 0;
   bool nlgeom = false;
   int amp_ramp = -1;  // *STEP AMPLITUDE: -1 default (RAMP static, STEP explicit), 0 STEP, 1 RAMP
   double period = 1.0;

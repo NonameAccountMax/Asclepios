@@ -16,7 +16,7 @@ replacement for a commercial package.
 | Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 / C3D8H (B-bar; mean dilatation for hyperelastic materials), C3D8I (incompatible modes), C3D6 (prism: 2 points in static steps, degenerate C3D8R in explicit ones), C3D4, C3D10 (quadratic tetrahedron, 4 Gauss points), C3D10M (formulated as C3D10), S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE / BOX / I sections), B32 (quadratic Timoshenko beam, small displacements, static and implicit steps), CONN3D2 (AXIAL, CARTESIAN, JOIN, HINGE, BEAM, BUSHING; linear damping), T3D2 (truss), SPRINGA / DASHPOTA / MASS, R3D4 / R3D3 (rigid), SFM3D4R / SFM3D3 (surface elements: no stiffness, `*SURFACE SECTION` DENSITY as mass per unit area), M3D4R / M3D4 / M3D3 (membranes) |
 | Materials | isotropic `*ELASTIC` (temperature-dependent rows), `*ELASTIC, TYPE=ENGINEERING CONSTANTS` (orthotropic, solids), tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), linear `HARDENING=KINEMATIC` (solids), `*RATE DEPENDENT, TYPE=POWER LAW` (solids), ductile `*DAMAGE INITIATION` with `*DAMAGE EVOLUTION` (TYPE=DISPLACEMENT / ENERGY, linear softening, element deletion; solids), `*VISCOELASTIC, TIME=PRONY` on isotropic elasticity (`*ELASTIC, MODULI=LONG TERM / INSTANTANEOUS`; solids), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL (solids; fibre directions from `*ORIENTATION, LOCAL DIRECTIONS`), `*HYPERELASTIC` NEO HOOKE / MOONEY-RIVLIN / YEOH / OGDEN (Ogden: solids), superelastic shape memory alloys (material named `ABQ_SUPER_ELASTIC…` with its `*USER MATERIAL` constants; solids), linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points; OFFSET; COMPOSITE with elastic layers), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*MEMBRANE SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
-| Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation; LONG TERM), `*VISCO` (time-dependent material response), `*DYNAMIC` implicit (HHT-α: APPLICATION=MODERATE DISSIPATION, TRANSIENT FIDELITY, QUASI-STATIC, ALPHA), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
+| Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation; LONG TERM), `*VISCO` (time-dependent material response), `*STATIC, RIKS` (arc length), linear perturbation steps (`*STEP, PERTURBATION` with `*STATIC`; `*FREQUENCY`, `*BUCKLE`, mode-based `*MODAL DYNAMIC` and `*STEADY STATE DYNAMICS` with `*MODAL DAMPING`), `*DYNAMIC` implicit (HHT-α: APPLICATION=MODERATE DISSIPATION, TRANSIENT FIDELITY, QUASI-STATIC, ALPHA), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
 | Loads | `*BOUNDARY` (displacement, velocity, acceleration, ENCASTRE…, OP=NEW), `*CLOAD` (FOLLOWER), `*DSLOAD` / `*DLOAD` P (follower pressure), `*DLOAD` GRAV, `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, EQUALLY SPACED, PERIODIC, DECAY, step or total time), `*INITIAL CONDITIONS` (VELOCITY, TEMPERATURE, STRESS), `*TRANSFORM` (rectangular: loads and zero conditions in local axes); loads propagate between steps |
 | Constraints | `*TIE` (surface ties of solid faces and shells, non-matching meshes; ADJUST, POSITION TOLERANCE, NO ROTATION), `*COUPLING` (`*KINEMATIC`, `*DISTRIBUTING` with UNIFORM / LINEAR / QUADRATIC / CUBIC weighting, constrained degrees of freedom), `*RIGID BODY` (REF NODE, ELSET, PIN / TIE NSET, ANALYTICAL SURFACE), `*EQUATION`, `*MPC` (BEAM, TIE, PIN), CONN3D2 JOIN |
 | Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), `*CONTACT EXCLUSIONS`, global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`, `*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=TABULAR / LINEAR / EXPONENTIAL` (softened); node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), rigid surfaces (R3D4 / R3D3 elements, analytical `*SURFACE, TYPE=CYLINDER`), surface elements, node-to-beam segment, beam-to-beam edge contact; explicit `*CONTACT PAIR` (kinematic hard contact, balanced or pure master-slave, WEIGHT) |
@@ -57,7 +57,8 @@ Output files:
   projection of the global x axis on the surface, rotating with the element);
 - `<job>_history.csv`: energies ALLKE, ALLIE, ALLWK, ALLVD (bulk viscosity, contact damping and Rayleigh mass
   damping), ALLPD, ALLAE, ALLDMD (0: the dissipation of damage stays in ALLIE), ALLFD, ALLMW (work of the mass added by mass scaling), ETOTAL;
-- `<job>.sta` (progress) and `<job>.dat` (messages).
+- `<job>_frames.csv`: step of each frame, and mode number and eigenvalue of mode shapes;
+- `<job>.sta` (progress) and `<job>.dat` (messages, eigenvalue tables).
 
 Diagnostics on stderr: `ABQ_TRACE_NODE=Inst.123` (node state at each increment), `ABQ_TRACE_ELEM=<id>`
 (shell state), `ABQ_TRACE_DT=<id>` (components of a shell's stable increment), `ABQ_CONTACT_DIAG=<n>`
@@ -297,6 +298,20 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 - **Static implicit**: Newton-Raphson; element tangents by central finite differences of the internal force
   routine, so the same element code serves both procedures; each increment starts from the linear extrapolation of
   the previous one. Double precision throughout.
+- **Linear perturbation procedures**: response about the base state (end of the last general step); the loads and
+  boundary conditions of the step act on it only and its response is not added to the base state. Stiffness from the
+  element tangents (finite differences), lumped masses with the physical rotary inertia. Eigenvalues by subspace
+  iteration with Rayleigh-Ritz projection (max(2p, p + 8) vectors, shift-free factorisation of K). `*FREQUENCY`:
+  mass-normalised modes. `*BUCKLE`: stress stiffness of the perturbation load from the linear response, whose
+  stresses are written into the element states (scaled, restored afterwards) before the tangent is evaluated again
+  at the base geometry; modes scaled to a largest displacement of 1. `*MODAL DYNAMIC`: exact integration of each
+  damped modal equation for loads linear over the increment. `*STEADY STATE DYNAMICS`: modal superposition with the
+  modal damping; frequency points split at the eigenfrequencies inside the range, N points per interval on a
+  logarithmic scale with the bias of the reference solver; real part of the response written.
+- **Arc length** (`*STATIC, RIKS`): the load factor is an unknown (loads f_base + λ (f_step − f_base)); arc length
+  dl² = dλ² + |du|²/u_s² with u_s the norm of the translations of the first linear solution; predictor in the
+  direction of the previous increment, corrections in the plane normal to the current increment; ends at the
+  maximum load factor, at the given displacement of a node, or at the maximum number of increments.
 - **Energies**: ALLIE is accumulated at the material points as Abaqus does: the work of the element forces minus
   the work of the thermal strains, and for linear elasticity with J2 plasticity the elastic strain energy plus the
   plastic work (back stress included) instead of the trapezoidal rule.
@@ -390,8 +405,9 @@ Features exercised by the validation suite and not supported yet:
   integrates the loading plateau with a result that depends on the increment size and jumps from one increment to
   the next (single element with every node driven); asclepios keeps the converged law (reactions within 6 % on the
   explicit bar).
-- Procedures: arc length (`*STATIC, RIKS`), natural frequencies (`*FREQUENCY`), linear
-  buckling (`*BUCKLE`).
+- Procedures: direct and subspace steady-state dynamics, modal damping other than fractions of critical damping by
+  mode numbers, imaginary part of harmonic responses in the output; heat transfer and coupled
+  temperature-displacement procedures.
 
 Accuracy and performance:
 

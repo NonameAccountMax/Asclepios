@@ -9,7 +9,10 @@ Errors are relative to the peak reference value of each quantity over the whole 
   U, UR : max over frames and monitored nodes of |x - x_ref| / max |x_ref|
   RF    : same on the total reaction force of the FIX node set
   E     : max over time of |E - E_ref| for ALLIE, ALLKE, ALLWK (or the energies listed by the case), divided by the
-          largest of these energies
+          largest of these energies; eigenvalue steps: largest relative error of the eigenvalues
+Mode shapes are compared mode by mode (same step and mode number, sign aligned), each normalised by its own peak;
+frames of different steps are not mixed when the reference records the step of its frames. Arc length (Riks):
+frames compared at equal displacement of the first monitored node.
 Writes RESULTS.md and returns a non-zero status if a case fails (or, with --strict, has no reference).
 
 usage: compare.py [case ...] [--no-run] [--jobs N] [--strict] [--update-readme]
@@ -125,6 +128,12 @@ def asclepios_results(case):
     if os.path.exists(job + '_rf.csv'):
         with open(job + '_rf.csv') as f:
             rf_hist = [[float(r['total_time']), float(r['RF1']), float(r['RF2']), float(r['RF3'])] for r in csv.DictReader(f)]
+    if os.path.exists(job + '_frames.csv'):  # step of each frame; mode number and eigenvalue of mode shapes
+        with open(job + '_frames.csv') as f:
+            for r, fr in zip(csv.DictReader(f), frames):
+                fr['step'] = int(r['step'])
+                if int(r['mode']) > 0:
+                    fr['mode'], fr['eig'] = int(r['mode']), float(r['eigenvalue'])
     inc = None
     m = re.search(r'COMPLETED SUCCESSFULLY\s+\((\d+) increments', open(job + '.dat').read())
     if m:
@@ -201,6 +210,37 @@ def history_error(mine, ref, key):
     return out_err / peak if peak > 0 else None
 
 
+def same_group(m, fr):
+    """Frames compared with each other: same step and same kind (mode shape or not) when both sides record the step
+    of their frames (references extracted with it); any frame otherwise."""
+    if 'step' not in fr or 'step' not in m:
+        return True
+    return m['step'] == fr['step'] and ('mode' in m) == ('mode' in fr)
+
+
+def mode_match(mine, fr):
+    """Mode shape of the same step and mode number, with the sign that aligns its translations with the reference
+    (eigenvectors are defined up to their sign)."""
+    for m in mine['frames']:
+        if m.get('step') == fr.get('step') and m.get('mode') == fr['mode']:
+            dot = sum(a * b for lab, v in fr.get('U', {}).items() if lab in m.get('U', {}) for a, b in zip(m['U'][lab], v))
+            return m, (-1.0 if dot < 0 else 1.0)
+    return None, 1.0
+
+
+def eigenvalue_error(mine, ref):
+    """Largest relative error of the eigenvalues (natural frequencies, buckling load factors), None without any."""
+    err = None
+    for fr in ref['frames']:
+        if 'eig' not in fr:
+            continue
+        m, _ = mode_match(mine, fr)
+        if m is None:
+            return float('inf')
+        err = max(err or 0.0, abs(m['eig'] - fr['eig']) / abs(fr['eig']))
+    return err
+
+
 def field_error(mine, ref, key):
     """Peak-normalised error of a nodal vector field over all reference frames and monitored nodes. Rotations that
     stay below 1e-3 rad in the reference (numerical zero, e.g. a flat impact), for the case or at a monitored node,
@@ -215,18 +255,41 @@ def field_error(mine, ref, key):
     if key == 'UR':
         labs = {lab for fr in ref['frames'] for lab in fr.get(key, {})}
         small = {lab for lab in labs if max(norm(fr[key][lab]) for fr in ref['frames'] if lab in fr.get(key, {})) < 1e-3}
+    # references with the step of each frame: each step, and each mode shape, normalised by its own peak
+    groups = {}
     for fr in ref['frames']:
-        for lab, v in fr.get(key, {}).items():
-            if lab in small:
-                continue
-            series = [[m['t'], m[key][lab]] for m in mine['frames'] if lab in m.get(key, {})]
-            if not series:
-                return float('inf')
-            got = interp(series, fr['t'])
-            if key == 'UR':  # same representation of large rotations on both sides
-                got, v = canonical_rotation(got), canonical_rotation(v)
-            err = max(err, norm([a - b for a, b in zip(got, v)]))
-    return err / peak
+        groups.setdefault((fr.get('step'), fr.get('mode')) if 'step' in fr else None, []).append(fr)
+    worst = 0.0
+    gpeaks = [peak if len(groups) == 1 else max((norm(v) for fr in frs for v in fr.get(key, {}).values()), default=0.0)
+              for frs in groups.values()]
+    for frs, gpeak in zip(groups.values(), gpeaks):
+        # a group where the field is a numerical zero (e.g. the translations of a torsion mode) is not compared
+        if gpeak == 0.0 or gpeak < 1e-6 * max(gpeaks) or (key == 'UR' and gpeak < 1e-3):
+            continue
+        err = 0.0
+        for fr in frs:
+            sign, m = 1.0, None
+            if 'mode' in fr:
+                m, sign = mode_match(mine, fr)
+                if m is None:
+                    return float('inf')
+            for lab, v in fr.get(key, {}).items():
+                if lab in small:
+                    continue
+                if m is not None:
+                    if lab not in m.get(key, {}):
+                        return float('inf')
+                    got = [sign * x for x in m[key][lab]]
+                else:
+                    series = [[q['t'], q[key][lab]] for q in mine['frames'] if lab in q.get(key, {}) and same_group(q, fr)]
+                    if not series:
+                        return float('inf')
+                    got = interp(series, fr['t'])
+                if key == 'UR' and m is None:  # same representation of large rotations on both sides
+                    got, v = canonical_rotation(got), canonical_rotation(v)
+                err = max(err, norm([a - b for a, b in zip(got, v)]))
+        worst = max(worst, err / gpeak)
+    return worst
 
 
 RF_WINDOW = 30  # moving average of explicit reaction histories, in reference increments
@@ -285,8 +348,13 @@ def rf_error(mine, ref):
     peak = max((norm(fr['RF']) for fr in ref['frames']), default=0.0)
     if peak == 0.0 or peak < 1e-3 * force_scale(ref):
         return None
-    series = [[m['t'], m['RF']] for m in mine['frames']]
-    return max(norm([a - b for a, b in zip(interp(series, fr['t']), fr['RF'])]) for fr in ref['frames']) / peak
+    err = 0.0
+    for fr in ref['frames']:
+        series = [[m['t'], m['RF']] for m in mine['frames'] if same_group(m, fr)]
+        if not series:
+            return float('inf')
+        err = max(err, norm([a - b for a, b in zip(interp(series, fr['t']), fr['RF'])]))
+    return err / peak
 
 
 def rm_error(mine, ref):
@@ -297,8 +365,13 @@ def rm_error(mine, ref):
     emax = max((abs(v) for k in ENERGIES for _, v in ref.get('history', {}).get(k, [])), default=0.0)
     if peak == 0.0 or peak < 1e-3 * emax:
         return None
-    series = [[m['t'], m['RM']] for m in mine['frames']]
-    return max(norm([a - b for a, b in zip(interp(series, fr['t']), fr['RM'])]) for fr in ref['frames']) / peak
+    err = 0.0
+    for fr in ref['frames']:
+        series = [[m['t'], m['RM']] for m in mine['frames'] if same_group(m, fr)]
+        if not series:
+            return float('inf')
+        err = max(err, norm([a - b for a, b in zip(interp(series, fr['t']), fr['RM'])]))
+    return err / peak
 
 
 def element_error(mine, ref, shell=False):
@@ -385,6 +458,15 @@ def evaluate(case, ran):
             res['status'] = 'NO REFERENCE'
             return res
         ref = json.load(open(ref_path))
+    if case['procedure'] == 'riks':
+        # arc length: the path is compared at equal displacement of the first monitored node (the arc length and the
+        # increments are particular to each solver); energy histories (against the arc length) not compared
+        lab = str(case['mon'][0])
+        for side in (mine, ref):
+            side['frames'] = sorted(({**fr, 't': norm(fr['U'][lab])} for fr in side['frames'] if lab in fr['U']),
+                                    key=lambda fr: fr['t'])
+            side.pop('mon_hist', None)
+            side.pop('rf_hist', None)
     res['U'] = field_error(mine, ref, 'U')
     res['UR'] = field_error(mine, ref, 'UR') if case['rot'] else None
     res['RF'] = rf_error(mine, ref) if case['fix'] else None
@@ -393,7 +475,10 @@ def evaluate(case, ran):
     if nt is not None:
         res['U'] = max(res['U'] or 0.0, nt)
     res['S'] = element_error(mine, ref, shell=(case.get('mone_type') or '').startswith(('S3', 'S4')))
-    res['E'] = energy_error(mine, ref, case.get('energies'))
+    res['E'] = energy_error(mine, ref, case.get('energies')) if case['procedure'] != 'riks' else None
+    eig = eigenvalue_error(mine, ref)
+    if eig is not None:  # eigenvalue steps: the eigenvalues in the energy column (no energy history)
+        res['E'] = max(res['E'] or 0.0, eig)
     if mine.get('increments') and ref.get('increments'):
         res['inc'] = mine['increments'] / float(ref['increments'])
     tol = dict(case['tol'])

@@ -79,6 +79,8 @@ int main(int argc, char** argv) {
     for (size_t s = s0; s < m.steps.size(); ++s) {
       const Step& st = m.steps[s];
       if (st.proc == Step::EXPLICIT) run_explicit_step(A, st, (int)s);
+      else if (st.riks) run_riks_step(A, st, (int)s);
+      else if (st.proc != Step::STATIC || st.perturbation) run_linear_step(A, st, (int)s);
       else run_static_step(A, st, (int)s);
     }
     double el = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();

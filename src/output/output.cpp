@@ -74,6 +74,7 @@ void OutputWriter::close() {
   if (sta_) { std::fclose(sta_); sta_ = nullptr; }
   if (rfh_) { std::fclose(rfh_); rfh_ = nullptr; }
   if (monh_) { std::fclose(monh_); monh_ = nullptr; }
+  if (frl_) { std::fclose(frl_); frl_ = nullptr; }
 }
 
 // total reaction of the node set of the history request, one line per requested increment (<job>_rf.csv)
@@ -202,6 +203,13 @@ void OutputWriter::frame(int step, const std::string& step_name, double st, doub
   const std::string dbase = ds == std::string::npos ? dir_ : dir_.substr(ds + 1);
   std::snprintf(entry, sizeof(entry), "<DataSet timestep=\"%.9g\" group=\"\" part=\"0\" file=\"%s/%s\"/>", tt, dbase.c_str(), base ? base + 1 : fname);
   pvd_entries_.push_back(entry);
+  if (!frl_) {
+    frl_ = std::fopen((job_ + "_frames.csv").c_str(), "w");
+    if (frl_) std::fprintf(frl_, "frame,step,total_time,mode,eigenvalue\n");
+  }
+  if (frl_) { std::fprintf(frl_, "%d,%d,%.12g,%d,%.10g\n", nframes_, step, tt, meta_mode_, meta_eig_); std::fflush(frl_); }
+  meta_mode_ = 0;
+  meta_eig_ = 0;
   ++nframes_;
   write_pvd();
 }

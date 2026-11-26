@@ -1046,6 +1046,7 @@ class Builder {
     st.nlgeom = sc.getu("NLGEOM", "NO") == "YES" || (!nlg_given && !m.steps.empty() && m.steps.back().nlgeom);
     st.amp_ramp = sc.has("AMPLITUDE") ? (sc.getu("AMPLITUDE") == "RAMP" ? 1 : 0) : -1;
     st.maxinc = sc.geti("INC", 100);
+    st.perturbation = sc.has("PERTURBATION");
     bool have_proc = false;
     int last_output = 0;  // 1 field, 2 history
     int hist_freq = 0;    // FREQUENCY of the current history request
@@ -1053,7 +1054,26 @@ class Builder {
       const Card& c = cards[i];
       const std::string& k = c.keyword;
       if (k == "END STEP") break;
-      if (k == "STATIC" || k == "VISCO") {
+      if (k == "STATIC" && c.has("RIKS")) {
+        // initial arc length increment, total arc length, minimum and maximum increments, maximum LPF, node, dof, value
+        st.proc = Step::STATIC;
+        st.riks = true;
+        have_proc = true;
+        st.dt0 = 0.1; st.period = 1.0; st.dtmin = 1e-5; st.dtmax = 1e30;
+        if (!c.data.empty()) {
+          auto& d = c.data[0];
+          auto at = [&](size_t j, double def) { return d.size() > j && !trim(d[j]).empty() ? to_double(d[j], &c) : def; };
+          st.dt0 = at(0, 0.1); st.period = at(1, 1.0); st.dtmin = at(2, 1e-5 * st.period); st.dtmax = at(3, 1e30);
+          st.riks_lpf_max = at(4, 0.0);
+          if (d.size() > 5 && !trim(d[5]).empty()) {
+            const auto ns = nodes_of(trim(d[5]), "", c);
+            if (ns.size() != 1) throw std::runtime_error("*STATIC, RIKS: a single node expected at " + c.where());
+            st.riks_node = ns[0];
+            st.riks_dof = (int)at(6, 1.0) - 1;
+            st.riks_u = at(7, 0.0);
+          }
+        }
+      } else if (k == "STATIC" || k == "VISCO") {
         st.proc = Step::STATIC;
         st.visco = k == "VISCO";
         st.long_term = k == "STATIC" && c.has("LONG TERM");
@@ -1066,6 +1086,47 @@ class Builder {
           st.dtmin = d.size() > 2 && !d[2].empty() ? to_double(d[2], &c) : std::min(st.dt0, 1e-5 * st.period);
           st.dtmax = d.size() > 3 && !d[3].empty() ? to_double(d[3], &c) : st.period;
         } else { st.dt0 = st.period = st.dtmax = 1.0; st.dtmin = 1e-5; }
+      } else if (k == "FREQUENCY" || k == "BUCKLE") {
+        st.proc = k == "FREQUENCY" ? Step::FREQUENCY : Step::BUCKLE;
+        st.perturbation = true;
+        have_proc = true;
+        const std::string es = c.getu("EIGENSOLVER", k == "FREQUENCY" ? "LANCZOS" : "SUBSPACE");
+        if (es != "LANCZOS" && es != "SUBSPACE") warn_once("EIGS" + es, "*" + k + ", EIGENSOLVER=" + es + ": eigenvalues by subspace iteration");
+        if (c.data.empty() || c.data[0].empty() || trim(c.data[0][0]).empty())
+          throw std::runtime_error("*" + k + ": number of eigenvalues expected at " + c.where());
+        auto& d = c.data[0];
+        auto at = [&](size_t j, double def) { return d.size() > j && !trim(d[j]).empty() ? to_double(d[j], &c) : def; };
+        st.neig = to_int(d[0], &c);
+        if (k == "FREQUENCY") { st.eig_min = at(1, 0.0); st.eig_max = at(2, 0.0); }
+        else st.eig_max = at(1, 0.0);
+      } else if (k == "MODAL DYNAMIC") {
+        st.proc = Step::MODAL_DYNAMIC;
+        st.perturbation = true;
+        have_proc = true;
+        if (c.data.empty()) throw std::runtime_error("*MODAL DYNAMIC: time increment and period expected at " + c.where());
+        st.dt0 = to_double(c.data[0].at(0), &c);
+        st.period = c.data[0].size() > 1 ? to_double(c.data[0][1], &c) : st.dt0;
+      } else if (k == "STEADY STATE DYNAMICS") {
+        if (c.has("DIRECT") || c.has("SUBSPACE PROJECTION"))
+          throw std::runtime_error("*STEADY STATE DYNAMICS: only the mode-based procedure is supported at " + c.where());
+        st.proc = Step::STEADY_STATE;
+        st.perturbation = true;
+        have_proc = true;
+        if (c.data.size() != 1) throw std::runtime_error("*STEADY STATE DYNAMICS: one frequency range expected at " + c.where());
+        auto& d = c.data[0];
+        auto at = [&](size_t j, double def) { return d.size() > j && !trim(d[j]).empty() ? to_double(d[j], &c) : def; };
+        st.ssd_f0 = at(0, 0.0); st.ssd_f1 = at(1, st.ssd_f0); st.ssd_points = (int)at(2, 20); st.ssd_bias = at(3, 3.0);
+      } else if (k == "MODAL DAMPING") {
+        if (c.getu("DEFINITION", "MODE NUMBERS") != "MODE NUMBERS" || c.has("RAYLEIGH") || c.has("STRUCTURAL"))
+          throw std::runtime_error("*MODAL DAMPING: only fractions of critical damping by mode numbers at " + c.where());
+        for (auto& d : c.data) {
+          if (d.empty() || trim(d[0]).empty()) continue;
+          Step::ModalDamping md;
+          md.first = to_int(d[0], &c);
+          md.last = d.size() > 1 && !trim(d[1]).empty() ? to_int(d[1], &c) : md.first;
+          md.ratio = d.size() > 2 ? to_double(d[2], &c) : 0.0;
+          st.modal_damping.push_back(md);
+        }
       } else if (k == "DYNAMIC" && !c.has("EXPLICIT")) {
         // implicit dynamics: same data line as *STATIC; APPLICATION sets the HHT parameter (QUASI-STATIC: strongly
         // dissipative, MODERATE DISSIPATION: alpha = -0.41421, TRANSIENT FIDELITY and default: -0.05)

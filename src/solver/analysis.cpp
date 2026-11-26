@@ -286,7 +286,7 @@ void Analysis::begin_step(const Step& st, int si, bool ramp_default) {
     }
   }
   update_fixed(st);
-  activate_links(st.proc == Step::STATIC);
+  activate_links(st.proc != Step::EXPLICIT);
 }
 
 void Analysis::update_fixed(const Step&) {

@@ -9,8 +9,11 @@ Writes, for every field output frame of every step (total time t):
   E     : per monitored element (element set MONE): largest von Mises stress over its output points, von Mises
           stress of the mean in-plane stress (shells: membrane), mean stress tensor (solids), largest PEEQ,
           section force SF1 (axial force of beams);
-the whole-model histories (ALLIE, ALLKE, ALLWK, ALLPD, ALLVD, ALLAE, ETOTAL, DT, DMASS) against total time, and the
-number of increments and iterations read from the status file (<job>.sta).
+the step index of the frame ('step', from 0); eigenvalue frames ('mode': mode number, 'eig': frequency in cycles per
+time of a *FREQUENCY step or buckling load factor of a *BUCKLE step); steady-state dynamics frames: 'freq' and the
+imaginary parts of U and UR ('Ui', 'URi'); the whole-model histories (ALLIE, ALLKE, ALLWK, ALLPD, ALLVD, ALLAE, ETOTAL,
+DT, DMASS, LPF) against total time, and the number of increments and iterations read from the status file
+(<job>.sta).
 """
 from __future__ import print_function
 
@@ -21,7 +24,7 @@ import sys
 
 from odbAccess import openOdb
 
-HISTORY = ('ALLIE', 'ALLKE', 'ALLWK', 'ALLPD', 'ALLVD', 'ALLAE', 'ETOTAL', 'DT', 'DMASS')
+HISTORY = ('ALLIE', 'ALLKE', 'ALLWK', 'ALLPD', 'ALLVD', 'ALLAE', 'ETOTAL', 'DT', 'DMASS', 'LPF')
 
 
 def vec(v):
@@ -111,16 +114,28 @@ def main():
     history = dict((k, []) for k in HISTORY)
     rf_hist = {}
     mon_hist = {}
-    for step in steps:
+    for si, step in enumerate(steps):
         for frame in step.frames:
             fo = frame.fieldOutputs
             fr = {'t': step.totalTime + frame.frameValue, 'U': {}, 'UR': {}, 'RF': [0.0, 0.0, 0.0],
-                  'RM': [0.0, 0.0, 0.0]}
+                  'RM': [0.0, 0.0, 0.0], 'step': si}
+            domain = str(frame.domain)
+            if domain == 'MODAL' and frame.frameId > 0:
+                fr['mode'] = int(frame.mode)
+                desc = frame.description
+                if 'EigenValue' in desc:
+                    fr['eig'] = float(desc.split('EigenValue')[1].split('=')[1].split()[0])
+                else:
+                    fr['eig'] = float(frame.frequency)
+            elif domain == 'FREQUENCY':
+                fr['freq'] = float(frame.frameValue)
             for key in ('U', 'UR'):
                 if key in fo.keys():
                     for v in fo[key].values:
                         if v.nodeLabel in mon:
                             fr[key][str(v.nodeLabel)] = vec(v.data)
+                            if domain == 'FREQUENCY' and v.conjugateData is not None:
+                                fr.setdefault(key + 'i', {})[str(v.nodeLabel)] = vec(v.conjugateData)
             if 'NT11' in fo.keys():
                 fr['NT'] = dict((str(v.nodeLabel), [float(v.data)]) for v in fo['NT11'].values if v.nodeLabel in mon)
             for key in ('RF', 'RM'):

@@ -25,11 +25,6 @@ double wall() {
   return duration<double>(steady_clock::now().time_since_epoch()).count();
 }
 
-struct DofMap {
-  std::vector<int> eq;  // 6nn -> equation or -1
-  int neq = 0;
-};
-
 // element tangent by central differences of compute(commit=false)
 void element_tangent(ElementGroup& G, int e, ElemIn in, double* du, int nen, double hscale, double* K) {
   const int nd = 6 * nen;
@@ -49,24 +44,24 @@ void element_tangent(ElementGroup& G, int e, ElemIn in, double* du, int nen, dou
   }
 }
 
+// equations of a dof with their coefficients: itself, or the terms of its link (prescribed terms excluded)
+int eq_terms(const Analysis& A, const DofMap& dm, int i, int* eqs, double* cs) {
+  const int l = A.link_of[i];
+  if (l < 0) { if (dm.eq[i] < 0) return 0; eqs[0] = dm.eq[i]; cs[0] = 1.0; return 1; }
+  int n = 0;
+  const auto& L = A.links[l];
+  for (int t = L.first; t < L.first + L.count && n < 64; ++t) {
+    const int g = dm.eq[A.link_terms[t].dof];
+    if (g < 0) continue;
+    eqs[n] = g; cs[n] = A.link_terms[t].c; ++n;
+  }
+  return n;
+}
+
 }  // namespace
 
-void run_static_step(Analysis& A, const Step& st, int si) {
+DofMap make_dofmap(const Analysis& A) {
   const int nn = A.nn;
-  A.nlgeom = st.nlgeom;
-  // time-dependent materials: real time in implicit dynamics and *VISCO, instantaneous response in *STATIC (long-term
-  // with LONG TERM)
-  A.mat_time = st.implicit_dynamic || st.visco ? 1.0 : st.long_term ? 1e30 : 0.0;
-  // default amplitude: RAMP in static steps, STEP in dynamic ones
-  A.begin_step(st, si, st.implicit_dynamic ? st.amp_ramp == 1 : st.amp_ramp != 0);
-  if (st.contact_defined) warn("general contact is not supported in *STATIC steps: ignored");
-  OutputWriter& W = *A.writer;
-  W.sta_header(si, st.name, false);
-  info("\n STEP %d  %s  (%s, %s)  period %g", si + 1, st.name.c_str(), st.implicit_dynamic ? "implicit dynamic" : st.visco ? "visco" : "static",
-       st.nlgeom ? "nlgeom" : "small displacements", st.period);
-  if (A.total_increments == 0 && si == 0) W.frame(si, st.name, 0.0, A.total_time);
-
-  // active dofs: translations of nodes carrying elements, rotations of shell/beam nodes
   std::vector<char> has_el(nn, 0), is_term(6 * nn, 0);
   for (auto& gp : A.groups) for (int n : gp->conn) has_el[n] = 1;
   for (int j : A.link_term_dofs) is_term[j] = 1;  // e.g. the reference node of a kinematic coupling
@@ -84,21 +79,10 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     for (int i = 0; i < 6 * nn; ++i) dm.eq[i] = (dm.eq[i] >= 0 && A.link_of[i] < 0) ? neq++ : -1;
     dm.neq = neq;
   }
-  // equations of a dof with their coefficients: itself, or the terms of its link (prescribed terms excluded)
-  auto eq_terms = [&](int i, int* eqs, double* cs) {
-    const int l = A.link_of[i];
-    if (l < 0) { if (dm.eq[i] < 0) return 0; eqs[0] = dm.eq[i]; cs[0] = 1.0; return 1; }
-    int n = 0;
-    const auto& L = A.links[l];
-    for (int t = L.first; t < L.first + L.count && n < 64; ++t) {
-      const int g = dm.eq[A.link_terms[t].dof];
-      if (g < 0) continue;
-      eqs[n] = g; cs[n] = A.link_terms[t].c; ++n;
-    }
-    return n;
-  };
-  info("  %d equations", dm.neq);
-  // characteristic length for finite-difference steps
+  return dm;
+}
+
+double fd_step(const Analysis& A) {
   double lmin = 1e30;
   for (auto& gp : A.groups)
     for (int e = 0; e < gp->size(); ++e) {
@@ -107,7 +91,83 @@ void run_static_step(Analysis& A, const Step& st, int si) {
                            std::pow(A.X[3 * a + 2] - A.X[3 * b + 2], 2));
       if (l > 0) lmin = std::min(lmin, l);
     }
-  const double hfd = 1e-7 * lmin;
+  return 1e-7 * lmin;
+}
+
+void assemble_tangent(Analysis& A, const DofMap& dm, double dt, double hfd, std::vector<Eigen::Triplet<double>>& trip) {
+  for (auto& gp : A.groups) {
+    ElementGroup& G = *gp;
+    const int nen = G.nen, nd = 6 * nen;
+    std::vector<std::vector<Eigen::Triplet<double>>> local(A.nthreads);
+#pragma omp parallel num_threads(A.nthreads)
+    {
+      std::vector<double> Xe(3 * nen), xo(3 * nen), due(nd), t0(nen), t1(nen), fv(nen), K(nd * nd);
+      auto& loc = local[omp_get_thread_num()];
+#pragma omp for schedule(dynamic, 32)
+      for (int e = 0; e < G.size(); ++e) {
+        const int* cn = &G.conn[e * nen];
+        for (int I = 0; I < nen; ++I) {
+          int n = cn[I];
+          for (int k = 0; k < 3; ++k) { Xe[3 * I + k] = A.X[3 * n + k]; xo[3 * I + k] = A.X[3 * n + k] + A.u[6 * n + k]; }
+          for (int k = 0; k < 6; ++k) due[6 * I + k] = A.du[6 * n + k];
+          t0[I] = A.temp_prev[n]; t1[I] = A.temp[n]; fv[I] = A.fv1[n];
+        }
+        ElemIn in;
+        in.X = Xe.data(); in.xo = xo.data(); in.du = due.data();
+        if (A.has_temp) { in.temp0 = t0.data(); in.temp1 = t1.data(); }
+        in.fv1 = fv.data(); in.dt = dt; in.dynamic = false; in.nlgeom = A.nlgeom; in.dt_mat = dt * A.mat_time;
+        element_tangent(G, e, in, due.data(), nen, hfd, K.data());
+        int ei[64], ej[64];
+        double ci[64], cj[64];
+        for (int i = 0; i < nd; ++i) {
+          const int ni = eq_terms(A, dm, 6 * cn[i / 6] + i % 6, ei, ci);
+          if (!ni) continue;
+          for (int j = 0; j < nd; ++j) {
+            const double kij = K[i * nd + j];
+            if (kij == 0) continue;
+            const int nj = eq_terms(A, dm, 6 * cn[j / 6] + j % 6, ej, cj);
+            for (int a = 0; a < ni; ++a)
+              for (int b = 0; b < nj; ++b) loc.push_back({ei[a], ej[b], ci[a] * cj[b] * kij});
+          }
+        }
+      }
+    }
+    for (auto& l : local) trip.insert(trip.end(), l.begin(), l.end());
+  }
+}
+
+void dof_masses(Analysis& A, std::vector<double>& mdof) {
+  const int nn = A.nn;
+  for (auto& gp : A.groups) gp->physical_rotary = true;
+  A.lump_masses();
+  for (auto& gp : A.groups) gp->physical_rotary = false;
+  mdof.assign(6 * nn, 0.0);
+  for (int n = 0; n < nn; ++n)
+    for (int k = 0; k < 6; ++k)
+      mdof[6 * n + k] = k < 3 ? A.mt[n] : A.mr[n] + (A.node_aniso[n] ? A.jrot[6 * (size_t)n + k - 3] : 0.0);
+  for (const auto& L : A.links)
+    for (int t = L.first; t < L.first + L.count; ++t) mdof[A.link_terms[t].dof] += A.link_terms[t].mc * mdof[L.dof];
+  for (const auto& L : A.links) mdof[L.dof] = 0;
+}
+
+void run_static_step(Analysis& A, const Step& st, int si) {
+  const int nn = A.nn;
+  A.nlgeom = st.nlgeom;
+  // time-dependent materials: real time in implicit dynamics and *VISCO, instantaneous response in *STATIC (long-term
+  // with LONG TERM)
+  A.mat_time = st.implicit_dynamic || st.visco ? 1.0 : st.long_term ? 1e30 : 0.0;
+  // default amplitude: RAMP in static steps, STEP in dynamic ones
+  A.begin_step(st, si, st.implicit_dynamic ? st.amp_ramp == 1 : st.amp_ramp != 0);
+  if (st.contact_defined) warn("general contact is not supported in *STATIC steps: ignored");
+  OutputWriter& W = *A.writer;
+  W.sta_header(si, st.name, false);
+  info("\n STEP %d  %s  (%s, %s)  period %g", si + 1, st.name.c_str(), st.implicit_dynamic ? "implicit dynamic" : st.visco ? "visco" : "static",
+       st.nlgeom ? "nlgeom" : "small displacements", st.period);
+  if (A.total_increments == 0 && si == 0) W.frame(si, st.name, 0.0, A.total_time);
+
+  const DofMap dm = make_dofmap(A);
+  info("  %d equations", dm.neq);
+  const double hfd = fd_step(A);
 
   // implicit dynamics (HHT-alpha): lumped masses, initial accelerations from equilibrium
   const bool dyn = st.implicit_dynamic;
@@ -230,45 +290,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       if (dm.neq == 0) { converged = true; break; }  // fully prescribed
       // tangent
       std::vector<Eigen::Triplet<double>> trip;
-      for (auto& gp : A.groups) {
-        ElementGroup& G = *gp;
-        const int nen = G.nen, nd = 6 * nen;
-        std::vector<std::vector<Eigen::Triplet<double>>> local(A.nthreads);
-#pragma omp parallel num_threads(A.nthreads)
-        {
-          std::vector<double> Xe(3 * nen), xo(3 * nen), due(nd), t0(nen), t1(nen), fv(nen), K(nd * nd);
-          auto& loc = local[omp_get_thread_num()];
-#pragma omp for schedule(dynamic, 32)
-          for (int e = 0; e < G.size(); ++e) {
-            const int* cn = &G.conn[e * nen];
-            for (int I = 0; I < nen; ++I) {
-              int n = cn[I];
-              for (int k = 0; k < 3; ++k) { Xe[3 * I + k] = A.X[3 * n + k]; xo[3 * I + k] = A.X[3 * n + k] + A.u[6 * n + k]; }
-              for (int k = 0; k < 6; ++k) due[6 * I + k] = A.du[6 * n + k];
-              t0[I] = A.temp_prev[n]; t1[I] = A.temp[n]; fv[I] = A.fv1[n];
-            }
-            ElemIn in;
-            in.X = Xe.data(); in.xo = xo.data(); in.du = due.data();
-            if (A.has_temp) { in.temp0 = t0.data(); in.temp1 = t1.data(); }
-            in.fv1 = fv.data(); in.dt = dt; in.dynamic = false; in.nlgeom = A.nlgeom; in.dt_mat = dt * A.mat_time;
-            element_tangent(G, e, in, due.data(), nen, hfd, K.data());
-            int ei[64], ej[64];
-            double ci[64], cj[64];
-            for (int i = 0; i < nd; ++i) {
-              const int ni = eq_terms(6 * cn[i / 6] + i % 6, ei, ci);
-              if (!ni) continue;
-              for (int j = 0; j < nd; ++j) {
-                const double kij = K[i * nd + j];
-                if (kij == 0) continue;
-                const int nj = eq_terms(6 * cn[j / 6] + j % 6, ej, cj);
-                for (int a = 0; a < ni; ++a)
-                  for (int b = 0; b < nj; ++b) loc.push_back({ei[a], ej[b], ci[a] * cj[b] * kij});
-              }
-            }
-          }
-        }
-        for (auto& l : local) trip.insert(trip.end(), l.begin(), l.end());
-      }
+      assemble_tangent(A, dm, dt, hfd, trip);
       if (dyn) {
         for (auto& tr : trip) tr = Eigen::Triplet<double>(tr.row(), tr.col(), (1 + ha) * tr.value());
         for (int i = 0; i < 6 * nn; ++i) {

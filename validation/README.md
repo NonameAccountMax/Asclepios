@@ -86,7 +86,13 @@ are relative to the peak reference value of each quantity over the whole history
 - E: max over time of |E − E_ref| for ALLIE, ALLKE and ALLWK, divided by the largest of these energies, evaluated at
   the history times of the coarser of the two series (the finer one is interpolated). The validation runs write the
   asclepios energies at every increment (`ABQ_HISTORY_EVERY_INCREMENT=1`), so they are exact at the reference times,
-  including a reference point written one increment after the requested time during an impact.
+  including a reference point written one increment after the requested time during an impact;
+- eigenvalue steps (`*FREQUENCY`, `*BUCKLE`): each mode shape is compared with the mode of the same number, with the
+  sign that aligns the translations (eigenvectors are defined up to their sign), and normalised by its own peak; the
+  largest relative error of the eigenvalues (frequencies, buckling load factors) is reported in the E column. Frames
+  of different steps are never interpolated with each other (the references record the step of each frame);
+- arc length (`*STATIC, RIKS`): the frames are compared at equal displacement of the first monitored node, since the
+  arc length and its increments are particular to each solver; energies not compared.
 
 Also reported, without pass/fail: the ratio of the numbers of increments (asclepios / reference). The Abaqus references
 also store the stable time increment (DT), the mass change (DMASS), the hourglass energy (ALLAE) and the number of

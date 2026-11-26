@@ -1053,29 +1053,29 @@ def standard_features():
     for i in range(n + 1):
         x = -20.0 + 40.0 * i / n
         ids.append(d.node(x, 0.0, 2.0 * (1 - (x / 20.0) ** 2)))
-    beam(d, [[ids[i], ids[i + 1]] for i in range(n)], 'RECT', '1., 2.', n1='0., 1., 0.')
-    d.steps += ['*Step, name=Riks, nlgeom=YES, inc=300', '*Static, riks', '0.02, 1., 1e-06, 0.05, 1.5',
+    beam(d, [[ids[i], ids[i + 1]] for i in range(n)], 'RECT', '1., 1.', n1='0., 1., 0.')
+    # ended by the apex displacement (inverted arch), past the limit point
+    d.steps += ['*Step, name=Riks, nlgeom=YES, inc=300', '*Static, riks', '0.02, 1., 1e-06, 0.05, , %d, 3, -4.5' % ids[n // 2],
                 '*Boundary', '%d, 1, 6' % ids[0], '%d, 1, 6' % ids[-1], 'EALL_NODES, 2, 2',
                 '*Cload', '%d, 3, -400.' % ids[n // 2], '*Output, field, frequency=5', '*Node Output', 'U, RF, UR',
                 '*Output, history, variable=PRESELECT', '*End Step']
     d.nset('EALL_NODES', ids)
     register(d, 'riks', 'B31', 'arc length (Riks)', 'Clamped shallow arch under an apex load: snap-through traced '
-             'with the arc-length method.', [ids[n // 2], ids[n // 4]], [ids[0], ids[-1]], True, 'nonlinear',
-             category='feature', group='standard', supported=False, reason=NS + '*STATIC, RIKS', twin=False)
+             'with the arc-length method (limit point, unloading, then stiffening of the inverted arch).', [ids[n // 2], ids[n // 4]], [ids[0], ids[-1]], True, 'nonlinear',
+             category='feature', group='standard', supported=True, twin=False)
 
     d, ids = cantilever_beam('std_frequency', 'B31 cantilever, first five natural frequencies')
     d.steps += ['*Step, name=Modes, perturbation', '*Frequency, eigensolver=Lanczos', '5, , , , ,',
                 '*Boundary', '%d, ENCASTRE' % ids[0], '*Output, field', '*Node Output', 'U', '*End Step']
     register(d, 'frequency', 'B31', 'natural frequencies', 'First five natural frequencies and mode shapes of a '
              'cantilever.', [ids[-1], ids[5]], [ids[0]], True, 'linear', 'linear', category='feature',
-             group='standard', supported=False, reason=NS + '*FREQUENCY', twin=False)
+             group='standard', supported=True, twin=False)
 
     d, ids = cantilever_beam('std_buckle', 'B31 column, first three buckling loads')
     d.steps += ['*Step, name=Buckle, perturbation', '*Buckle', '3, , 18, 300', '*Boundary', '%d, ENCASTRE' % ids[0],
                 '*Cload', '%d, 1, -1.' % ids[-1], '*Output, field', '*Node Output', 'U', '*End Step']
     register(d, 'buckle', 'B31', 'linear buckling', 'First three buckling loads of a cantilever column.', [ids[-1],
-             ids[5]], [ids[0]], True, 'linear', 'linear', category='feature', group='standard', supported=False,
-             reason=NS + '*BUCKLE', twin=False)
+             ids[5]], [ids[0]], True, 'linear', 'linear', category='feature', group='standard', supported=True, twin=False)
 
 
 def parallel_features():

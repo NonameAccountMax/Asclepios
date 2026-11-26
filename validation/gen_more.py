@@ -1013,8 +1013,8 @@ def more_features():
     d.steps += ['*Step, name=Perturb, perturbation', '*Static', '*Boundary', 'FIX, ENCASTRE', '*Cload'] + \
         ['%d, 3, -50.' % n for n in tip] + ['*Output, field', '*Node Output', 'U, RF', '*End Step']
     register(d, 'static', 'C3D8R', 'linear perturbation', 'Cantilever load case solved as a linear perturbation step.',
-             tip, fix, False, 'linear', 'linear', category='feature', group='procedure', supported=False,
-             reason=NS + 'linear perturbation steps', twin=False)
+             tip, fix, False, 'linear', 'linear', category='feature', group='procedure', supported=True,
+             twin=False)
 
     d = Deck('visco_relaxation', 'Viscoelastic block, step strain then relaxation (*VISCO)')
     hexes = hex_block(d, 2, 2, 2, 4.0, 4.0, 4.0)
@@ -1041,7 +1041,7 @@ def more_features():
                 '*Node Output', 'U', '*End Step']
     register(d, 'modal dynamic', 'B31', 'modal dynamics', 'Response of a cantilever to a short tip pulse by mode '
              'superposition (10 modes, 2 % damping).', [ids[-1], ids[5]], [ids[0]], True, 'dynamic',
-             category='feature', group='procedure', supported=False, reason=NS + '*MODAL DYNAMIC', twin=False)
+             category='feature', group='procedure', supported=True, twin=False)
 
     d, ids = cantilever_beam('steady_state_dynamics', 'B31 cantilever, harmonic response (*STEADY STATE DYNAMICS)')
     d.steps += ['*Step, name=Modes, perturbation', '*Frequency, eigensolver=Lanczos', '10, , , , ,',
@@ -1051,7 +1051,7 @@ def more_features():
                 '*Node Output', 'U', '*End Step']
     register(d, 'steady state dynamics', 'B31', 'harmonic response', 'Frequency response of a cantilever between 10 '
              'and 1000 Hz under a unit harmonic tip load.', [ids[-1], ids[5]], [ids[0]], True, 'dynamic',
-             category='feature', group='procedure', supported=False, reason=NS + '*STEADY STATE DYNAMICS', twin=False)
+             category='feature', group='procedure', supported=True, twin=False)
 
     d = Deck('heat_transfer_steady', 'DC3D8 bar, steady heat conduction between two imposed temperatures')
     hexes = hex_block(d, 10, 1, 1, 40.0, 4.0, 4.0)
