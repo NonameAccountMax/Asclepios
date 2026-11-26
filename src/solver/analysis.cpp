@@ -91,6 +91,7 @@ void Analysis::setup() {
   temp_prev = temp;
   for (auto& iv : m.init_velocity) v[6 * iv.node + iv.dof] = iv.value;
   for (auto& s : m.steps) for (auto& l : s.loads) if (l.kind == LoadBlock::TEMPERATURE) has_temp = true;
+  for (auto& s : m.steps) if (s.coupled || s.proc == Step::HEAT) has_temp = true;
   for (auto& mat : m.materials) if (mat.damp_beta != 0) warn("material %s: stiffness proportional damping (BETA) ignored", mat.name.c_str());
 }
 
@@ -250,12 +251,21 @@ void Analysis::begin_step(const Step& st, int si, bool ramp_default) {
     switch (lb.kind) {
       case LoadBlock::BOUNDARY:
       case LoadBlock::VELOCITY_BC:
-      case LoadBlock::ACCELERATION_BC:
-        apply(loads.bcs, lb, lb.kind == LoadBlock::VELOCITY_BC, [&](int n, int d) { return u[6 * n + d]; });
+      case LoadBlock::ACCELERATION_BC: {
+        // temperature degree of freedom 11 (index 10): prescribed temperature of a heat transfer analysis
+        LoadBlock mech = lb, th = lb;
+        mech.nodal.clear(); th.nodal.clear();
+        for (auto nv : lb.nodal) {
+          if (nv.dof == 10) { nv.dof = 0; th.nodal.push_back(nv); }
+          else if (nv.dof < 6) mech.nodal.push_back(nv);
+        }
+        if (!th.nodal.empty()) apply(loads.temps, th, false, [&](int n, int) { return temp[n]; });
+        apply(loads.bcs, mech, lb.kind == LoadBlock::VELOCITY_BC, [&](int n, int d) { return u[6 * n + d]; });
         if (lb.kind == LoadBlock::ACCELERATION_BC)
           for (auto& nv : lb.nodal)
             for (auto& p : loads.bcs) if (p.node == nv.node && p.dof == nv.dof) { p.acceleration = true; p.velocity = false; }
         break;
+      }
       case LoadBlock::CLOAD:
         apply(loads.cloads, lb, false, [&](int, int) { return 0.0; });
         if (lb.follower)
@@ -298,7 +308,7 @@ void Analysis::update_fixed(const Step&) {
     local_bcs.push_back({node, dof, value});
     for (int k = 0; k < 3; ++k) report_rf[6 * node + (dof < 3 ? 0 : 3) + k] = 1;
   };
-  for (auto& b : m.model_bcs) set(b.node, b.dof, b.value);
+  for (auto& b : m.model_bcs) if (b.dof < 6) set(b.node, b.dof, b.value);
   for (auto& b : loads.bcs) set(b.node, b.dof, b.v1);
 }
 

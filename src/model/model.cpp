@@ -15,6 +15,7 @@ const char* eltype_name(ElType t) {
   switch (t) {
     case ElType::C3D8R: return "C3D8R";
     case ElType::C3D8: return "C3D8";
+    case ElType::DC3D8: return "DC3D8";
     case ElType::C3D8I: return "C3D8I";
     case ElType::C3D6: return "C3D6";
     case ElType::C3D4: return "C3D4";
@@ -107,7 +108,8 @@ int face_local_nodes(ElType t, int face, int nen, int* out) {
 ElType eltype_from(const std::string& n0, int& nn) {
   std::string n = upper(n0);
   if (n == "C3D8R") { nn = 8; return ElType::C3D8R; }
-  if (n == "C3D8" || n == "C3D8H") { nn = 8; return ElType::C3D8; }
+  if (n == "C3D8" || n == "C3D8H" || n == "C3D8T") { nn = 8; return ElType::C3D8; }
+  if (n == "DC3D8") { nn = 8; return ElType::DC3D8; }
   if (n == "C3D8I") { nn = 8; return ElType::C3D8I; }
   if (n == "C3D6") { nn = 6; return ElType::C3D6; }
   if (n == "C3D4") { nn = 4; return ElType::C3D4; }
@@ -411,9 +413,11 @@ class Builder {
     }
     std::string elset = c.has("ELSET") ? sc.prefix + upper(c.get("ELSET")) : "";
     std::vector<std::string> buf;
+    const bool heat = upper(tname) == "DC3D8" || upper(tname) == "C3D8T";
     auto flush = [&](std::vector<std::string>& toks) {
       Element e;
       e.type = t;
+      e.heat = heat;
       e.label = to_int(toks[0], &c);
       e.instance = sc.inst;
       for (size_t i = 1; i < toks.size() && (int)e.nodes.size() < nn; ++i) {
@@ -847,6 +851,13 @@ class Builder {
       else if (t == "ENERGY") mat.dmg_gf = v;
       else throw std::runtime_error("*DAMAGE EVOLUTION: TYPE=" + t + " not supported at " + c.where());
       if (v <= 0) throw std::runtime_error("*DAMAGE EVOLUTION: positive value expected at " + c.where());
+    } else if (k == "CONDUCTIVITY") {
+      if (c.getu("TYPE", "ISO") != "ISO") throw std::runtime_error("*CONDUCTIVITY: only TYPE=ISO supported at " + c.where());
+      if (c.data.size() > 1) warn_once("CONDT", "*CONDUCTIVITY: first row used (no temperature dependence)");
+      mat.conductivity = to_double(c.data.at(0).at(0), &c);
+    } else if (k == "SPECIFIC HEAT") {
+      if (c.data.size() > 1) warn_once("SPHT", "*SPECIFIC HEAT: first row used (no temperature dependence)");
+      mat.specific_heat = to_double(c.data.at(0).at(0), &c);
     } else if (k == "VISCOELASTIC") {
       const std::string dom = c.getu("TIME", c.has("FREQUENCY") ? "" : "PRONY");
       if (dom != "PRONY") throw std::runtime_error("*VISCOELASTIC: only TIME=PRONY supported at " + c.where());
@@ -967,7 +978,8 @@ class Builder {
       int a = to_int(d.at(1), &c);
       int b = d.size() > 2 && !d[2].empty() ? to_int(d[2], &c) : a;
       double v = d.size() > 3 && !d[3].empty() ? to_double(d[3], &c) : 0.0;
-      for (int k = a; k <= b; ++k) { if (k >= 1 && k <= 6) { dofs.push_back(k - 1); vals.push_back(v); } }
+      // dof 11: temperature (kept as dof index 10, a prescribed temperature)
+      for (int k = a; k <= b; ++k) { if ((k >= 1 && k <= 6) || k == 11) { dofs.push_back(k - 1); vals.push_back(v); } }
     }
     for (int n : nodes)
       for (size_t i = 0; i < dofs.size(); ++i) out.push_back({n, dofs[i], vals[i]});
@@ -1099,6 +1111,21 @@ class Builder {
         st.neig = to_int(d[0], &c);
         if (k == "FREQUENCY") { st.eig_min = at(1, 0.0); st.eig_max = at(2, 0.0); }
         else st.eig_max = at(1, 0.0);
+      } else if (k == "HEAT TRANSFER" || k == "COUPLED TEMPERATURE-DISPLACEMENT") {
+        st.proc = k == "HEAT TRANSFER" ? Step::HEAT : Step::STATIC;
+        st.coupled = k != "HEAT TRANSFER";
+        st.heat_steady = c.has("STEADY STATE");
+        st.deltmx = c.getd("DELTMX", 0.0);
+        have_proc = true;
+        st.dt0 = st.period = st.dtmax = 1.0; st.dtmin = 1e-5;
+        if (!c.data.empty()) {
+          auto& d = c.data[0];
+          st.dt0 = d.size() > 0 && !d[0].empty() ? to_double(d[0], &c) : 1.0;
+          st.period = d.size() > 1 && !d[1].empty() ? to_double(d[1], &c) : 1.0;
+          st.dtmin = d.size() > 2 && !d[2].empty() ? to_double(d[2], &c) : std::min(st.dt0, 1e-5 * st.period);
+          st.dtmax = d.size() > 3 && !d[3].empty() ? to_double(d[3], &c) : st.period;
+        }
+        if (!st.heat_steady && st.deltmx <= 0) st.dt0 = std::min(st.dt0, st.period);  // fixed increments
       } else if (k == "MODAL DYNAMIC") {
         st.proc = Step::MODAL_DYNAMIC;
         st.perturbation = true;

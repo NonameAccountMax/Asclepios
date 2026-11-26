@@ -10,6 +10,10 @@ void run_static_step(Analysis& A, const Step& st, int si);
 void run_riks_step(Analysis& A, const Step& st, int si);
 // linear perturbation procedures (linear.cpp): *FREQUENCY, *BUCKLE, *MODAL DYNAMIC, *STEADY STATE DYNAMICS, *STATIC
 void run_linear_step(Analysis& A, const Step& st, int si);
+// heat transfer (thermal.cpp): *HEAT TRANSFER steps; temperatures of an increment (dt = 0: steady state) into A.temp
+// from A.temp_prev, prescribed temperatures at step time st / total time tt; returns the largest change of a free node
+void run_heat_step(Analysis& A, const Step& st, int si);
+double heat_increment(Analysis& A, double dt, double st, double tt);
 
 // ---- shared by the implicit procedures (static.cpp)
 struct DofMap {

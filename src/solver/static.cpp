@@ -157,7 +157,9 @@ void run_static_step(Analysis& A, const Step& st, int si) {
   // with LONG TERM)
   A.mat_time = st.implicit_dynamic || st.visco ? 1.0 : st.long_term ? 1e30 : 0.0;
   // default amplitude: RAMP in static steps, STEP in dynamic ones
-  A.begin_step(st, si, st.implicit_dynamic ? st.amp_ramp == 1 : st.amp_ramp != 0);
+  // (transient coupled temperature-displacement: STEP, as transient heat transfer)
+  const bool step_default = st.implicit_dynamic || (st.coupled && !st.heat_steady);
+  A.begin_step(st, si, step_default ? st.amp_ramp == 1 : st.amp_ramp != 0);
   if (st.contact_defined) warn("general contact is not supported in *STATIC steps: ignored");
   OutputWriter& W = *A.writer;
   W.sta_header(si, st.name, false);
@@ -200,6 +202,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
 
   double t = 0, dt = std::min(st.dt0, st.period);
   int inc = 0, fast = 0;
+  double dT_inc = 0;  // coupled temperature-displacement: largest temperature change of the increment
   double qtilde = 0;
   int nq = 0;
   const double t0wall = wall();
@@ -236,7 +239,16 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     }
     A.spread_links(A.du);
     A.temp_prev = A.temp;
-    A.temperatures(tn, ttn);
+    if (st.coupled) {  // temperatures of the increment first (independent of the deformation), then the mechanics
+      dT_inc = heat_increment(A, st.heat_steady ? 0.0 : dt, tn, ttn);
+      if (!st.heat_steady && st.deltmx > 0 && dT_inc > st.deltmx * (1 + 1e-6)) {
+        A.temp = A.temp_prev;
+        --inc;
+        dt *= std::max(0.25, 0.85 * st.deltmx / dT_inc);
+        if (dt < st.dtmin) throw std::runtime_error("time increment smaller than the minimum in step " + st.name);
+        continue;
+      }
+    } else A.temperatures(tn, ttn);
     bool converged = false;
     int it = 0;
     double qmax_inc = 0;
@@ -393,6 +405,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     if (it - 1 <= 4) ++fast; else fast = 0;
     if (fast >= (dyn ? 1 : 2)) { dt = std::min(dt * 1.5, st.dtmax); fast = 0; }
     else if (it - 1 > 8) dt = std::max(dt * 0.75, st.dtmin);
+    if (st.coupled && !st.heat_steady && st.deltmx > 0 && dT_inc > 0) dt = std::min(dt, dt_last * 0.85 * st.deltmx / dT_inc);
   }
   std::fill(A.du.begin(), A.du.end(), 0.0);
   W.sta_line("\n THE STEP %d HAS COMPLETED: %d increments, wallclock %.1f s", si + 1, inc, wall() - t0wall);

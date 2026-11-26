@@ -1066,7 +1066,24 @@ def more_features():
              'linear temperature profile.', d.select(lambda x, y, z: near(y, 0) and near(z, 0) and x in (10.0, 20.0,
                                                                                                               30.0)),
              cold, False, 'exact', 'linear', reference='analytic', category='feature', group='procedure',
-             supported=False, reason=NS + 'heat transfer', twin=False)
+             supported=True, twin=False)
+
+    d = Deck('heat_transfer_transient', 'DC3D8 bar, transient heat conduction from a hot end (*HEAT TRANSFER, DELTMX)')
+    hexes = hex_block(d, 10, 1, 1, 40.0, 4.0, 4.0)
+    d.elements('DC3D8', 'EALL', hexes)
+    d.materials.add('COND')
+    d.model += ['*Solid Section, elset=EALL, material=COND', ',']
+    d.nset('HOT', d.select(lambda x, y, z: near(x, 40.0)))
+    d.nset('NALL', list(d.nodes))
+    cold = d.select(lambda x, y, z: near(x, 0))
+    d.initial += ['*Initial Conditions, type=TEMPERATURE', 'NALL, 20.']
+    d.steps += ['*Step, name=Heat, inc=1000', '*Heat Transfer, deltmx=5.', '0.1, 40., 1e-06, 4.', '*Boundary',
+                'FIX, 11, 11, 20.', 'HOT, 11, 11, 100.', '*Output, field, number interval=10', '*Node Output', 'NT',
+                '*End Step']
+    register(d, 'heat transfer', 'DC3D8', 'transient heat transfer', 'Transient conduction along a bar from a hot end '
+             '(backward Euler, increments limited by the temperature change).',
+             d.select(lambda x, y, z: near(y, 0) and near(z, 0) and x in (10.0, 20.0, 30.0)), cold, False, 'linear',
+             'linear', category='feature', group='procedure', twin=False)
 
     d = Deck('coupled_temp_displacement', 'C3D8T bar heated at one end, free expansion (coupled analysis)')
     hexes = hex_block(d, 10, 1, 1, 40.0, 4.0, 4.0)
@@ -1083,8 +1100,7 @@ def more_features():
                 '*Output, field, number interval=10', '*Node Output', 'U, RF, NT', '*End Step']
     register(d, 'coupled temperature-displacement', 'C3D8T', 'thermomechanical coupling', 'Transient conduction '
              'from a hot end and the resulting expansion.', d.select(lambda x, y, z: near(x, 40.0))[:2], fx, False,
-             'nonlinear', category='feature', group='procedure', supported=False,
-             reason=NS + 'coupled temperature-displacement analysis', twin=False)
+             'nonlinear', category='feature', group='procedure', supported=True, twin=False)
 
     d = Deck('ale_adaptive_mesh', 'Taylor-type impact with adaptive meshing (ALE, explicit)')
     hexes = hex_block(d, 3, 3, 20, 3.2, 3.2, 32.4)

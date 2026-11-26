@@ -9,7 +9,7 @@
 
 namespace abq {
 
-enum class ElType { C3D8R, C3D8, C3D8I, C3D6, C3D4, C3D10, C3D10M, S4R, S4, S3R, S3RS, B31, B32, T3D2, CONN3D2, R3D4, R3D3, SFM3D4, SFM3D3, M3D4R, M3D4, M3D3, SPRINGA, DASHPOTA, MASS, UNKNOWN };
+enum class ElType { C3D8R, C3D8, C3D8I, C3D6, C3D4, C3D10, C3D10M, DC3D8, S4R, S4, S3R, S3RS, B31, B32, T3D2, CONN3D2, R3D4, R3D3, SFM3D4, SFM3D3, M3D4R, M3D4, M3D3, SPRINGA, DASHPOTA, MASS, UNKNOWN };
 const char* eltype_name(ElType t);
 inline bool is_rigid_type(ElType t) { return t == ElType::R3D4 || t == ElType::R3D3; }
 // surface elements (SFM3D4R, SFM3D3): facets without stiffness or mass, moved by their boundary conditions
@@ -93,6 +93,8 @@ struct Material {
   // rate-dependent yield (*RATE DEPENDENT, TYPE=POWER LAW): flow stress times 1 + (plastic strain rate / D)^(1/n)
   double rate_D = 0, rate_n = 1;
   bool rate_dependent() const { return rate_D > 0; }
+  // heat transfer: isotropic conductivity and specific heat (temperature-independent)
+  double conductivity = 0, specific_heat = 0;
   // ductile damage (*DAMAGE INITIATION, CRITERION=DUCTILE): equivalent plastic strain at the onset of damage as a
   // function of the stress triaxiality; *DAMAGE EVOLUTION with linear softening: equivalent plastic displacement at
   // failure (TYPE=DISPLACEMENT) or fracture energy (TYPE=ENERGY, u_f = 2 G_f / yield stress at the onset)
@@ -179,6 +181,7 @@ struct Element {
   int instance = -1;
   std::vector<int> nodes;  // global node indices
   int section = -1;
+  bool heat = false;       // temperature degrees of freedom (DC3D8: heat transfer only; C3D8T: coupled, mechanics of C3D8)
 };
 
 struct FaceRef {
@@ -289,7 +292,7 @@ struct OutputRequest {
 
 struct Step {
   std::string name;
-  enum Proc { EXPLICIT, STATIC, FREQUENCY, BUCKLE, MODAL_DYNAMIC, STEADY_STATE } proc = EXPLICIT;
+  enum Proc { EXPLICIT, STATIC, FREQUENCY, BUCKLE, MODAL_DYNAMIC, STEADY_STATE, HEAT } proc = EXPLICIT;
   // linear perturbation step (*STEP, PERTURBATION; *FREQUENCY, *BUCKLE, *STEADY STATE DYNAMICS always): response about
   // the base state, loads and boundary conditions of the step only, not carried over
   bool perturbation = false;
@@ -316,6 +319,11 @@ struct Step {
   // time-dependent material response in a static step: *VISCO (creep and relaxation over the step time); *STATIC
   // responds instantaneously, or with the long-term moduli under LONG TERM
   bool visco = false, long_term = false;
+  // heat transfer (*HEAT TRANSFER: proc HEAT) and fully coupled temperature-displacement (*COUPLED TEMPERATURE-
+  // DISPLACEMENT: proc STATIC with coupled): steady state or transient (backward Euler), largest temperature change
+  // of an increment (DELTMX, 0: none)
+  bool coupled = false, heat_steady = false;
+  double deltmx = 0;
   int maxinc = 100;
   // explicit
   double bv1 = 0.06, bv2 = 1.2;

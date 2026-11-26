@@ -80,6 +80,7 @@ int main(int argc, char** argv) {
       const Step& st = m.steps[s];
       if (st.proc == Step::EXPLICIT) run_explicit_step(A, st, (int)s);
       else if (st.riks) run_riks_step(A, st, (int)s);
+      else if (st.proc == Step::HEAT) run_heat_step(A, st, (int)s);
       else if (st.proc != Step::STATIC || st.perturbation) run_linear_step(A, st, (int)s);
       else run_static_step(A, st, (int)s);
     }
