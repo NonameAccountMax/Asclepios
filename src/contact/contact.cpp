@@ -181,7 +181,7 @@ struct GeneralContact::Impl {
   std::vector<int> cand_off, cand;
   std::vector<double> xref;   // node positions at the last candidate search
   std::vector<int> tracked;   // nodes whose motion triggers a new search: slaves, facet and segment nodes
-  double margin = 0, cell = 0;
+  double margin = 0, cell = 0, lavg = 1;
   std::vector<int> last_master;
   std::vector<signed char> last_side;
   std::vector<Vec3> ft;
@@ -524,6 +524,7 @@ bool GeneralContact::define(const Step& st) {
   }
   for (size_t s = 0; s < P.seg_r.size(); ++s) { lsum += norm(m.X[P.seg[2 * s + 1]] - m.X[P.seg[2 * s]]); ++cnt; hmax = std::max(hmax, P.seg_r[s]); }
   double lavg = cnt ? lsum / cnt : 1.0;
+  P.lavg = lavg;
   P.margin = std::max(0.25 * lavg, hmax) + P.clear;
   P.cell = 2 * lavg + 2 * hmax + P.margin;
   active_ = !P.slaves.empty() && (!P.tri.empty() || !P.seg.empty());
@@ -533,10 +534,9 @@ bool GeneralContact::define(const Step& st) {
   return active_;
 }
 
-void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, int increment) {
-  std::fill(f.begin(), f.end(), 0.0);
-  ncontacts_ = 0;
-  if (!active_ || (dt <= 1e-20 && !p_->first_eval)) return;  // zero increment: only the initial adjustment
+// shared by compute() and implicit_points(): free shell edges moved back into the shell, vertex normals of the
+// analytical surfaces, candidate search when the nodes moved more than half the margin (configuration X + u + du)
+void GeneralContact::prepare() {
   Impl& P = *p_;
   const Analysis& A = A_;
   const int nn = A.nn;
@@ -710,6 +710,23 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     P.cand.resize(P.cand_off[nent]);
     for (int si = 0; si < nent; ++si) std::copy(lists[si].begin(), lists[si].end(), P.cand.begin() + P.cand_off[si]);
   }
+}
+
+void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, int increment) {
+  std::fill(f.begin(), f.end(), 0.0);
+  ncontacts_ = 0;
+  if (!active_ || (dt <= 1e-20 && !p_->first_eval)) return;  // zero increment: only the initial adjustment
+  Impl& P = *p_;
+  const Analysis& A = A_;
+  const int nn = A.nn;
+  auto X = [&](int n) {
+    return Vec3(A.X[3 * n] + A.u[6 * n] + A.du[6 * n], A.X[3 * n + 1] + A.u[6 * n + 1] + A.du[6 * n + 1],
+                A.X[3 * n + 2] + A.u[6 * n + 2] + A.du[6 * n + 2]);
+  };
+  const int ns = (int)P.slaves.size(), nent = P.nent;
+
+  prepare();
+  auto Xs = [&](int n) { return X(n) + P.shift[n]; };
 
   // ---- penalty stiffness of a pair, from the frequency bound w_i^2 = 1/dt_e^2 of each node (stable increment
   // of its stiffest element) and the contact frequency W^2 = max(w_ref^2/3, 1.1 max_i w_i^2) of the pair, w_ref =
@@ -1256,6 +1273,139 @@ void GeneralContact::load(BinIn& in) {
   in.pod(P.first_eval);
   P.resize_state(P.nent);  // files without the edge entities
   P.xref.clear();  // candidate search redone at the first evaluation
+}
+
+}  // namespace abq
+
+namespace abq {
+
+double GeneralContact::friction() const { return p_ ? p_->mu : 0.0; }
+const SurfaceInteraction* GeneralContact::softened() const { return p_ ? p_->soft : nullptr; }
+double GeneralContact::clearance() const { return p_ ? p_->clear : 0.0; }
+double GeneralContact::mean_facet_length() const { return p_ ? p_->lavg : 1.0; }
+
+void GeneralContact::implicit_points(std::vector<Point>& pts, double near) {
+  pts.clear();
+  if (!active_) return;
+  prepare();
+  Impl& P = *p_;
+  const Analysis& A = A_;
+  auto X = [&](int n) {
+    return Vec3(A.X[3 * n] + A.u[6 * n] + A.du[6 * n], A.X[3 * n + 1] + A.u[6 * n + 1] + A.du[6 * n + 1],
+                A.X[3 * n + 2] + A.u[6 * n + 2] + A.du[6 * n + 2]);
+  };
+  auto Xs = [&](int n) { return X(n) + P.shift[n]; };
+  // facet normal; quadrilaterals: one normal for their two triangles (cross product of the diagonals)
+  auto facet_normal = [&](int id) {
+    const int* tn = &P.tri[3 * id];
+    Vec3 nrm = normalized(cross(Xs(tn[1]) - Xs(tn[0]), Xs(tn[2]) - Xs(tn[0])));
+    const int* qf = &P.fac[4 * id];
+    if (qf[3] >= 0) {
+      const Vec3 nq = normalized(cross(Xs(qf[2]) - Xs(qf[0]), Xs(qf[3]) - Xs(qf[1])));
+      nrm = dot(nq, nrm) >= 0 ? nq : nq * -1.0;
+    }
+    return nrm;
+  };
+  auto Xo = [&](int n) {  // start of the increment
+    return Vec3(A.X[3 * n] + A.u[6 * n], A.X[3 * n + 1] + A.u[6 * n + 1], A.X[3 * n + 2] + A.u[6 * n + 2]) + P.shift[n];
+  };
+  const int ns = (int)P.slaves.size();
+  std::vector<Point> found(ns);
+  std::vector<char> ok(ns, 0);
+#pragma omp parallel for num_threads(A.nthreads) schedule(dynamic, 64)
+  for (int si = 0; si < ns; ++si) {
+    const int n0 = P.slaves[si];
+    const Vec3 x = Xs(n0);
+    const double hs = P.slave_h[si];
+    Point bshell{}, bsolid{};
+    bool have_shell = false, have_solid = false;
+    for (int c = P.cand_off[si]; c < P.cand_off[si + 1]; ++c) {
+      const int id = P.cand[c];
+      if (id < 0) continue;  // beam segments: no implicit contact
+      const int* tn = &P.tri[3 * id];
+      const Vec3 a = Xs(tn[0]), b = Xs(tn[1]), cc = Xs(tn[2]);
+      double w[3];
+      bool in;
+      const Vec3 q = closest_on_tri(x, a, b, cc, w, in);
+      Vec3 nrm = facet_normal(id);
+      const bool solid = P.tri_solid[id] != 0;
+      if (solid && !P.st_off.empty()) {
+        // solid faces: normal interpolated from the vertex normals (mean of the adjacent exterior faces within 30
+        // degrees), continuous from one facet to the next: a slave node at a shared vertex does not switch between
+        // the tilted normals of the faces around it from one iteration to the next
+        double wq[3];
+        plane_coords(q, a, b, cc, wq);
+        Vec3 ns;
+        for (int k = 0; k < 3; ++k) {
+          Vec3 vn;
+          for (int j = P.st_off[tn[k]]; j < P.st_off[tn[k] + 1]; ++j) {
+            const Vec3 nf = facet_normal(P.st[j]);
+            if (dot(nf, nrm) > 0.866) vn = vn + nf;
+          }
+          ns = ns + (norm(vn) > 0 ? normalized(vn) : nrm) * std::max(wq[k], 0.0);
+        }
+        if (norm(ns) > 0.5) nrm = normalized(ns);
+      }
+      const Vec3 d = x - q;
+      const double s = dot(d, nrm);
+      const double lat = in ? 0.0 : norm(d - nrm * s);
+      const double hsum = hs + P.tri_h[id] + P.clear;
+      double pen;
+      Vec3 nv;
+      if (lat <= 0.1 * hsum) {
+        if (solid) {
+          if (s < -P.tri_depth[id]) continue;
+          pen = hsum - s;
+          nv = nrm;
+        } else {  // two-sided shell facet: the side where the node was at the start of the increment
+          const Vec3 a0 = Xo(tn[0]), b0 = Xo(tn[1]), c0 = Xo(tn[2]);
+          const double s0 = dot(Xo(n0) - a0, normalized(cross(b0 - a0, c0 - a0)));
+          const int side = s0 >= 0 ? 1 : -1;
+          pen = hsum - side * s;
+          nv = nrm * side;
+        }
+      } else {  // rounded edge or vertex (shell facets only: on solid faces the normal would switch between the face
+                // and its edge from one iteration to the next)
+        if (solid) continue;
+        const double dist = norm(d);
+        if (dist < 1e-14) continue;
+        pen = hsum - dist;
+        nv = d / dist;
+      }
+      if (pen <= -near || (near == 0 && pen <= 0)) continue;
+      Point pt{};
+      pt.slave = n0;
+      pt.master = id;
+      pt.pen = pen;
+      pt.n = nv;
+      pt.area = P.area.empty() ? 0.0 : P.area[si];
+      double wp[3];
+      plane_coords(q, X(tn[0]), X(tn[1]), X(tn[2]), wp);
+      double sw = 0;
+      for (int k = 0; k < 3; ++k) sw += (wp[k] = std::max(wp[k], 0.0));
+      for (int k = 0; k < 3; ++k) wp[k] /= sw;
+      const int* qf = &P.fac[4 * id];
+      if (qf[3] >= 0) {  // force on the four nodes of the quadrilateral, bilinear weights
+        const double xi = P.fac_half[id] ? wp[1] : wp[1] + wp[2], eta = P.fac_half[id] ? wp[1] + wp[2] : wp[2];
+        pt.nm = 4;
+        const double wf[4] = {(1 - xi) * (1 - eta), xi * (1 - eta), xi * eta, (1 - xi) * eta};
+        for (int k = 0; k < 4; ++k) { pt.mn[k] = qf[k]; pt.w[k] = wf[k]; }
+      } else {
+        pt.nm = 3;
+        for (int k = 0; k < 3; ++k) { pt.mn[k] = tn[k]; pt.w[k] = wp[k]; }
+      }
+      // shell facets: the deepest; inside a solid: the face nearest to the node (shallowest penetration); a face
+      // actually penetrated wins over faces only near contact (a node at the corner of a punch is also on the plane
+      // of its side faces)
+      if (solid) {
+        const bool better = !have_solid || (pen > 0 && (bsolid.pen <= 0 || pen < bsolid.pen)) || (pen <= 0 && bsolid.pen <= 0 && pen > bsolid.pen);
+        if (better) { bsolid = pt; have_solid = true; }
+      } else if (!have_shell || pen > bshell.pen) { bshell = pt; have_shell = true; }
+    }
+    if (have_solid && (!have_shell || bsolid.pen > bshell.pen)) { found[si] = bsolid; ok[si] = 1; }
+    else if (have_shell) { found[si] = bshell; ok[si] = 1; }
+  }
+  for (int si = 0; si < ns; ++si) if (ok[si]) pts.push_back(found[si]);
 }
 
 }  // namespace abq

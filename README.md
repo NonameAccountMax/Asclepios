@@ -19,7 +19,7 @@ replacement for a commercial package.
 | Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation; LONG TERM), `*VISCO` (time-dependent material response), `*STATIC, RIKS` (arc length), `*HEAT TRANSFER` and `*COUPLED TEMPERATURE-DISPLACEMENT` (steady state or transient, DELTMX), linear perturbation steps (`*STEP, PERTURBATION` with `*STATIC`; `*FREQUENCY`, `*BUCKLE`, mode-based `*MODAL DYNAMIC` and `*STEADY STATE DYNAMICS` with `*MODAL DAMPING`), `*DYNAMIC` implicit (HHT-α: APPLICATION=MODERATE DISSIPATION, TRANSIENT FIDELITY, QUASI-STATIC, ALPHA), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
 | Loads | `*BOUNDARY` (displacement, velocity, acceleration, temperature (degree of freedom 11), ENCASTRE…, OP=NEW), `*CLOAD` (FOLLOWER), `*DSLOAD` / `*DLOAD` P (follower pressure), `*DLOAD` GRAV, `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, EQUALLY SPACED, PERIODIC, DECAY, step or total time), `*INITIAL CONDITIONS` (VELOCITY, TEMPERATURE, STRESS), `*TRANSFORM` (rectangular: loads and zero conditions in local axes); loads propagate between steps |
 | Constraints | `*TIE` (surface ties of solid faces and shells, non-matching meshes; ADJUST, POSITION TOLERANCE, NO ROTATION), `*COUPLING` (`*KINEMATIC`, `*DISTRIBUTING` with UNIFORM / LINEAR / QUADRATIC / CUBIC weighting, constrained degrees of freedom), `*RIGID BODY` (REF NODE, ELSET, PIN / TIE NSET, ANALYTICAL SURFACE), `*EQUATION`, `*MPC` (BEAM, TIE, PIN), CONN3D2 JOIN |
-| Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), `*CONTACT EXCLUSIONS`, global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`, `*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=TABULAR / LINEAR / EXPONENTIAL` (softened); node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), rigid surfaces (R3D4 / R3D3 elements, analytical `*SURFACE, TYPE=CYLINDER`), surface elements, node-to-beam segment, beam-to-beam edge contact; explicit `*CONTACT PAIR` (kinematic hard contact, balanced or pure master-slave, WEIGHT) |
+| Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), `*CONTACT EXCLUSIONS`, global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`, `*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=TABULAR / LINEAR / EXPONENTIAL` (softened); node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), rigid surfaces (R3D4 / R3D3 elements, analytical `*SURFACE, TYPE=CYLINDER`), surface elements, node-to-beam segment, beam-to-beam edge contact; explicit `*CONTACT PAIR` (kinematic hard contact, balanced or pure master-slave, WEIGHT); implicit procedures: penalty contact on the facets of the general contact (shells, solid faces, rigid facets; beams excluded), Coulomb friction, `*CONTACT PAIR` as general contact between its surfaces |
 | Output | `*OUTPUT, FIELD` (NUMBER INTERVAL / TIME INTERVAL; FREQUENCY in static steps, ignored in explicit ones as Abaqus/Explicit does), `*OUTPUT, HISTORY` (number of intervals) |
 
 Unknown keywords produce a single warning and are ignored.
@@ -186,6 +186,14 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   ways) and their edge contacts. Surface elements (SFM3D4R / SFM3D3) are two-sided facets without thickness whose
   nodes are slaves too; without mass (no DENSITY) they carry no contact stiffness, as in Abaqus/Explicit where such
   a crimper passes through the tube.
+- **Contact in implicit procedures** (static, implicit dynamics): for each slave node the facet it penetrates (shell
+  facets two-sided on the side of the start of the increment, solid faces and rigid facets one-sided with a normal
+  interpolated from vertex normals, continuous from one facet to the next; quadrilaterals with one normal), penalty
+  7 times the largest translational diagonal term of the element tangents (softer of slave and master; reaction and
+  contact energy of a punch pressed on a block within 2 % and 4 % of the reference) starting quadratically, Coulomb
+  friction with an elastic slip of 0.5 % of the mean facet length, consistent tangent; points within 1e-3 of the
+  facet size of contact keep a stiffness in the tangent, so the active set does not chatter. Contact work outside
+  ALLIE (penalty energy and friction dissipation, ALLFD).
 - **Contact pairs** (`*CONTACT PAIR`, explicit): kinematic hard contact. At the end of each increment the next one is
   predicted without contact; the slave nodes that would penetrate the master surface are put back on it by
   corrections of the current accelerations that conserve momentum (resisting force m·d/Δt² distributed to the master
@@ -328,7 +336,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-293 small decks, run after every change of the solver:
+291 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2, and the other element types of the feature table) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
@@ -398,7 +406,10 @@ Mesh-convergence curves and deformed shapes of every benchmark: [validation/LITE
 
 Features exercised by the validation suite and not supported yet:
 
-- Contact: contact in implicit procedures; contact pairs with penalty enforcement, friction or softened behaviour;
+- Contact: impacts in implicit dynamics (the reference treats them in its own way, with an energy loss of about 40 %
+  at the impact), beam contact and surface-to-surface enforcement in implicit procedures (non-matching contact faces:
+  12 % on the reaction of a pressed punch); quasi-static pressing in explicit dynamics (reaction 18 % below the
+  reference, not explained); explicit contact pairs with penalty enforcement, friction or softened behaviour;
   surface-specific contact property assignments; one-sided SPOS/SNEG surfaces in general contact; analytical
   surfaces other than CYLINDER (REVOLUTION, SEGMENTS).
 - Constraints: connector stops other than the length of AXIAL connectors, stops in static procedures; rigid links

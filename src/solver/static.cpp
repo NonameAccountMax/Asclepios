@@ -58,6 +58,149 @@ int eq_terms(const Analysis& A, const DofMap& dm, int i, int* eqs, double* cs) {
   return n;
 }
 
+// Contact in the implicit procedures: penalty on the contact points of the general contact (facets only), normal
+// stiffness 7 times the representative stiffness of the underlying elements (largest translational diagonal term
+// of the element tangents at the slave node and at the master nodes, the softer side; the factor reproduces the
+// reaction and the contact energy of a punch pressed on a block in the reference solver, whose default is 10 times
+// its own measure of the element stiffness), starting quadratically over 1e-6 of the mean facet length; Coulomb
+// friction with a penalty limited to an elastic slip of 0.5 % of the mean facet length. Contact forces enter the
+// internal forces (residual and reactions); their tangent is k g g^T in the normal direction (and in the tangent
+// plane while sticking); points within 1e-3 of the mean facet length of contact keep a stiffness in the tangent
+// (stable active set during the iterations).
+struct ImplicitContact {
+  GeneralContact* gc = nullptr;
+  std::vector<GeneralContact::Point> pts;
+  std::vector<double> kn, kt;      // per point: normal and tangential tangent stiffnesses
+  std::vector<Vec3> ftan;          // per point: tangential force
+  std::vector<Vec3> ft_c;          // per node: committed tangential force (friction)
+  std::vector<double> kd;          // per node: representative translational stiffness of its elements
+  double mu = 0, slip = 0;
+  double epot = 0;                 // elastic energy of the normal penalty (last evaluation)
+  double d0 = 0;                   // overclosure over which the penalty force starts quadratically
+  const SurfaceInteraction* soft = nullptr;
+  double clear = 0;
+  bool active() const { return gc != nullptr; }
+};
+
+void contact_forces(Analysis& A, ImplicitContact& C, std::vector<double>& fcon, bool commit,
+                    std::vector<double>* ftan = nullptr) {
+  std::fill(fcon.begin(), fcon.end(), 0.0);
+  if (ftan) std::fill(ftan->begin(), ftan->end(), 0.0);
+  // points near contact keep their stiffness in the tangent (no force): stable active set during the iterations
+  C.d0 = 1e-6 * C.gc->mean_facet_length();
+  C.gc->implicit_points(C.pts, 1e-3 * C.gc->mean_facet_length());
+  const size_t np = C.pts.size();
+  C.kn.assign(np, 0.0); C.kt.assign(np, 0.0); C.ftan.assign(np, Vec3());
+  C.epot = 0;
+  std::vector<Vec3> ft_new;
+  if (commit) ft_new.assign(A.nn, Vec3());
+  for (size_t i = 0; i < np; ++i) {
+    const auto& p = C.pts[i];
+    const double ks = C.kd[p.slave];
+    double km = 0;
+    for (int a = 0; a < p.nm; ++a) km += p.w[a] * C.kd[p.mn[a]];
+    const double krep = ks > 0 && km > 0 ? std::min(ks, km) : std::max(ks, km);
+    double f, kk;
+    if (C.soft) {
+      double dp = 0;
+      f = p.area * C.soft->pressure(p.pen - C.clear, &dp);
+      kk = p.area * dp;
+    } else {
+      // linear penalty with a quadratic start over a small overclosure d0 (continuous slope: Newton iterations
+      // do not chatter on the nodes at the edge of the contact zone)
+      const double k = 7.0 * krep, d0 = C.d0;
+      if (p.pen <= 0) { f = 0; kk = k; }
+      else if (p.pen < d0) { f = 0.5 * k * p.pen * p.pen / d0; kk = k * p.pen / d0; }
+      else { f = k * (p.pen - 0.5 * d0); kk = k; }
+    }
+    if (!(f > 0)) {  // near contact: stiffness only
+      if (!C.soft) C.kn[i] = 0.5 * kk;
+      continue;
+    }
+    C.epot += 0.5 * f * (C.soft ? p.pen - C.clear : p.pen);
+    Vec3 F = p.n * f;
+    if (C.mu > 0 && C.slip > 0) {  // Coulomb friction, elastic slip up to C.slip
+      Vec3 dus = load3(&A.du[6 * p.slave]);
+      for (int a = 0; a < p.nm; ++a) dus = dus - load3(&A.du[6 * p.mn[a]]) * p.w[a];
+      dus = dus - p.n * dot(dus, p.n);
+      Vec3 f0 = C.ft_c[p.slave];
+      f0 = f0 - p.n * dot(f0, p.n);
+      const double kt = C.mu * f / C.slip;
+      Vec3 ft = f0 - dus * kt;
+      const double lim = C.mu * f, mag = norm(ft);
+      if (mag > lim && mag > 0) ft = ft * (lim / mag);
+      else C.kt[i] = kt;
+      C.ftan[i] = ft;
+      F = F + ft;
+      if (commit) ft_new[p.slave] = ft;
+    }
+    C.kn[i] = kk;
+    // internal force convention: the contact force F acts on the slave, -w F on the master nodes
+    for (int k = 0; k < 3; ++k) {
+      fcon[6 * p.slave + k] -= F[k];
+      for (int a = 0; a < p.nm; ++a) fcon[6 * p.mn[a] + k] += p.w[a] * F[k];
+      if (ftan) {
+        (*ftan)[6 * p.slave + k] -= C.ftan[i][k];
+        for (int a = 0; a < p.nm; ++a) (*ftan)[6 * p.mn[a] + k] += p.w[a] * C.ftan[i][k];
+      }
+    }
+  }
+  if (commit) C.ft_c = ft_new;
+}
+
+void contact_tangent(const Analysis& A, const DofMap& dm, const ImplicitContact& C,
+                     std::vector<Eigen::Triplet<double>>& trip) {
+  for (size_t i = 0; i < C.pts.size(); ++i) {
+    const auto& p = C.pts[i];
+    if (C.kn[i] <= 0 && C.kt[i] <= 0) continue;
+    // directions: the normal, and the tangent plane while sticking
+    Vec3 dirs[3];
+    double kdir[3];
+    int nd = 0;
+    dirs[nd] = p.n; kdir[nd++] = C.kn[i];
+    if (C.kt[i] > 0) {
+      Vec3 t1 = std::fabs(p.n.x) < 0.9 ? cross(p.n, Vec3(1, 0, 0)) : cross(p.n, Vec3(0, 1, 0));
+      t1 = normalized(t1);
+      dirs[nd] = t1; kdir[nd++] = C.kt[i];
+      dirs[nd] = cross(p.n, t1); kdir[nd++] = C.kt[i];
+    }
+    int nodes[5];
+    double wts[5];
+    nodes[0] = p.slave; wts[0] = 1.0;
+    for (int a = 0; a < p.nm; ++a) { nodes[1 + a] = p.mn[a]; wts[1 + a] = -p.w[a]; }
+    const int nnod = 1 + p.nm;
+    for (int d = 0; d < nd; ++d) {
+      int eq[15];
+      double gv[15];
+      int ng = 0;
+      for (int a = 0; a < nnod; ++a)
+        for (int k = 0; k < 3; ++k) {
+          int e2[64];
+          double c2[64];
+          const int nt = eq_terms(A, dm, 6 * nodes[a] + k, e2, c2);
+          for (int t = 0; t < nt && ng < 15; ++t) { eq[ng] = e2[t]; gv[ng] = wts[a] * dirs[d][k] * c2[t]; ++ng; }
+        }
+      for (int x = 0; x < ng; ++x)
+        for (int y = 0; y < ng; ++y) trip.push_back({eq[x], eq[y], kdir[d] * gv[x] * gv[y]});
+    }
+  }
+}
+
+// representative stiffness of each node: largest translational diagonal term of the element tangents
+void node_stiffness(const Analysis& A, const DofMap& dm, const std::vector<Eigen::Triplet<double>>& trip,
+                    std::vector<double>& kd) {
+  std::vector<double> diag(dm.neq, 0.0);
+  for (const auto& t : trip) if (t.row() == t.col()) diag[t.row()] += t.value();
+  kd.assign(A.nn, 0.0);
+  for (int n = 0; n < A.nn; ++n)
+    for (int k = 0; k < 3; ++k) {
+      const int e = dm.eq[6 * n + k];
+      if (e >= 0) kd[n] = std::max(kd[n], diag[e]);
+    }
+}
+
+double dt0_for_contact(const Step& st) { return std::min(st.dt0, st.period); }
+
 }  // namespace
 
 DofMap make_dofmap(const Analysis& A) {
@@ -161,7 +304,30 @@ void run_static_step(Analysis& A, const Step& st, int si) {
   // (transient coupled temperature-displacement: STEP, as transient heat transfer)
   const bool step_default = st.implicit_dynamic || (st.coupled && !st.heat_steady);
   A.begin_step(st, si, step_default ? st.amp_ramp == 1 : st.amp_ramp != 0);
-  if (st.contact_defined) warn("general contact is not supported in *STATIC steps: ignored");
+  // contact: general contact of the step, or the contact pairs treated as general contact between their surfaces
+  ImplicitContact IC;
+  if (st.contact_defined || !st.contact_pairs.empty()) {
+    Step cs = st;
+    if (!st.contact_defined) {
+      cs.contact_defined = true;
+      cs.contact_all_exterior = false;
+      cs.contact_surfaces.clear();
+      for (const auto& cp : st.contact_pairs) {
+        cs.contact_surfaces.push_back(cp.first);
+        if (cp.second != cp.first) cs.contact_surfaces.push_back(cp.second);
+        if (cp.interaction >= 0) cs.contact_property = cp.interaction;
+      }
+      warn("*CONTACT PAIR in an implicit step: penalty contact between the surfaces of the pairs");
+    }
+    if (!A.contact) A.contact = std::make_unique<GeneralContact>(A);
+    if (A.contact->define(cs)) {
+      IC.gc = A.contact.get();
+      IC.mu = IC.gc->friction();
+      IC.soft = IC.gc->softened();
+      IC.clear = IC.gc->clearance();
+      IC.ft_c.assign(nn, Vec3());
+    }
+  }
   OutputWriter& W = *A.writer;
   W.sta_header(si, st.name, false);
   info("\n STEP %d  %s  (%s, %s)  period %g", si + 1, st.name.c_str(), st.implicit_dynamic ? "implicit dynamic" : st.visco ? "visco" : "static",
@@ -171,6 +337,14 @@ void run_static_step(Analysis& A, const Step& st, int si) {
   const DofMap dm = make_dofmap(A);
   info("  %d equations", dm.neq);
   const double hfd = fd_step(A);
+  std::vector<double> fcon(6 * nn, 0.0), fcon_c(6 * nn, 0.0), ftan(6 * nn, 0.0), ftan_c(6 * nn, 0.0);
+  if (IC.active()) {  // representative stiffness of the nodes from the element tangents of the start state
+    std::fill(A.du.begin(), A.du.end(), 0.0);
+    std::vector<Eigen::Triplet<double>> trip;
+    assemble_tangent(A, dm, dt0_for_contact(st), hfd, trip);
+    node_stiffness(A, dm, trip, IC.kd);
+    IC.slip = 0.005 * A.contact->mean_facet_length();
+  }
 
   // implicit dynamics (HHT-alpha): lumped masses, initial accelerations from equilibrium
   const bool dyn = st.implicit_dynamic;
@@ -204,6 +378,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
   double t = 0, dt = std::min(st.dt0, st.period);
   int inc = 0, fast = 0;
   double dT_inc = 0;  // coupled temperature-displacement: largest temperature change of the increment
+  double kscale = 0;  // largest diagonal term of the first tangent of the increment
   double qtilde = 0;
   int nq = 0;
   const double t0wall = wall();
@@ -257,6 +432,10 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     for (it = 1; it <= 16; ++it) {
       // residual
       A.eval_elements(dt, 0, 0, false, false, A.fint);
+      if (IC.active()) {
+        contact_forces(A, IC, fcon, false);
+        for (int i = 0; i < 6 * nn; ++i) A.fint[i] += fcon[i];
+      }
       A.external_forces(tn, ttn, A.fext);
       double fsum = 0;
       int fcnt = 0;
@@ -285,25 +464,38 @@ void run_static_step(Analysis& A, const Step& st, int si) {
           if (fa > 0) { fsum += fa; ++fcnt; }
         }
       }
-      for (double r : req) rmax = std::max(rmax, std::fabs(r));
+      int rarg = -1;
+      for (int q = 0; q < dm.neq; ++q) if (std::fabs(req[q]) > rmax) { rmax = std::fabs(req[q]); rarg = q; }
       double qcur = fcnt ? fsum / fcnt : 0;
       if (it == 1) qmax_inc = qcur;
       double qt = nq ? std::max(qtilde, qcur) : qcur;
       // a state released to zero force (e.g. initial stresses relaxed) keeps a reference: the force at the start of
       // the increment
       qt = std::max(qt, 1e-3 * qmax_inc);
+      // no force at all (free flight before an impact): the residual is compared with a force scale of the model,
+      // 1e-12 x largest stiffness of the last tangent x shortest element edge
+      qt = std::max(qt, 1e-12 * kscale * (hfd / 1e-7));
       if (qt <= 0) qt = 1e-300;
       // a diverged iterate (a force not finite, reactions included) is never accepted: NaN would be skipped by
       // the maxima below, and an infinite reaction would make the relative criterion trivially satisfied
       if (!finite || !std::isfinite(rmax) || !std::isfinite(qcur)) break;
       static const bool trace_newton = std::getenv("ABQ_TRACE_NEWTON") != nullptr;
-      if (trace_newton) std::fprintf(stderr, "NEWTON inc %d it %d dt %.3e rmax %.3e qt %.3e cmax %.3e dumax %.3e\n", inc, it, dt, rmax, qt, cmax, dumax);
+      if (trace_newton) {
+        int dof = -1;
+        for (int i = 0; i < 6 * nn && rarg >= 0; ++i) if (dm.eq[i] == rarg) { dof = i; break; }
+        std::fprintf(stderr, "NEWTON inc %d it %d dt %.3e rmax %.3e (node %d dof %d) qt %.3e cmax %.3e dumax %.3e\n", inc, it, dt, rmax,
+                     dof >= 0 ? A.m.node_label[dof / 6] : -1, dof % 6 + 1, qt, cmax, dumax);
+      }
       if (it > 1 && rmax <= 0.005 * qt && cmax <= 0.01 * std::max(dumax, 1e-300)) { converged = true; break; }
       if (rmax <= 1e-8 * qt && it > 1) { converged = true; break; }
       if (dm.neq == 0) { converged = true; break; }  // fully prescribed
       // tangent
       std::vector<Eigen::Triplet<double>> trip;
       assemble_tangent(A, dm, dt, hfd, trip);
+      if (IC.active()) {
+        node_stiffness(A, dm, trip, IC.kd);
+        contact_tangent(A, dm, IC, trip);
+      }
       if (dyn) {
         for (auto& tr : trip) tr = Eigen::Triplet<double>(tr.row(), tr.col(), (1 + ha) * tr.value());
         for (int i = 0; i < 6 * nn; ++i) {
@@ -317,6 +509,10 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       // tiny regularisation of dofs without stiffness (e.g. drilling of isolated nodes)
       for (int i = 0; i < dm.neq; ++i) Kg.coeffRef(i, i) += 1e-12 * (1 + std::fabs(Kg.coeff(i, i)));
       Kg.makeCompressed();
+      if (it == 1) {  // scale of the increment: its first tangent (not a diverging iterate)
+        kscale = 0;
+        for (int i = 0; i < dm.neq; ++i) kscale = std::max(kscale, std::fabs(Kg.coeff(i, i)));
+      }
       Eigen::SparseLU<Eigen::SparseMatrix<double>> lu;
       lu.analyzePattern(Kg);
       lu.factorize(Kg);
@@ -346,6 +542,18 @@ void run_static_step(Analysis& A, const Step& st, int si) {
     }
     // commit
     Analysis::ElemSum S = A.eval_elements(dt, 0, 0, false, true, A.fint);
+    double dWc = 0, dWf = 0;  // work of the contact forces: normal (penalty) and friction
+    if (IC.active()) {
+      contact_forces(A, IC, fcon, true, &ftan);
+      for (int i = 0; i < 6 * nn; ++i) {
+        A.fint[i] += fcon[i];
+        dWf += 0.5 * (ftan_c[i] + ftan[i]) * A.du[i];
+        dWc += 0.5 * (fcon_c[i] + fcon[i]) * A.du[i];
+      }
+      dWc -= dWf;
+      fcon_c = fcon;
+      ftan_c = ftan;
+    }
     A.en.plastic += S.e_plastic;
     A.en.viscous += S.e_visc;
     double dWi = 0, dWe = 0;
@@ -384,7 +592,11 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       A.en.damping += dWd;
       fint0 = A.fint; fext0 = A.fext;
     }
-    A.en.internal += dWi - S.e_visc + S.e_corr;
+    A.en.internal += dWi - dWc - dWf - S.e_visc + S.e_corr;
+    // contact energy: elastic energy of the penalty springs (a state function: an impact within one increment makes
+    // the trapezoidal work of the contact forces meaningless) plus the friction dissipation, also reported as ALLFD
+    A.en.friction += dWf;
+    if (IC.active()) A.en.contact = IC.epot + A.en.friction;
     A.en.external += dWe;
     fint_c = A.fint;
     fext_c = A.fext;

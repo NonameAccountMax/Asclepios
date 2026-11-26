@@ -59,6 +59,17 @@ QS_DURATION = {}     # case name -> duration of its quasi-static explicit twin (
 QS_DAMPING = {}      # case name -> mass-proportional damping of every material in its quasi-static explicit twin
 CASES = []
 KNOWN = {}           # case name -> documented limitation (KNOWN FAIL)
+_IMPACT_STD = ('implicit dynamic impact: the reference solver treats impacts in implicit dynamics in its own way '
+               '(at the first contact of the block on the plate its kinetic energy falls to 0.11 of 0.78, against '
+               '0.47 here, and 40 % of the energy is lost); asclepios integrates its penalty contact with the HHT '
+               'scheme, and the impact lasts one or two increments')
+for _n in ('contact_block_on_plate_std', 'contact_shell_on_plate_std', 'contact_solid_on_solid_std',
+           'contact_penalty_soft_light_std', 'contact_beam_on_plate_std', 'contact_pair_surface_std',
+           'contact_self_shell_std'):
+    KNOWN[_n] = _IMPACT_STD
+KNOWN['contact_punch_static_xpl'] = ('quasi-static pressing in explicit dynamics: the reaction stays 18 % below the '
+                                     'reference over the whole loading while the punch is compressed more; not '
+                                     'explained yet (the implicit case agrees within 2 %)')
 KNOWN_QUANTITIES = {}  # case name -> (quantities, note): documented difference on some quantities only
 
 
@@ -378,6 +389,12 @@ def explicit_step(name, duration, body, rot=False, nframes=20, extra=None, fixed
     return head + body + output_block(False, rot, nframes, duration, time_marks) + ['*End Step']
 
 
+# Explicit contact cases without an implicit twin: the reference solver's implicit procedure does not treat these
+# contacts (beam-to-beam and beam-to-solid: the bodies pass through each other; sheet on an analytical rigid
+# surface: it stays stuck in the surface), or fails (contact of a shell edge)
+NO_STD_TWIN = {'contact_beam_beam', 'contact_beam_on_solid', 'contact_rigid_surface', 'contact_shell_edge'}
+
+
 # ---------------------------------------------------------------------------------------------- registry
 def register(d, procedure, element, mode, description, mon, fix, rot, tol, analysis='nonlinear', known=None,
              reference='abaqus', supported=True, reason=None, twin=True, category='element', group=None,
@@ -398,9 +415,9 @@ def register(d, procedure, element, mode, description, mon, fix, rot, tol, analy
             name, procedure, analysis = name + '_xpl', 'explicit', 'quasi-static explicit'
             tol = 'contact' if tol == 'contact' else 'dynamic'
         else:
+            if name in NO_STD_TWIN:
+                return
             name, procedure, analysis = name + '_std', 'implicit dynamic', 'implicit dynamic'
-            if tol == 'contact' or any(l.lower().startswith('*contact') for l in d.steps + d.model):
-                supported, reason = False, 'contact in implicit procedures not implemented'
         known = None
         energies = twin_energies or energies
     kq = KNOWN_QUANTITIES.get(name, ([], None))

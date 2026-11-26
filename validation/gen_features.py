@@ -71,6 +71,27 @@ def contact_features():
              'solid-to-solid impact (general contact).', moving[:3], fix, False, 'contact', category='feature',
              group='contact', supported=True)
 
+    # quasi-static contact: a punch pressed on a block (frictionless; contact faces with coincident nodes: with
+    # non-matching faces the node-to-surface contact of asclepios and the surface-to-surface contact of the reference
+    # solver share the load differently, 12 % on the reaction for a 3:5 mesh ratio)
+    d = Deck('contact_punch_static', 'C3D8 punch pressed on a C3D8 block (static general contact)')
+    base = hex_block(d, 4, 4, 2, 12.0, 12.0, 4.0)
+    solid(d, 'C3D8', base, 'STEEL', 'BASE')
+    pun = hex_block(d, 2, 2, 2, 6.0, 6.0, 4.0, x0=(3.0, 3.0, 4.0))
+    solid(d, 'C3D8', pun, 'ALU', 'PUNCH')
+    fix = d.select(lambda x, y, z: near(z, 0))
+    top = d.select(lambda x, y, z: near(z, 8.0))
+    d.nset('TOP', top)
+    d.model += ['*Surface Interaction, name=IP', '*Contact', '*Contact Inclusions, ALL EXTERIOR',
+                '*Contact Property Assignment', ' , , IP']
+    QS_DURATION['contact_punch_static'] = 0.002
+    d.steps += static_step('Press', ['*Boundary', 'FIX, ENCASTRE', 'TOP, 1, 2', 'TOP, 3, 3, -0.02'], True,
+                           nframes=5, inc=0.1, maxinc=0.2)
+    register(d, 'static', 'C3D8', 'contact (static)', 'Aluminium punch pressed by 0.02 mm on a steel block: static '
+             'penalty contact (implicit), quasi-static in the explicit twin.',
+             top[:3] + d.select(lambda x, y, z: near(z, 4.0) and near(x, 6.0) and near(y, 6.0)), fix, False,
+             'nonlinear', category='feature', group='contact', supported=True)
+
     d = Deck('contact_beam_on_solid', 'B31 rod dropped on a fixed C3D8R base (explicit general contact)')
     base = hex_block(d, 4, 4, 1, 12.0, 12.0, 2.0)
     solid(d, 'C3D8R', base, 'STEEL', 'BASE')

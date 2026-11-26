@@ -1,7 +1,7 @@
 # Validation
 
-The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 293
-small decks (233 cases and 60 twins), each running in seconds:
+The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 291
+small decks (234 cases and 57 twins), each running in seconds:
 
 - **elements and deformation modes**: every element type supported by asclepios (C3D8R, C3D8, C3D4, S4R, S3R, B31,
   CONN3D2) under tension, bending, torsion, shear, large rotations, pressure, hyperelasticity, plasticity with load
@@ -22,7 +22,9 @@ small decks (233 cases and 60 twins), each running in seconds:
   materials (Mooney-Rivlin, Ogden, Yeoh, orthotropic, Holzapfel-Gasser-Ogden, superelastic nitinol, kinematic
   hardening, rate dependence, damage and element deletion, viscoelasticity);
 - **procedures**: every case compared with Abaqus exists in its native procedure and as a twin in the other one
-  (static as quasi-static explicit, `_xpl`; explicit as implicit dynamic, `_std`; a twin whose static loads change
+  (static as quasi-static explicit, `_xpl`; explicit as implicit dynamic, `_std`, except four contact cases that the
+  implicit procedure of the reference does not treat: beam-to-beam and beam-to-solid contact, a sheet on an
+  analytical rigid surface, a shell edge; a twin whose static loads change
   abruptly, such as a load removed by `OP=NEW`, gets mass-proportional damping so that its frames are static
   states; the quasi-static twins apply their loads along a smooth step, but conditions given by type, such as
   `ENCASTRE` or `XSYMM`, stay without amplitude: under an amplitude Abaqus/Explicit reports one rotational
@@ -55,7 +57,7 @@ implemented (status NOT SUPPORTED, reason given in `RESULTS.md`).
   systems, gravity) refined until the discretisation error is below 0.05 %, prescribed accelerations, amplitudes,
   steady conduction. Tolerance: 0.1 % on displacements, rotations, reaction forces, element stresses and energies.
   See `analytic.py`.
-- **Reference solver** (213 cases): the same decks run in a commercial solver that reads the same input format
+- **Reference solver** (211 cases): the same decks run in a commercial solver that reads the same input format
   (implicit or explicit according to the procedure), for the cases without a hand solution. These reference results
   are produced locally by each user who holds a licence of that solver; they and the comparisons with them are not
   distributed with the repository (licence terms of the reference solver).
