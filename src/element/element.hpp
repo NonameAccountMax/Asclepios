@@ -22,6 +22,7 @@ struct ElemIn {
   const double* temp1 = nullptr;  // nen temperatures at end
   const double* fv1 = nullptr;    // nen field variable 1 at end
   double dt = 0;                  // time increment
+  double dt_mat = 0;              // time increment seen by time-dependent materials (0: instantaneous response)
   double bv1 = 0, bv2 = 0;        // bulk viscosity (explicit only)
   bool dynamic = true;            // explicit: rate-dependent artificial terms on
   bool nlgeom = true;

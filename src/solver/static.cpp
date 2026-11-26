@@ -54,12 +54,15 @@ void element_tangent(ElementGroup& G, int e, ElemIn in, double* du, int nen, dou
 void run_static_step(Analysis& A, const Step& st, int si) {
   const int nn = A.nn;
   A.nlgeom = st.nlgeom;
+  // time-dependent materials: real time in implicit dynamics and *VISCO, instantaneous response in *STATIC (long-term
+  // with LONG TERM)
+  A.mat_time = st.implicit_dynamic || st.visco ? 1.0 : st.long_term ? 1e30 : 0.0;
   // default amplitude: RAMP in static steps, STEP in dynamic ones
   A.begin_step(st, si, st.implicit_dynamic ? st.amp_ramp == 1 : st.amp_ramp != 0);
   if (st.contact_defined) warn("general contact is not supported in *STATIC steps: ignored");
   OutputWriter& W = *A.writer;
   W.sta_header(si, st.name, false);
-  info("\n STEP %d  %s  (%s, %s)  period %g", si + 1, st.name.c_str(), st.implicit_dynamic ? "implicit dynamic" : "static",
+  info("\n STEP %d  %s  (%s, %s)  period %g", si + 1, st.name.c_str(), st.implicit_dynamic ? "implicit dynamic" : st.visco ? "visco" : "static",
        st.nlgeom ? "nlgeom" : "small displacements", st.period);
   if (A.total_increments == 0 && si == 0) W.frame(si, st.name, 0.0, A.total_time);
 
@@ -247,7 +250,7 @@ void run_static_step(Analysis& A, const Step& st, int si) {
             ElemIn in;
             in.X = Xe.data(); in.xo = xo.data(); in.du = due.data();
             if (A.has_temp) { in.temp0 = t0.data(); in.temp1 = t1.data(); }
-            in.fv1 = fv.data(); in.dt = dt; in.dynamic = false; in.nlgeom = A.nlgeom;
+            in.fv1 = fv.data(); in.dt = dt; in.dynamic = false; in.nlgeom = A.nlgeom; in.dt_mat = dt * A.mat_time;
             element_tangent(G, e, in, due.data(), nen, hfd, K.data());
             int ei[64], ej[64];
             double ci[64], cj[64];

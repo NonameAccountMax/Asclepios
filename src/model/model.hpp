@@ -84,6 +84,22 @@ struct Material {
   bool sma = false;
   double sma_EA = 0, sma_nuA = 0, sma_EM = 0, sma_nuM = 0, sma_epsL = 0, sma_CL = 0, sma_sLs = 0, sma_sLe = 0,
          sma_T0 = 0, sma_CU = 0, sma_sUs = 0, sma_sUe = 0, sma_sCLs = 0, sma_epsV = 0;
+  // linear viscoelasticity (*VISCOELASTIC, TIME=PRONY) on isotropic *ELASTIC: Prony terms (shear ratio g, bulk ratio
+  // k, relaxation time tau). Once the input is read, E and nu are the instantaneous moduli (*ELASTIC gives the
+  // long-term ones unless MODULI=INSTANTANEOUS).
+  std::vector<double> pr_g, pr_k, pr_tau;
+  bool el_instantaneous = false;
+  bool visco() const { return !pr_tau.empty(); }
+  // rate-dependent yield (*RATE DEPENDENT, TYPE=POWER LAW): flow stress times 1 + (plastic strain rate / D)^(1/n)
+  double rate_D = 0, rate_n = 1;
+  bool rate_dependent() const { return rate_D > 0; }
+  // ductile damage (*DAMAGE INITIATION, CRITERION=DUCTILE): equivalent plastic strain at the onset of damage as a
+  // function of the stress triaxiality; *DAMAGE EVOLUTION with linear softening: equivalent plastic displacement at
+  // failure (TYPE=DISPLACEMENT) or fracture energy (TYPE=ENERGY, u_f = 2 G_f / yield stress at the onset)
+  std::vector<double> dmg_eps, dmg_eta;
+  double dmg_uf = 0, dmg_gf = 0;
+  bool damage() const { return !dmg_eps.empty(); }
+  bool damage_evolves() const { return damage() && (dmg_uf > 0 || dmg_gf > 0); }
   bool plastic() const { return !plastic_sy.empty(); }
   double yield(double ep, double* H = nullptr) const;  // flow stress and hardening slope
   // small-strain moduli used for stable time / hourglass / transverse shear defaults
@@ -282,6 +298,9 @@ struct Step {
   // implicit dynamics (*DYNAMIC without EXPLICIT): HHT-alpha integration in the implicit driver
   bool implicit_dynamic = false;
   double hht_alpha = -0.05;
+  // time-dependent material response in a static step: *VISCO (creep and relaxation over the step time); *STATIC
+  // responds instantaneously, or with the long-term moduli under LONG TERM
+  bool visco = false, long_term = false;
   int maxinc = 100;
   // explicit
   double bv1 = 0.06, bv2 = 1.2;

@@ -39,6 +39,8 @@ MATERIALS = {
                   '*Plastic, hardening=KINEMATIC\n250., 0.\n350., 0.1\n'),
     'VISCO': ('*Material, name=VISCO\n*Density\n1.1e-09\n*Elastic\n10., 0.45\n'
               '*Viscoelastic, time=PRONY\n0.5, 0., 0.001\n'),
+    'VISCO_INST': ('*Material, name=VISCO_INST\n*Density\n1.1e-09\n*Elastic, moduli=INSTANTANEOUS\n20., 0.3\n'
+                   '*Viscoelastic, time=PRONY\n0.3, 0.1, 0.001\n0.2, 0.1, 0.01\n'),
 }
 
 TOL = {  # relative to the peak reference value (U also for rotations, RF also for moments, S for element stresses)
@@ -233,7 +235,7 @@ def boundary_stretch(d, nodes, e1, e2):
 
 # ------------------------------------------------------------------------------------------------- steps
 STRUCTURAL = ('C3D', 'S4', 'S3', 'B3', 'M3D', 'T3D')
-PLASTIC_MATS = ('STEEL_PL', 'STEEL_KIN', 'STEEL_RATE', 'STEEL_DMG', 'COPPER')
+PLASTIC_MATS = ('STEEL_PL', 'STEEL_KIN', 'STEEL_RATE', 'STEEL_DMG', 'STEEL_DMGE', 'COPPER')
 
 
 def monitored_elements(d):
@@ -379,8 +381,9 @@ def explicit_step(name, duration, body, rot=False, nframes=20, extra=None, fixed
 # ---------------------------------------------------------------------------------------------- registry
 def register(d, procedure, element, mode, description, mon, fix, rot, tol, analysis='nonlinear', known=None,
              reference='abaqus', supported=True, reason=None, twin=True, category='element', group=None,
-             literature=None, energies=None):
-    """Writes the deck and its manifest entry. In twin mode, writes the twin instead (Abaqus-referenced cases only)."""
+             literature=None, energies=None, twin_energies=None):
+    """Writes the deck and its manifest entry. In twin mode, writes the twin instead (Abaqus-referenced cases only);
+    twin_energies replaces the compared energies for the twin."""
     d.nset('MON', mon)
     if fix:
         d.nset('FIX', fix)
@@ -399,6 +402,7 @@ def register(d, procedure, element, mode, description, mon, fix, rot, tol, analy
             if tol == 'contact' or any(l.lower().startswith('*contact') for l in d.steps + d.model):
                 supported, reason = False, 'contact in implicit procedures not implemented'
         known = None
+        energies = twin_energies or energies
     kq = KNOWN_QUANTITIES.get(name, ([], None))
     entry = {'name': name, 'category': category, 'group': group or element, 'procedure': procedure,
              'element': element, 'mode': mode, 'description': description, 'mon': sorted(set(mon)),

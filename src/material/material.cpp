@@ -76,7 +76,7 @@ double j2_kinematic_3d(const Material& m, const Sym6& d, Sym6& s, Sym6& alpha, d
   return sy * dp;
 }
 
-double j2_update_3d(const Material& m, const Sym6& d, Sym6& s, double& ep) {
+double j2_update_3d(const Material& m, const Sym6& d, Sym6& s, double& ep, double dt) {
   const double E = m.E, nu = m.nu;
   const double G = E / (2 * (1 + nu)), lam = E * nu / ((1 + nu) * (1 - 2 * nu));
   double tr = d[0] + d[1] + d[2];
@@ -91,6 +91,31 @@ double j2_update_3d(const Material& m, const Sym6& d, Sym6& s, double& ep) {
   double sy0 = m.yield(ep);
   if (q <= sy0) { s = t; return 0; }
   double dp = 0;
+  if (m.rate_dependent() && dt > 0) {
+    // overstress power law: q = sy(ep + dp) (1 + x) with x = (dp / (dt D))^(1/n). Newton on x (smooth at the onset of
+    // flow, where dp/dx vanishes), bracketed by bisection: r(x) decreases from q - sy > 0.
+    const double c = dt * m.rate_D, n = m.rate_n;
+    double lo = 0, hi = std::pow(q / (3 * G * c), 1 / n), x = 0;
+    for (int it = 0; it < 100; ++it) {
+      double H;
+      const double xn = std::pow(x, n), sy = m.yield(ep + c * xn, &H);
+      const double r = q - 3 * G * c * xn - sy * (1 + x);
+      if (r > 0) lo = x; else hi = x;
+      const double dr = -(3 * G + H * (1 + x)) * c * n * (x > 0 ? xn / x : 0.0) - sy;
+      double xs = x - r / dr;
+      if (!(xs > lo && xs < hi)) xs = 0.5 * (lo + hi);
+      const bool done = std::fabs(xs - x) <= 1e-13 * (1 + x) || hi - lo <= 1e-14 * (1 + hi);
+      x = xs;
+      if (done) break;
+    }
+    dp = c * std::pow(x, n);
+    const double f = 1 - 3 * G * dp / q, sy1 = m.yield(ep + dp);
+    for (int i = 0; i < 6; ++i) s[i] = dev[i] * f;
+    for (int i = 0; i < 3; ++i) s[i] += p;
+    ep += dp;
+    // dissipation: the hardening curve scaled by the overstress ratio of the increment
+    return 0.5 * (sy0 + sy1) * (1 + x) * dp;
+  }
   for (int it = 0; it < 50; ++it) {
     double H;
     double sy = m.yield(ep + dp, &H);
@@ -509,6 +534,56 @@ static void sym_eigen(Mat3 A, double* w, Mat3& V) {
       }
   }
   for (int i = 0; i < 3; ++i) w[i] = A.m[i][i];
+}
+
+bool hyper_cauchy_mean_dilatation(const Material& m, const Mat3& F, double jbar, Sym6& sigma, double& pproj) {
+  if (!(m.neohooke || m.mooney || m.yeoh || m.ogden)) return false;
+  const double J = F.det(), sc = std::pow(jbar, 2.0 / 3.0) * std::pow(J, -4.0 / 3.0);
+  Mat3 b = F * F.T();
+  for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j) b.m[i][j] *= sc;  // b*
+  Mat3 tau;  // tau^ = 2 b* dW/db*
+  double dUdJ = 0;
+  auto vol = [&](const double* D, int n) {  // sum_i (jbar - 1)^(2i) / D_i
+    for (int i = 0; i < n; ++i) {
+      if (!(D[i] > 0)) continue;
+      const int k = 2 * (i + 1);
+      dUdJ += k * std::pow(jbar - 1, k - 1) / D[i];
+    }
+  };
+  if (m.ogden) {
+    double w[3];
+    Mat3 V;
+    sym_eigen(b, w, V);
+    double ti[3] = {0, 0, 0};
+    for (size_t p = 0; p < m.og_mu.size(); ++p)
+      for (int i = 0; i < 3; ++i) ti[i] += 2 * m.og_mu[p] / m.og_alpha[p] * std::pow(std::max(w[i], 1e-300), 0.5 * m.og_alpha[p]);
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j) {
+        double v = 0;
+        for (int k = 0; k < 3; ++k) v += ti[k] * V.m[i][k] * V.m[j][k];
+        tau.m[i][j] = v;
+      }
+    std::vector<double> D(m.og_D.begin(), m.og_D.end());
+    if (D.empty()) D.push_back(0.0);
+    if (!(D[0] > 0)) D[0] = 2.0 / (20 * m.shear_modulus());
+    vol(D.data(), (int)D.size());
+  } else {
+    const double I1 = b.m[0][0] + b.m[1][1] + b.m[2][2];
+    double W1 = m.C10, W2 = 0;
+    if (m.mooney) W2 = m.C01;
+    if (m.yeoh) W1 = m.C10 + 2 * m.C20 * (I1 - 3) + 3 * m.C30 * (I1 - 3) * (I1 - 3);
+    const Mat3 b2 = b * b;
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j) tau.m[i][j] = 2 * ((W1 + I1 * W2) * b.m[i][j] - W2 * b2.m[i][j]);
+    const double D[3] = {m.D1 > 0 ? m.D1 : 1.0 / (10.0 * std::max(m.C10, 1e-30)), m.yeoh ? m.D2 : 0.0, m.yeoh ? m.D3 : 0.0};
+    vol(D, 3);
+  }
+  const double tr3 = (tau.m[0][0] + tau.m[1][1] + tau.m[2][2]) / 3;
+  for (int i = 0; i < 3; ++i) tau.m[i][i] -= tr3;
+  sigma = Sym6::from(tau);
+  for (int i = 0; i < 6; ++i) sigma[i] = sigma[i] / jbar + (i < 3 ? dUdJ : 0.0);
+  pproj = tr3 / jbar + dUdJ;
+  return true;
 }
 
 void hyper_cauchy_3d(const Material& m, const Mat3& F, Sym6& sigma, double* energy, const double* fib) {

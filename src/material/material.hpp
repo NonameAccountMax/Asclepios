@@ -8,7 +8,8 @@ namespace abq {
 // ---- incremental (hypoelastic) isotropic elasticity + J2 plasticity, isotropic hardening
 // deps: strain increment (tensor components, Abaqus order 11,22,33,12,13,23), thermal part already removed.
 // Returns plastic dissipation increment per unit volume.
-double j2_update_3d(const Material& m, const Sym6& deps, Sym6& sig, double& ep);
+// dt: time increment of rate-dependent yield (<= 0: rate-independent).
+double j2_update_3d(const Material& m, const Sym6& deps, Sym6& sig, double& ep, double dt = 0);
 
 // Linear kinematic hardening (Prager), backstress alpha (deviatoric tensor components).
 double j2_kinematic_3d(const Material& m, const Sym6& deps, Sym6& sig, Sym6& alpha, double& ep);
@@ -33,6 +34,14 @@ double sma_transformation_energy(const Material& m, const Sym6& s0, const Sym6& 
 // 3D: Cauchy stress (material basis) from the deformation gradient F (material basis).
 // fib: Holzapfel-Gasser-Ogden fibre directions (unit vectors, reference configuration, basis of F), 3 per family.
 void hyper_cauchy_3d(const Material& m, const Mat3& F, Sym6& sigma, double* energy = nullptr, const double* fib = nullptr);
+// Fully integrated elements with a mean volume change (volume ratio jbar of the element, J of the point): isotropic
+// models (neo-Hooke, Mooney-Rivlin, Yeoh, Ogden) evaluated with the invariants of the volume-averaged gradient
+// Fbar = (jbar / J)^(1/3) F normalised by the point's J, i.e. b* = jbar^(2/3) J^(-4/3) F F^T; with
+// tau^ = 2 b* dW/db*: sigma = dev(tau^) / jbar + U'(jbar) I, and pproj = tr(tau^) / (3 jbar) + U'(jbar) is the
+// part of the stress that works on the element's mean volume change. Reproduces the linear stiffness of
+// Abaqus/Standard C3D8 and C3D8H with these materials (a stiffness 5/3 mu on the variation of the volume change
+// between integration points, beyond the B-bar element). Returns false for other models (Fung, HGO).
+bool hyper_cauchy_mean_dilatation(const Material& m, const Mat3& F, double jbar, Sym6& sigma, double& pproj);
 // Holzapfel-Gasser-Ogden: largest tangent modulus of the fibres in their direction (stable increment estimate).
 double hgo_fibre_modulus(const Material& m, const Mat3& F, const double* fib);
 // Plane stress membrane: in-plane C (C11, C22, C12) in material basis; solves for C33 with S33 = 0.

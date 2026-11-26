@@ -13,10 +13,10 @@ replacement for a commercial package.
 | Area | Supported |
 |---|---|
 | Input | `*INCLUDE`, `*PARAMETER` (expressions), `*PART` / `*ASSEMBLY` / `*INSTANCE` (translation, rotation), `Assembly.Instance.set` names, `*NODE`, `*ELEMENT`, `*NSET` / `*ELSET` (GENERATE, INSTANCE, `*NSET, ELSET=`), `*SURFACE` (ELEMENT SPOS/SNEG/S1…S6, NODE, CYLINDER), `*ORIENTATION` (rectangular, LOCAL DIRECTIONS) |
-| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 (B-bar), C3D8I (incompatible modes), C3D6 (prism: 2 points in static steps, degenerate C3D8R in explicit ones), C3D4, C3D10 (quadratic tetrahedron, 4 Gauss points), C3D10M (formulated as C3D10), S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE / BOX / I sections), B32 (quadratic Timoshenko beam, small displacements, static and implicit steps), CONN3D2 (AXIAL, CARTESIAN, JOIN, HINGE, BEAM, BUSHING; linear damping), T3D2 (truss), SPRINGA / DASHPOTA / MASS, R3D4 / R3D3 (rigid), SFM3D4R / SFM3D3 (surface elements: no stiffness, `*SURFACE SECTION` DENSITY as mass per unit area), M3D4R / M3D4 / M3D3 (membranes) |
-| Materials | isotropic `*ELASTIC` (temperature-dependent rows), `*ELASTIC, TYPE=ENGINEERING CONSTANTS` (orthotropic, solids), tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), linear `HARDENING=KINEMATIC` (solids), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL (solids; fibre directions from `*ORIENTATION, LOCAL DIRECTIONS`), `*HYPERELASTIC` NEO HOOKE / MOONEY-RIVLIN / YEOH / OGDEN (Ogden: solids), superelastic shape memory alloys (material named `ABQ_SUPER_ELASTIC…` with its `*USER MATERIAL` constants; solids), linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
+| Elements | C3D8R (Flanagan-Belytschko with hourglass control), C3D8 / C3D8H (B-bar; mean dilatation for hyperelastic materials), C3D8I (incompatible modes), C3D6 (prism: 2 points in static steps, degenerate C3D8R in explicit ones), C3D4, C3D10 (quadratic tetrahedron, 4 Gauss points), C3D10M (formulated as C3D10), S4R (corotational Belytschko-Lin-Tsay), S4 (S4R kinematics with the stiffness of a physical element and output at four integration points), S3R (C0 triangle, stabilised shear), S3RS (C0 triangle, shear from the edge strains), B31 (corotational Timoshenko beam, CIRC / RECT / PIPE / BOX / I sections), B32 (quadratic Timoshenko beam, small displacements, static and implicit steps), CONN3D2 (AXIAL, CARTESIAN, JOIN, HINGE, BEAM, BUSHING; linear damping), T3D2 (truss), SPRINGA / DASHPOTA / MASS, R3D4 / R3D3 (rigid), SFM3D4R / SFM3D3 (surface elements: no stiffness, `*SURFACE SECTION` DENSITY as mass per unit area), M3D4R / M3D4 / M3D3 (membranes) |
+| Materials | isotropic `*ELASTIC` (temperature-dependent rows), `*ELASTIC, TYPE=ENGINEERING CONSTANTS` (orthotropic, solids), tabulated isotropic `*PLASTIC` (J2 in 3D, plane stress and beams), linear `HARDENING=KINEMATIC` (solids), `*RATE DEPENDENT, TYPE=POWER LAW` (solids), ductile `*DAMAGE INITIATION` with `*DAMAGE EVOLUTION` (TYPE=DISPLACEMENT / ENERGY, linear softening, element deletion; solids), `*VISCOELASTIC, TIME=PRONY` on isotropic elasticity (`*ELASTIC, MODULI=LONG TERM / INSTANTANEOUS`; solids), `*EXPANSION`, `*DENSITY`, `*DAMPING` ALPHA, `*ANISOTROPIC HYPERELASTIC` FUNG-ANISOTROPIC / FUNG-ORTHOTROPIC / HOLZAPFEL (solids; fibre directions from `*ORIENTATION, LOCAL DIRECTIONS`), `*HYPERELASTIC` NEO HOOKE / MOONEY-RIVLIN / YEOH / OGDEN (Ogden: solids), superelastic shape memory alloys (material named `ABQ_SUPER_ELASTIC…` with its `*USER MATERIAL` constants; solids), linear and field-dependent tabulated `*CONNECTOR ELASTICITY`, `*CONNECTOR CONSTITUTIVE REFERENCE` |
 | Sections | `*SHELL SECTION` (Simpson integration, odd number of points; OFFSET; COMPOSITE with elastic layers), `*TRANSVERSE SHEAR`, `*BEAM SECTION`, `*SOLID SECTION`, `*MEMBRANE SECTION`, `*CONNECTOR SECTION`, `*SECTION CONTROLS` (hourglass scaling, `HOURGLASS=ENHANCED`) |
-| Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation), `*DYNAMIC` implicit (HHT-α: APPLICATION=MODERATE DISSIPATION, TRANSIENT FIDELITY, QUASI-STATIC, ALPHA), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
+| Steps | `*DYNAMIC, EXPLICIT` (NLGEOM by default; `DIRECT USER CONTROL`, `ELEMENT BY ELEMENT`, `SCALE FACTOR`), `*STATIC` (Newton-Raphson with automatic incrementation; LONG TERM), `*VISCO` (time-dependent material response), `*DYNAMIC` implicit (HHT-α: APPLICATION=MODERATE DISSIPATION, TRANSIENT FIDELITY, QUASI-STATIC, ALPHA), `*BULK VISCOSITY`, `*VARIABLE / FIXED MASS SCALING` (BELOW MIN, UNIFORM) |
 | Loads | `*BOUNDARY` (displacement, velocity, acceleration, ENCASTRE…, OP=NEW), `*CLOAD` (FOLLOWER), `*DSLOAD` / `*DLOAD` P (follower pressure), `*DLOAD` GRAV, `*TEMPERATURE`, `*FIELD`, `*AMPLITUDE` (TABULAR, SMOOTH STEP, EQUALLY SPACED, PERIODIC, DECAY, step or total time), `*INITIAL CONDITIONS` (VELOCITY, TEMPERATURE, STRESS), `*TRANSFORM` (rectangular: loads and zero conditions in local axes); loads propagate between steps |
 | Constraints | `*TIE` (surface ties of solid faces and shells, non-matching meshes; ADJUST, POSITION TOLERANCE, NO ROTATION), `*COUPLING` (`*KINEMATIC`, `*DISTRIBUTING` with UNIFORM / LINEAR / QUADRATIC / CUBIC weighting, constrained degrees of freedom), `*RIGID BODY` (REF NODE, ELSET, PIN / TIE NSET, ANALYTICAL SURFACE), `*EQUATION`, `*MPC` (BEAM, TIE, PIN), CONN3D2 JOIN |
 | Contact | explicit general contact: `*CONTACT INCLUSIONS` (surfaces or ALL EXTERIOR), `*CONTACT EXCLUSIONS`, global `*CONTACT PROPERTY ASSIGNMENT`, Coulomb `*FRICTION`, `*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=TABULAR / LINEAR / EXPONENTIAL` (softened); node-to-facet with rounded edges beyond the facet boundaries (free shell edges rounded within the shell), exterior faces of solid elements (C3D8R, C3D8, C3D8I, C3D4), rigid surfaces (R3D4 / R3D3 elements, analytical `*SURFACE, TYPE=CYLINDER`), surface elements, node-to-beam segment, beam-to-beam edge contact; explicit `*CONTACT PAIR` (kinematic hard contact, balanced or pure master-slave, WEIGHT) |
@@ -56,7 +56,7 @@ Output files:
   LE_max, STH, SF per element (shell stresses in the local shell axes: the section orientation if any, otherwise the
   projection of the global x axis on the surface, rotating with the element);
 - `<job>_history.csv`: energies ALLKE, ALLIE, ALLWK, ALLVD (bulk viscosity, contact damping and Rayleigh mass
-  damping), ALLPD, ALLAE, ALLDMD (0: no damage model), ALLFD, ALLMW (work of the mass added by mass scaling), ETOTAL;
+  damping), ALLPD, ALLAE, ALLDMD (0: the dissipation of damage stays in ALLIE), ALLFD, ALLMW (work of the mass added by mass scaling), ETOTAL;
 - `<job>.sta` (progress) and `<job>.dat` (messages).
 
 Diagnostics on stderr: `ABQ_TRACE_NODE=Inst.123` (node state at each increment), `ABQ_TRACE_ELEM=<id>`
@@ -259,6 +259,25 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   it. Explicit dynamics: the stable increment and the bulk viscosity use effective moduli of each element from its
   stress and strain increments (2μ = ΔS:Δe / Δe:Δe, 3K = Δp / Δε_mean, at least 0.1 of the austenite values,
   averaged with the previous increment), as Abaqus/Explicit does for materials without analytical moduli.
+- **Viscoelasticity** (Prony series, solids): each term relaxes a strain h_i towards the elastic strain e,
+  dh_i/dt = (e − h_i)/τ_i, integrated exactly over the increment for e linear in time; σ = 2G₀ dev(e − Σ g_i h_i) +
+  K₀ tr(e − Σ k_i h_i) I with the instantaneous moduli (computed from the long-term ones unless
+  `MODULI=INSTANTANEOUS`). `*STATIC` responds instantaneously (long-term moduli with `LONG TERM`); `*VISCO`,
+  implicit and explicit dynamics use the step time. Stable increment and hourglass stiffness: instantaneous moduli.
+- **Rate-dependent plasticity** (`*RATE DEPENDENT, TYPE=POWER LAW`): flow stress σ_y(ε̄ᵖ)·(1 + (ε̄̇ᵖ/D)^(1/n)) in the
+  radial return, solved for x = (Δε̄ᵖ/(Δt D))^(1/n) by Newton iterations safeguarded by bisection (smooth at the
+  onset of flow).
+- **Ductile damage**: onset when ∫ dε̄ᵖ / ε̄ᵖ_D(η) reaches 1 (η = −p/q, table interpolated linearly), then the
+  plastic displacement ū = L ε̄ᵖ (L = cube root of the element volume) drives the damage linearly, D = ū/ū_f
+  (ū_f = 2G_f/σ_y at the onset for TYPE=ENERGY); σ = (1 − D) σ̄, plasticity on the effective stress σ̄. The
+  element is removed when D reaches 1 at an integration point (forces and stable increment dropped, mass and
+  last outputs kept).
+- **Fully integrated hexahedra with hyperelastic materials** (C3D8, C3D8H): constant pressure on the element's mean
+  volume change (B-bar forces). Isotropic models (neo-Hooke, Mooney-Rivlin, Yeoh, Ogden) take the isochoric
+  invariants of the volume-averaged gradient F̄ = (J̄/J)^(1/3) F normalised by the point's own J, which adds a
+  stiffness 5/3 μ on the variation of the volume change between the integration points: this reproduces the
+  reference element stiffness matrices to round-off (single elements, regular and distorted). Fung and HGO models use
+  F̄ itself. C3D8H is computed as C3D8 (constant pressure eliminated at the element level).
 - **Rigid surfaces** (explicit general contact): R3D4 / R3D3 elements of a rigid body are two-sided contact facets
   without thickness; analytical surfaces (`TYPE=CYLINDER`: local x along a-b, generator along a-c, profile in the plane
   of x and y = x × generator) are cut into one-sided rigid facets (2° arcs, normal to the left of the profile
@@ -284,7 +303,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
 
 ## Validation (`make validate`, `make parallel`)
 
-291 small decks, run after every change of the solver:
+292 small decks, run after every change of the solver:
 
 - every supported element type (C3D8R, C3D8, C3D4, S4R, S3R, S3RS, B31, CONN3D2, and the other element types of the feature table) under tension, bending, torsion, shear,
   large rotations, pressure, hyperelasticity, plasticity with load reversal, thermal loads, waves, vibrations and
@@ -296,7 +315,7 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   threads, speed-up).
 
 Displacements, rotations, reaction forces and energy histories are compared over the whole load history: with the
-closed-form solution wherever the nodal solution is known by hand (46 cases, within 0.1 %; most are exact), with
+closed-form solution wherever the nodal solution is known by hand (63 cases, within 0.1 %; most are exact), with
 published values for the literature benchmarks (17 cases), and otherwise with reference results that each user
 produces on a machine where a licence of the reference solver is available. Reference results of commercial solvers,
 and comparisons with them, are not distributed with this repository.
@@ -360,12 +379,14 @@ Features exercised by the validation suite and not supported yet:
 - Constraints: connector stops other than the length of AXIAL connectors, stops in static procedures; rigid links
   that follow large rotations exactly (the dependencies are linear in the
   rotations).
-- Elements: the internal hourglass node of C3D10M; B32 with large displacements; layer orientations of composite
+- Elements: C3D4H (the reference behaves as a continuous linear pressure field: needs nodal pressure unknowns in
+  the implicit solver); the internal hourglass node of C3D10M; B32 with large displacements; layer orientations of composite
   sections; pressure loads and contact on quadratic tetrahedra.
 - Loads and conditions: initial stresses in shells and beams; non-zero boundary conditions in transformed axes;
   output in transformed axes; follower loads in restart files.
-- Materials: viscoelasticity, rate dependence, damage, user materials (UMAT/VUMAT), Holzapfel-Gasser-Ogden
-  and superelasticity in shells and beams; superelasticity in explicit dynamics: Abaqus/Explicit's built-in material
+- Materials: user materials (UMAT/VUMAT); viscoelasticity of hyperelastic materials; rate dependence, damage,
+  viscoelasticity, Holzapfel-Gasser-Ogden and superelasticity in shells and beams; damage criteria other than
+  ductile; superelasticity in explicit dynamics: Abaqus/Explicit's built-in material
   integrates the loading plateau with a result that depends on the increment size and jumps from one increment to
   the next (single element with every node driven); asclepios keeps the converged law (reactions within 6 % on the
   explicit bar).

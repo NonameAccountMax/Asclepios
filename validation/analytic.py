@@ -685,6 +685,19 @@ def temperature_dependence(case, nodes):
                      elem=lambda t: {'mises': state(t)[0], 'smem': state(t)[0]}), {}
 
 
+def visco_long_term(case, nodes):
+    # instantaneous moduli E0 = 20, nu0 = 0.3; Prony sums g = 0.5, k = 0.2 -> long-term G = 0.5 G0, K = 0.8 K0
+    G0, K0, eps = 20.0 / 2.6, 20.0 / 1.2, 0.01
+
+    def moduli(t):
+        G, K = (G0, K0) if t <= 1.0 else (0.5 * G0, 0.8 * K0)
+        return 9 * K * G / (3 * K + G), (3 * K - 2 * G) / (2 * (3 * K + G))
+    return frames_of(case, nodes, [1.0, 2.0],
+                     lambda t, x, y, z: (eps * x, -moduli(t)[1] * eps * y, -moduli(t)[1] * eps * z),
+                     rf=lambda t: (-16.0 * moduli(t)[0] * eps, 0.0, 0.0),
+                     elem=lambda t: {'mises': moduli(t)[0] * eps, 'smem': moduli(t)[0] * eps}), {}
+
+
 def connector_field(case, nodes):
     def u(t):
         return 0.5 * t if t <= 1.0 else 50.0 / (100.0 + 300.0 * (t - 1.0))
@@ -852,6 +865,7 @@ SOLUTIONS = {
     'temperature_dependence': temperature_dependence, 'connector_field': connector_field,
     'mat_mooney_rivlin': hyper_block(W_mooney), 'mat_ogden': hyper_block(W_ogden), 'mat_yeoh': hyper_block(W_yeoh),
     'mat_kinematic_hardening': kinematic_hardening, 'mat_orthotropic': orthotropic,
+    'visco_long_term': visco_long_term,
     'patch_membrane_s4r': membrane_patch_test, 'patch_membrane_s3r': membrane_patch_test,
     'patch_membrane_s4': membrane_patch_test, 'patch_plate_s4': plate_patch_test,
     'patch_plate_s4r': plate_patch_test, 'patch_solid_c3d8r': solid_patch_test, 'patch_solid_c3d8': solid_patch_test, 'patch_solid_c3d8i': solid_patch_test,

@@ -107,7 +107,7 @@ int face_local_nodes(ElType t, int face, int nen, int* out) {
 ElType eltype_from(const std::string& n0, int& nn) {
   std::string n = upper(n0);
   if (n == "C3D8R") { nn = 8; return ElType::C3D8R; }
-  if (n == "C3D8") { nn = 8; return ElType::C3D8; }
+  if (n == "C3D8" || n == "C3D8H") { nn = 8; return ElType::C3D8; }
   if (n == "C3D8I") { nn = 8; return ElType::C3D8I; }
   if (n == "C3D6") { nn = 6; return ElType::C3D6; }
   if (n == "C3D4") { nn = 4; return ElType::C3D4; }
@@ -732,6 +732,7 @@ class Builder {
       std::string t = c.getu("TYPE", "ISOTROPIC");
       if (t != "ISOTROPIC") throw std::runtime_error("*ELASTIC TYPE=" + t + " not supported at " + c.where());
       mat.elastic = true;
+      mat.el_instantaneous = c.getu("MODULI", "LONG TERM") == "INSTANTANEOUS";
       mat.E = to_double(c.data.at(0).at(0), &c);
       mat.nu = c.data[0].size() > 1 ? to_double(c.data[0][1], &c) : 0.0;
       if (c.data.size() > 1) {  // rows E, nu, T: linear in the temperature, constant beyond the table
@@ -817,6 +818,45 @@ class Builder {
       mat.sma_sUs = v[10]; mat.sma_sUe = v[11]; mat.sma_sCLs = v[12]; mat.sma_epsV = v.size() > 13 ? v[13] : v[4];
       if (v.size() > 14 && v[14] != 0) warn_once("SMANA", "superelastic material " + mat.name + ": annealing constants ignored");
     } else if (k == "DEPVAR" && mat.name.rfind("ABQ_SUPER_ELASTIC", 0) == 0) {
+    } else if (k == "RATE DEPENDENT") {
+      const std::string t = c.getu("TYPE", "POWER LAW");
+      if (t != "POWER LAW") throw std::runtime_error("*RATE DEPENDENT: only TYPE=POWER LAW supported at " + c.where());
+      if (c.data.size() > 1) throw std::runtime_error("*RATE DEPENDENT: temperature-dependent data not supported at " + c.where());
+      mat.rate_D = to_double(c.data.at(0).at(0), &c);
+      mat.rate_n = c.data[0].size() > 1 ? to_double(c.data[0][1], &c) : 1.0;
+      if (mat.rate_D <= 0 || mat.rate_n <= 0) throw std::runtime_error("*RATE DEPENDENT: positive D and n expected at " + c.where());
+    } else if (k == "DAMAGE INITIATION") {
+      const std::string cr = c.getu("CRITERION", "");
+      if (cr != "DUCTILE") throw std::runtime_error("*DAMAGE INITIATION: only CRITERION=DUCTILE supported at " + c.where());
+      std::vector<std::pair<double, double>> rows;  // (triaxiality, strain)
+      bool rate = false;
+      for (auto& d : c.data) {
+        if (d.empty() || trim(d[0]).empty()) continue;
+        rows.push_back({d.size() > 1 && !trim(d[1]).empty() ? to_double(d[1], &c) : 0.0, to_double(d[0], &c)});
+        rate = rate || (d.size() > 2 && !trim(d[2]).empty() && to_double(d[2], &c) != 0);
+      }
+      if (rows.empty()) throw std::runtime_error("*DAMAGE INITIATION: data expected at " + c.where());
+      if (rate) warn_once("DMGRATE", "*DAMAGE INITIATION: strain-rate dependence ignored");
+      std::sort(rows.begin(), rows.end());
+      for (auto& r : rows) { mat.dmg_eta.push_back(r.first); mat.dmg_eps.push_back(r.second); }
+    } else if (k == "DAMAGE EVOLUTION") {
+      const std::string t = c.getu("TYPE", "DISPLACEMENT"), sw = c.getu("SOFTENING", "LINEAR");
+      if (sw != "LINEAR") throw std::runtime_error("*DAMAGE EVOLUTION: only SOFTENING=LINEAR supported at " + c.where());
+      const double v = to_double(c.data.at(0).at(0), &c);
+      if (t == "DISPLACEMENT") mat.dmg_uf = v;
+      else if (t == "ENERGY") mat.dmg_gf = v;
+      else throw std::runtime_error("*DAMAGE EVOLUTION: TYPE=" + t + " not supported at " + c.where());
+      if (v <= 0) throw std::runtime_error("*DAMAGE EVOLUTION: positive value expected at " + c.where());
+    } else if (k == "VISCOELASTIC") {
+      const std::string dom = c.getu("TIME", c.has("FREQUENCY") ? "" : "PRONY");
+      if (dom != "PRONY") throw std::runtime_error("*VISCOELASTIC: only TIME=PRONY supported at " + c.where());
+      for (auto& d : c.data) {
+        if (d.empty() || trim(d[0]).empty()) continue;
+        auto at = [&](size_t j) { return j < d.size() && !trim(d[j]).empty() ? to_double(d[j], &c) : 0.0; };
+        const double tau = at(2);
+        if (tau <= 0) throw std::runtime_error("*VISCOELASTIC: positive relaxation time expected at " + c.where());
+        mat.pr_g.push_back(at(0)); mat.pr_k.push_back(at(1)); mat.pr_tau.push_back(tau);
+      }
     } else {
       warn_once("MATKW" + k, "material option *" + k + " ignored (" + c.where() + ")");
     }
@@ -1013,8 +1053,11 @@ class Builder {
       const Card& c = cards[i];
       const std::string& k = c.keyword;
       if (k == "END STEP") break;
-      if (k == "STATIC") {
+      if (k == "STATIC" || k == "VISCO") {
         st.proc = Step::STATIC;
+        st.visco = k == "VISCO";
+        st.long_term = k == "STATIC" && c.has("LONG TERM");
+        if (st.visco && !c.has("CETOL")) warn_once("VISCOCETOL", "*VISCO without CETOL: automatic incrementation used");
         have_proc = true;
         if (!c.data.empty()) {
           auto& d = c.data[0];
@@ -1210,7 +1253,8 @@ class Builder {
       // material / behavior sub-options
       if (ctx == CTX_MATERIAL && (k == "DENSITY" || k == "ELASTIC" || k == "PLASTIC" || k == "EXPANSION" || k == "DAMPING" ||
                                   k == "ANISOTROPIC HYPERELASTIC" || k == "HYPERELASTIC" || k == "USER MATERIAL" ||
-                                  k == "DEPVAR" || k == "VISCOELASTIC" || k == "CONDUCTIVITY" || k == "SPECIFIC HEAT")) {
+                                  k == "DEPVAR" || k == "VISCOELASTIC" || k == "CONDUCTIVITY" || k == "SPECIFIC HEAT" ||
+                                  k == "RATE DEPENDENT" || k == "DAMAGE INITIATION" || k == "DAMAGE EVOLUTION")) {
         card_material_sub(c);
         continue;
       }
@@ -1452,8 +1496,32 @@ class Builder {
         warn_once("KW" + k, "keyword *" + k + " ignored (" + c.where() + ")");
       }
     }
+    finish_materials();
     assign_sections();
     for (auto& cp : m.couplings) if (!cp.analytic.empty()) facet_analytic_surface(cp);
+  }
+
+  // viscoelastic materials: isotropic linear elasticity only; E and nu replaced by the instantaneous moduli
+  // G0 = G_inf / (1 - sum g), K0 = K_inf / (1 - sum k) when *ELASTIC gives the long-term ones
+  void finish_materials() {
+    for (auto& mat : m.materials) {
+      if (mat.rate_dependent() && (!mat.plastic() || mat.kinematic || !mat.elastic || mat.ortho))
+        throw std::runtime_error("material " + mat.name + ": *RATE DEPENDENT only with isotropic hardening *PLASTIC");
+      if (mat.damage() && (!mat.plastic() || mat.kinematic || !mat.elastic || mat.ortho || !mat.el_T.empty()))
+        throw std::runtime_error("material " + mat.name + ": ductile damage only with isotropic elasticity and hardening");
+      if ((mat.dmg_uf > 0 || mat.dmg_gf > 0) && !mat.damage())
+        throw std::runtime_error("material " + mat.name + ": *DAMAGE EVOLUTION without *DAMAGE INITIATION");
+      if (!mat.visco()) continue;
+      if (!mat.elastic || mat.ortho || mat.plastic() || mat.hyper() || mat.sma || !mat.el_T.empty())
+        throw std::runtime_error("material " + mat.name + ": *VISCOELASTIC only with isotropic, temperature-independent *ELASTIC");
+      double sg = 0, sk = 0;
+      for (size_t i = 0; i < mat.pr_tau.size(); ++i) { sg += mat.pr_g[i]; sk += mat.pr_k[i]; }
+      if (sg >= 1 || sk >= 1) throw std::runtime_error("material " + mat.name + ": Prony ratios must sum to less than 1");
+      if (mat.el_instantaneous) continue;
+      const double G = mat.E / (2 * (1 + mat.nu)) / (1 - sg), K = mat.E / (3 * (1 - 2 * mat.nu)) / (1 - sk);
+      mat.E = 9 * K * G / (3 * K + G);
+      mat.nu = (3 * K - 2 * G) / (2 * (3 * K + G));
+    }
   }
 
   // analytical rigid surface replaced by one-sided rigid facets (R3D4): the profile cut into arcs of at most 2
@@ -1555,9 +1623,19 @@ class Builder {
       }
       const std::vector<int>* es = find_set(m.elsets, s.elset, p.prefix);
       if (!es) throw std::runtime_error("unknown element set " + s.elset + " for section at " + p.where);
+      // material options computed by the continuum elements only
+      auto solid_only = [&](int mi) {
+        return mi >= 0 && (m.materials[mi].visco() || m.materials[mi].rate_dependent() || m.materials[mi].damage());
+      };
+      bool visco = solid_only(s.material);
+      for (const auto& L : s.layers) visco = visco || solid_only(L.material);
       int idx = (int)m.sections.size();
       m.sections.push_back(s);
-      for (int e : *es) m.elems[e].section = idx;
+      for (int e : *es) {
+        if (visco && !is_solid_type(m.elems[e].type))
+          throw std::runtime_error("viscoelastic, rate-dependent or damaged material: continuum elements only (section at " + p.where + ")");
+        m.elems[e].section = idx;
+      }
     }
     int missing = 0;
     for (auto& e : m.elems) if (e.section < 0 && !is_rigid_type(e.type) && !is_surface_type(e.type)) ++missing;

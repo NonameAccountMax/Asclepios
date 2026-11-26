@@ -113,6 +113,7 @@ void run_explicit_step(Analysis& A, const Step& st, int si) {
   const bool resume = A.resume_step == si && !A.restart_in.empty();
   const bool first = !resume && A.total_increments == 0 && si == 0;
   A.nlgeom = st.nlgeom;
+  A.mat_time = 1.0;
   if (!resume) A.begin_step(st, si, st.amp_ramp == 1);
   if (!A.contact) A.contact = std::make_unique<GeneralContact>(A);
   if (resume) {  // contact definition in force at this step

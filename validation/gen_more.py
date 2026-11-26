@@ -34,8 +34,11 @@ MATERIALS.update({
     'STEEL_RATE': ('*Material, name=STEEL_RATE\n*Density\n7.85e-09\n*Elastic\n210000., 0.3\n'
                    '*Plastic\n250., 0.\n350., 0.2\n*Rate Dependent, type=POWER LAW\n40.4, 5.\n'),
     'STEEL_DMG': ('*Material, name=STEEL_DMG\n*Density\n7.85e-09\n*Elastic\n210000., 0.3\n'
-                  '*Plastic\n250., 0.\n300., 0.2\n*Damage Initiation, criterion=DUCTILE\n0.1, 0.333, 0.\n'
+                  '*Plastic\n250., 0.\n300., 0.2\n*Damage Initiation, criterion=DUCTILE\n0.15, 0., 0.\n0.09, 0.5, 0.\n'
                   '*Damage Evolution, type=DISPLACEMENT\n0.05\n'),
+    'STEEL_DMGE': ('*Material, name=STEEL_DMGE\n*Density\n7.85e-09\n*Elastic\n210000., 0.3\n'
+                   '*Plastic\n250., 0.\n300., 0.2\n*Damage Initiation, criterion=DUCTILE\n0.15, 0., 0.\n0.09, 0.5, 0.\n'
+                   '*Damage Evolution, type=ENERGY\n5.\n'),
     'COND': ('*Material, name=COND\n*Density\n7.85e-09\n*Conductivity\n50.\n*Specific Heat\n4.6e+08\n'
              '*Elastic\n210000., 0.3\n*Expansion\n1.2e-05\n'),
 })
@@ -249,7 +252,7 @@ def patch_features():
                                ['%d, 3, %s' % (n, fmt(-1.0 / len(tip))) for n in tip], True)
         register(d, 'static', etype, 'near incompressibility', 'Rubber cantilever with a bulk modulus 20000 times the '
                  'shear modulus, tip load (volumetric locking).', tip[:3], fix, False, 'nonlinear', category='feature',
-                 group='patch', supported=etype == 'C3D8R', reason=None if etype == 'C3D8R' else
+                 group='patch', supported=etype != 'C3D4H', reason=None if etype != 'C3D4H' else
                  NS + 'hybrid elements (%s)' % etype, twin=etype == 'C3D8R')
 
     for n in (4, 16):
@@ -691,9 +694,7 @@ def more_features():
              category='feature', group='material', supported=True)
 
     for name, mat, title, reason in (('mat_rate_dependent', 'STEEL_RATE', 'rate-dependent plasticity (power law)',
-                                      'rate-dependent plasticity'),
-                                     ('mat_damage_deletion', 'STEEL_DMG', 'ductile damage and element deletion',
-                                      'damage and element deletion')):
+                                      'rate-dependent plasticity'),):
         d = Deck(name, 'Steel bar pulled at high speed, %s (explicit)' % title)
         hexes = hex_block(d, 10, 2, 2, 20.0, 2.0, 2.0)
         solid(d, 'C3D8R', hexes, mat)
@@ -705,7 +706,31 @@ def more_features():
                                                   'amplitude=PULL', 'TIP, 1, 1, 10000.', 'TIP, 2, 3, 0.'])
         register(d, 'explicit', 'C3D8R', title, 'Clamped bar pulled at 10 m/s, %s.' % title, tip[:2] +
                  d.select(lambda x, y, z: near(x, 10.0) and near(y, 0) and near(z, 0)), fix, False, 'dynamic',
-                 category='feature', group='material', supported=False, reason=NS + reason, twin=False)
+                 category='feature', group='material', supported=True, twin=False)
+
+    # ductile damage: two single-element bars (lengths 2 and 1, so characteristic lengths 2^(1/3) and 1) pulled
+    # slowly at the same speed; homogeneous uniaxial states (triaxiality 1/3, between the two rows of the onset table),
+    # linear softening, then deletion of each element in turn
+    d = Deck('mat_damage_deletion', 'Two single-element steel bars pulled to failure, ductile damage and element '
+             'deletion (explicit)')
+    hexes = hex_block(d, 1, 1, 1, 2.0, 1.0, 1.0) + hex_block(d, 1, 1, 1, 1.0, 1.0, 1.0, x0=(0.0, 3.0, 0.0))
+    ea, eb = d.elements('C3D8R', 'EALL', hexes)
+    d.elsets['EA'], d.elsets['EB'] = [ea], [eb]
+    d.materials.add('STEEL_DMG'); d.materials.add('STEEL_DMGE')  # evolution by plastic displacement / by energy
+    d.model += ['*Solid Section, elset=EA, material=STEEL_DMG', ',', '*Solid Section, elset=EB, material=STEEL_DMGE', ',']
+    fix = d.select(lambda x, y, z: near(x, 0))
+    tip = d.select(lambda x, y, z: (near(x, 2.0) and y < 2) or (near(x, 1.0) and y > 2))
+    d.nset('TIP', tip)
+    d.nset('FY', d.select(lambda x, y, z: near(y, 0) or near(y, 3.0)))
+    d.nset('FZ', d.select(lambda x, y, z: near(z, 0)))
+    d.model += ['*Amplitude, name=PULL, definition=SMOOTH STEP', '0., 0., 5e-05, 1.']
+    d.steps += explicit_step('Pull', 0.0005, ['*Boundary', 'FIX, 1, 1', 'FY, 2, 2', 'FZ, 3, 3',
+                                              '*Boundary, type=VELOCITY, amplitude=PULL', 'TIP, 1, 1, 1000.'])
+    register(d, 'explicit', 'C3D8R', 'ductile damage and element deletion', 'Two single-element bars of lengths 2 '
+             'and 1 pulled at 1 m/s: ductile damage onset (table in the stress triaxiality), linear softening in the '
+             'plastic displacement (fracture energy for the short bar), element deletion.', tip, fix, False,
+             'dynamic', category='feature',
+             group='material', twin=False)
 
     # constraints, connectors and options
     d = Deck('connector_nonlinear', 'CONN3D2 AXIAL spring with a nonlinear force-displacement law')
@@ -1004,7 +1029,7 @@ def more_features():
                 '*Output, field, number interval=10', '*Node Output', 'U, RF', '*End Step']
     register(d, 'visco', 'C3D8R', 'viscoelastic relaxation', 'Block stretched by 5 % then held: stress relaxation in '
              'a *VISCO step.', tip[:3], fx, False, 'nonlinear', category='feature', group='procedure',
-             supported=False, reason=NS + '*VISCO steps', twin=False)
+             supported=True, twin=False)
 
     from gen_features import cantilever_beam
     d, ids = cantilever_beam('modal_dynamic', 'B31 cantilever, frequency extraction then modal dynamics')

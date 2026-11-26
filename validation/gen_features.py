@@ -954,7 +954,20 @@ def material_features():
                                              '*Boundary, amplitude=FAST', 'TIP, 1, 1, 0.2'])
     register(d, 'explicit', 'C3D8R', 'viscoelasticity', 'Block stretched by 5 % in 0.5 ms, then held: stress '
              'relaxation with a 1 ms time constant (Prony series).', tip[:3], fx, False, 'dynamic', category='feature',
-             group='material', supported=False, reason=NS + 'viscoelasticity')
+             group='material', supported=True,
+             # Abaqus/Standard reports for the implicit twin an external work below its internal energy (energy
+             # balance off by 18 % of the work, with no kinetic or viscous term): internal and kinetic energies only
+             twin_energies=['ALLIE', 'ALLKE'])
+
+    d, fx, tip = block('visco_long_term', 'VISCO_INST', 'Viscoelastic block, instantaneous then long-term response', 0)
+    out = output_block(True, False, 1)
+    d.steps += (['*Step, name=Instant, nlgeom=NO', '*Static', '1., 1.', '*Boundary', 'FIX, 1, 1', 'FY, 2, 2',
+                 'FZ, 3, 3', 'TIP, 1, 1, 0.04'] + out + ['*End Step'] +
+                ['*Step, name=LongTerm, nlgeom=NO', '*Static, long term', '1., 1.'] + out + ['*End Step'])
+    register(d, 'static', 'C3D8R', 'viscoelastic moduli', 'Block stretched by 1 %: instantaneous response of a '
+             'Prony series given with its instantaneous moduli, then long-term response (*STATIC, LONG TERM).',
+             tip[:3], fx, False, 'exact', 'linear', category='feature', group='material', twin=False,
+             reference='analytic')
 
 
 # ------------------------------------------------------------------------------- procedure-specific options

@@ -1,7 +1,7 @@
 # Validation
 
-The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 291
-small decks (231 cases and 60 twins), each running in seconds:
+The validation suite is run after every change of the solver (`make validate`, `make parallel`). It contains 292
+small decks (232 cases and 60 twins), each running in seconds:
 
 - **elements and deformation modes**: every element type supported by asclepios (C3D8R, C3D8, C3D4, S4R, S3R, B31,
   CONN3D2) under tension, bending, torsion, shear, large rotations, pressure, hyperelasticity, plasticity with load
@@ -47,7 +47,7 @@ implemented (status NOT SUPPORTED, reason given in `RESULTS.md`).
   publication: nodal displacements, or a stress extrapolated to the published point from the element values next to
   it (quadratic through the first three elements). Tolerance per check (1 to 3 %): remaining discretisation error and
   spread of the published values. The values obtained are listed in the main README; `literature.py` (`make literature`) runs each benchmark on a series of meshes and writes the convergence curves and deformed shapes to `LITERATURE.md` and `literature/`.
-- **Closed form** (62 cases): wherever the nodal solution of the discrete model is known by hand, it is the reference
+- **Closed form** (63 cases): wherever the nodal solution of the discrete model is known by hand, it is the reference
   (ground truth): homogeneous states (tension, simple shear, hyperelastic membranes and blocks, plasticity with
   isotropic or kinematic hardening and load reversal, thermal stress, orthotropic elasticity, initial stress,
   temperature dependence), patch tests, constant moment (exact circular arcs, thin shells), uniform twisting, springs

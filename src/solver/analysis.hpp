@@ -158,6 +158,7 @@ struct Analysis {
   };
   ElemSum eval_elements(double dt, double bv1, double bv2, bool dynamic, bool commit, std::vector<double>& f);
   bool initial_pass = false;  // eval_elements: increment-0 viscous forces of the initial velocities
+  double mat_time = 1.0;      // time increment of time-dependent materials per unit step increment (0: *STATIC)
   std::vector<char> group_mask;  // eval_elements: groups evaluated (empty: all)
   double solid_dt_scale = 1.0;   // global estimate of the increment: ratio applied to the solid elements
   void external_forces(double st, double tt, std::vector<double>& f);  // at configuration X+u+du

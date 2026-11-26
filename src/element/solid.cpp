@@ -295,6 +295,9 @@ struct PointState {  // per integration point
   double xi = 0;  // superelastic: martensite fraction
   double etrans = 0;  // superelastic: transformation energy density
   Sym6 back;      // kinematic hardening: backstress (corotational)
+  Sym6 seff;      // ductile damage: undamaged (effective) stress; sig = (1 - D) seff
+  double dini = 0, dmg = 0, upl = 0;  // ductile damage: onset criterion, damage variable, plastic displacement
+  double dsy = 0;                     // ductile damage: yield stress at the onset (fracture energy type)
 };
 
 class SolidGroup : public ElementGroup {
@@ -317,6 +320,10 @@ class SolidGroup : public ElementGroup {
   std::vector<double> t_init;    // initial temperature of each element (temperature-dependent elasticity)
   std::vector<double> effm;      // superelastic, explicit: effective 2 mu and 3 K of each element (0: initial moduli)
   std::vector<double> pbv_last;  // bulk viscosity pressure of the last increment (trapezoidal viscous energy)
+  std::vector<double> lch;       // ductile damage: characteristic length of the element (cube root of its volume)
+  std::vector<char> deleted;     // ductile damage: element removed (damage variable reached 1)
+  int nvt = 0;                   // viscoelasticity: largest number of Prony terms of the group's materials
+  std::vector<double> vh;        // viscoelasticity: per point and Prony term, the relaxed strain (corotational, 6)
 
   void setup(const Model& m) override {
     model = &m;
@@ -332,6 +339,23 @@ class SolidGroup : public ElementGroup {
     }
     mat.resize(size());
     orient.resize(size());
+    nvt = 0;
+    for (int e = 0; e < size(); ++e)
+      { const int mi = m.sections[m.elems[ids[e]].section].material; if (mi >= 0) nvt = std::max(nvt, (int)m.materials[mi].pr_tau.size()); }
+    vh.assign((size_t)size() * npt * nvt * 6, 0.0);
+    deleted.assign(size(), 0);
+    lch.assign(size(), 0.0);
+    for (int e = 0; e < size(); ++e) {
+      const int mi = m.sections[m.elems[ids[e]].section].material;
+      if (mi < 0 || !m.materials[mi].damage()) continue;
+      double x[30];
+      for (int I = 0; I < nen; ++I) store3(x + 3 * I, m.X[conn[e * nen + I]]);
+      double V = 0;
+      if (tet10()) { Vec3 b[10]; for (int g = 0; g < 4; ++g) V += tet10_grad(x, g, b); }
+      else if (type == ElType::C3D6) { Vec3 b[6]; for (int g = 0; g < npt; ++g) V += wedge_grad(x, g, b); }
+      else V = type == ElType::C3D4 ? tet_vol(x) : hex_vol(x);
+      lch[e] = std::cbrt(V);
+    }
     {  // initial temperatures (mean of the nodes) and initial stresses
       std::vector<double> tn(m.nn(), 0.0);
       for (const auto& t : m.init_temperature) tn[t.node] = t.value;
@@ -345,7 +369,7 @@ class SolidGroup : public ElementGroup {
       for (const auto& is : m.init_stress) {
         const int e = local[is.elem];
         if (e < 0) continue;
-        for (int g = 0; g < npt; ++g) for (int k = 0; k < 6; ++k) st[e * npt + g].sig[k] = is.s[k];
+        for (int g = 0; g < npt; ++g) for (int k = 0; k < 6; ++k) st[e * npt + g].sig[k] = st[e * npt + g].seff[k] = is.s[k];
       }
     }
     for (int e = 0; e < size(); ++e) {
@@ -389,8 +413,8 @@ class SolidGroup : public ElementGroup {
     }
   }
 
-  void save(BinOut& o) const override { ElementGroup::save(o); o.vec(st); o.vec(hgq); o.vec(hgv); o.vec(hgf); o.vec(hgl); o.vec(hgs); o.vec(effm); o.vec(pbv_last); }
-  void load(BinIn& in) override { ElementGroup::load(in); in.vec(st); in.vec(hgq); in.vec(hgv); in.vec(hgf); in.vec(hgl); in.vec(hgs); in.vec(effm); in.vec(pbv_last); }
+  void save(BinOut& o) const override { ElementGroup::save(o); o.vec(st); o.vec(hgq); o.vec(hgv); o.vec(hgf); o.vec(hgl); o.vec(hgs); o.vec(effm); o.vec(pbv_last); o.vec(vh); o.vec(deleted); }
+  void load(BinIn& in) override { ElementGroup::load(in); in.vec(st); in.vec(hgq); in.vec(hgv); in.vec(hgf); in.vec(hgl); in.vec(hgs); in.vec(effm); in.vec(pbv_last); in.vec(vh); in.vec(deleted); }
   double alpha_damping(int e) const override { return mat[e]->damp_alpha; }
 
   bool tet10() const { return type == ElType::C3D10 || type == ElType::C3D10M; }
@@ -443,12 +467,14 @@ class SolidGroup : public ElementGroup {
   // density (ElemOut::e_corr)
   double update_point(const Material& m, PointState& p, const Sym6& deps, const Vec3& w, const Mat3& dF, bool rotate,
                       double dtemp, const double* fibres, double temp1, double tinit, const Mat3* Ror, double& ec,
-                      Sym6* dsig = nullptr) {
+                      Sym6* dsig, double dtm, double dtr, int ip, bool commit, double jbar = 0,
+                      double* pproj = nullptr) {
     Mat3 Q = rotate ? hughes_winget(w) : Mat3::identity();
     if (rotate) {
       p.sig = abq::rotate(Q, p.sig); p.eps = abq::rotate(Q, p.eps);
       if (m.sma) p.etr = abq::rotate(Q, p.etr);
       if (m.kinematic) p.back = abq::rotate(Q, p.back);
+      if (m.damage()) p.seff = abq::rotate(Q, p.seff);
     }
     const Sym6 s_old = p.sig;
     // thermal strain work over the increment (removed from the work of the element forces)
@@ -498,7 +524,42 @@ class SolidGroup : public ElementGroup {
       std::memcpy(&F.m[0][0], p.F, sizeof(p.F));
       F = dF * F;
       std::memcpy(p.F, &F.m[0][0], sizeof(p.F));
+      // mean dilatation (jbar > 0: element volume ratio); other models: F scaled to the element's volume change
+      if (pproj) *pproj = 0;
+      if (jbar > 0 && pproj && hyper_cauchy_mean_dilatation(m, F, jbar, p.sig, *pproj)) return 0;
+      if (jbar > 0) F = F * std::cbrt(jbar / F.det());
       hyper_cauchy_3d(m, F, p.sig, nullptr, fibres);
+      if (pproj) *pproj = p.sig.trace() / 3;
+      return 0;
+    }
+    if (m.visco()) {
+      // linear viscoelasticity, Prony series: with the elastic strain e (total strain less the thermal part), each
+      // term relaxes a strain h_i towards e, dh_i/dt = (e - h_i) / tau_i, integrated exactly over the increment for e
+      // linear in time; sigma = 2 G0 dev(e - sum g_i h_i) + K0 tr(e - sum k_i h_i) I with the instantaneous moduli.
+      // dtm = 0 (*STATIC) leaves the h_i unchanged: instantaneous response.
+      Sym6 ee = p.eps, d = deps;
+      for (int i = 0; i < 3; ++i) { ee[i] -= m.alpha * (temp1 - tinit); d[i] -= m.alpha * dtemp; }
+      const double G0 = m.shear_modulus(), K0 = m.bulk_modulus();
+      Sym6 r = ee;  // e - sum g_i dev(h_i) - sum k_i vol(h_i)
+      const int nt = (int)m.pr_tau.size();
+      double* hs = &vh[(size_t)ip * nvt * 6];
+      for (int t = 0; t < nt; ++t) {
+        Sym6 h;
+        for (int i = 0; i < 6; ++i) h[i] = hs[6 * t + i];
+        if (rotate) h = abq::rotate(Q, h);
+        const double x = dtm / m.pr_tau[t], a = std::exp(-x), c = -std::expm1(-x);
+        const double b = x < 1e-4 ? x * (0.5 - x / 6) : 1 - c / x;
+        for (int i = 0; i < 6; ++i) h[i] = a * h[i] + c * (ee[i] - d[i]) + b * d[i];
+        const double hv = h.trace() / 3;
+        for (int i = 0; i < 6; ++i) r[i] -= m.pr_g[t] * (h[i] - (i < 3 ? hv : 0.0)) + (i < 3 ? m.pr_k[t] * hv : 0.0);
+        if (commit)
+          for (int i = 0; i < 6; ++i) hs[6 * t + i] = h[i];
+      }
+      const double rv = r.trace() / 3;
+      for (int i = 0; i < 6; ++i) p.sig[i] = 2 * G0 * (r[i] - (i < 3 ? rv : 0.0)) + (i < 3 ? 3 * K0 * rv : 0.0);
+      if (dsig)
+        for (int i = 0; i < 6; ++i) (*dsig)[i] = p.sig[i] - s_old[i];
+      ec -= thermal_work();
       return 0;
     }
     if (m.ortho) {  // orthotropic elasticity: total small strain in the material axes (rows of R)
@@ -539,7 +600,44 @@ class SolidGroup : public ElementGroup {
     }
     Sym6 d = deps;
     if (m.alpha != 0) for (int i = 0; i < 3; ++i) d[i] -= m.alpha * dtemp;
-    return elastic_plastic(j2_update_3d(m, d, p.sig, p.ep));
+    if (m.damage()) {
+      // ductile damage: plasticity on the effective stress; onset when the integral of d(ep) / ep_D(triaxiality)
+      // reaches 1, then the plastic displacement u = L ep (L: characteristic length) drives the damage linearly,
+      // D = u / u_f; sigma = (1 - D) seff. Internal energy: work of the stresses (no correction).
+      const double ep0 = p.ep;
+      p.sig = p.seff;
+      const double wp = j2_update_3d(m, d, p.sig, p.ep, dtr);
+      p.seff = p.sig;
+      double dep = p.ep - ep0;
+      if (dep > 0 && p.dmg < 1) {
+        const double q = mises(p.seff), eta = q > 0 ? p.seff.trace() / (3 * q) : 0.0;
+        const auto& X = m.dmg_eta;
+        const auto& Y = m.dmg_eps;
+        double epd = Y.back();
+        if (eta <= X.front()) epd = Y.front();
+        else if (eta < X.back()) {
+          const size_t j = std::upper_bound(X.begin(), X.end(), eta) - X.begin();
+          epd = Y[j - 1] + (Y[j] - Y[j - 1]) * (eta - X[j - 1]) / (X[j] - X[j - 1]);
+        }
+        if (p.dini < 1) {  // part of the increment beyond the onset
+          const double w = p.dini + dep / epd;
+          dep = w > 1 ? (w - 1) * epd : 0.0;
+          p.dini = std::min(w, 1.0);
+          if (w >= 1) p.dsy = m.yield(p.ep - dep);
+        }
+        if (dep > 0 && m.damage_evolves()) {
+          const double uf = m.dmg_gf > 0 ? 2 * m.dmg_gf / std::max(1e-30, p.dsy) : m.dmg_uf;
+          p.upl += lch[ip / npt] * dep;
+          p.dmg = std::min(1.0, p.upl / uf);
+        }
+      }
+      for (int i = 0; i < 6; ++i) p.sig[i] = (1 - p.dmg) * p.seff[i];
+      if (dsig)
+        for (int i = 0; i < 6; ++i) (*dsig)[i] = p.sig[i] - s_old[i];
+      ec -= thermal_work();
+      return (1 - p.dmg) * wp;
+    }
+    return elastic_plastic(j2_update_3d(m, d, p.sig, p.ep, dtr));
   }
 
   void compute(int e, const ElemIn& in, ElemOut& out, bool commit) override {
@@ -558,6 +656,8 @@ class SolidGroup : public ElementGroup {
       dtemp /= n; tmean /= n;
     }
     for (int i = 0; i < 6 * n; ++i) out.f[i] = 0;
+    if (deleted[e]) return;  // removed by damage: no forces, no stable increment limit, outputs of the last state
+                             // (zero stresses, final plastic strain), mass kept
     const bool rotate = in.nlgeom;
     const double rho = m.density * msf[e];
     double M = dilatational_modulus(m);
@@ -611,7 +711,7 @@ class SolidGroup : public ElementGroup {
       double ec = 0;
       Sym6 dsig;
       double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
-                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig);
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig, in.dt_mat, in.dt, e, commit);
       out.e_corr += ec * V1;
       if (m.sma && in.dynamic) M = sma_modulus(e, m, dsig, deps, commit);
       // explicit: while the point flows plastically, the increments of the applied hourglass forces are scaled by
@@ -842,7 +942,7 @@ class SolidGroup : public ElementGroup {
         double ec = 0;
         Sym6 dsig;
         double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
-                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig);
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig, in.dt_mat, in.dt, e * 8 + g, commit);
         for (int i = 0; i < 6; ++i) { dsig_avg[i] += dsig[i] / 8; deps_avg[i] += deps[i] / 8; }
         out.e_plastic += wp * d1[g];
         out.e_corr += ec * d1[g];
@@ -905,7 +1005,7 @@ class SolidGroup : public ElementGroup {
         double ec = 0;
         Sym6 dsig;
         double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
-                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig);
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig, in.dt_mat, in.dt, e * 4 + g, commit);
         for (int i = 0; i < 6; ++i) { dsig_avg[i] += dsig[i] / 4; deps_avg[i] += deps[i] / 4; }
         out.e_plastic += wp * d1[g];
         out.e_corr += ec * d1[g];
@@ -978,6 +1078,17 @@ class SolidGroup : public ElementGroup {
       }
       double vol_bar = 0;
       for (int I = 0; I < n; ++I) vol_bar += dot(bbar_m[I], load3(in.du + 6 * I));
+      // hyperelastic materials with the volumetric B-bar: deformation gradient with the element's volume ratio
+      // (mean dilatation, F-bar), consistent with the constant pressure of the B-bar forces
+      // The virtual work of F-bar weights the stresses of each point by J-bar dV0 (instead of the point's current
+      // volume J dV0, which differs where the point volumes vary inside the element).
+      double jbar = 0, d0[8];
+      if (bbar && m.hyper() && !xref) {
+        double V0 = 0;
+        Vec3 bt[8];
+        for (int g = 0; g < ng; ++g) V0 += (d0[g] = grad(in.X, g, bt));
+        jbar = V1 / V0;
+      }
       for (int g = 0; g < ng; ++g) {
         Mat3 L;
         for (int I = 0; I < n; ++I)
@@ -998,20 +1109,23 @@ class SolidGroup : public ElementGroup {
               for (int j = 0; j < 3; ++j) dF.m[i][j] += in.du[6 * I + i] * bo[I][j];
         }
         PointState p = st[e * npt + g];
-        double ec = 0;
+        double ec = 0, pj = 0;
         Sym6 dsig;
         double wp = update_point(m, p, deps, w, dF, rotate, dtemp, fib.empty() ? nullptr : &fib[e * 9], tmean, t_init[e],
-                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig);
+                         orient[e] >= 0 ? &model->orients[orient[e]].R : nullptr, ec, &dsig, in.dt_mat, in.dt, e * npt + g, commit, jbar,
+                         jbar > 0 ? &pj : nullptr);
         for (int i = 0; i < 6; ++i) { dsig_avg[i] += dsig[i] / ng; deps_avg[i] += deps[i] / ng; }
         out.e_plastic += wp * d1[g];
         out.e_corr += ec * d1[g];
+        // pressure part projected on the mean volume change (B-bar); hyperelastic mean dilatation: see update_point
+        const double trs = jbar > 0 ? pj : p.sig.trace() / 3.0;
         const Sym6& s = p.sig;
-        double trs = s.trace() / 3.0;
+        const double wg = jbar > 0 ? jbar * d0[g] : d1[g];
         for (int I = 0; I < n; ++I) {
           const Vec3& b = b1[g][I];
           Vec3 f(s[0] * b.x + s[3] * b.y + s[4] * b.z, s[3] * b.x + s[1] * b.y + s[5] * b.z, s[4] * b.x + s[5] * b.y + s[2] * b.z);
           if (bbar) f += (bbar_1[I] - b) * trs;
-          add3(out.f + 6 * I, f * d1[g]);
+          add3(out.f + 6 * I, f * wg);
         }
         if (commit) st[e * npt + g] = p;
         for (int i = 0; i < 6; ++i) { sig_avg[i] += p.sig[i] / ng; eps_avg[i] += p.eps[i] / ng; }
@@ -1042,6 +1156,10 @@ class SolidGroup : public ElementGroup {
     out.dt_stable = Le / c * (std::sqrt(1 + xi * xi) - xi) * std::sqrt(1.0);
     if (commit) {
       pbv_last[e] = pbv_now;
+      // ductile damage: element removed once the damage variable reaches 1 at an integration point
+      if (m.damage_evolves())
+        for (int g = 0; g < npt; ++g)
+          if (st[e * npt + g].dmg >= 1) { deleted[e] = 1; break; }
       float* o = &this->out[e * N_OUT];
       o[OUT_MISES] = (float)mis_max;
       for (int i = 0; i < 6; ++i) o[OUT_S11 + i] = (float)sig_avg[i];
