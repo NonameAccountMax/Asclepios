@@ -100,6 +100,7 @@ struct GeneralContact::Impl {
   std::vector<char> tri_solid;  // exterior face of a solid: one-sided (outward normal), no thickness
   std::vector<double> tri_depth;  // solid faces: deepest penetration still detected (beyond: other side of the solid)
   std::vector<int> st_off, st;    // per node: the exterior solid facets that contain it
+  std::vector<Vec3> snorm;        // per node: outward normal of its solid surface (mean of its facets), zero if none
   // analytical rigid surfaces: facets (first triangle of each) around each of their nodes, and the current vertex
   // normals (mean of the facet normals: exact on an arc), interpolated over a facet as the contact normal
   std::vector<int> an_nodes, an_off, an;
@@ -546,6 +547,19 @@ void GeneralContact::prepare() {
   };
   const int ns = (int)P.slaves.size(), nent = P.nent;
   const int ntri = (int)P.tri_h.size(), nseg = (int)P.seg_r.size();
+  // outward normals of the slave nodes on solid surfaces (mean of the normals of their exterior faces)
+  if (!P.st_off.empty()) {
+    P.snorm.assign(nn, Vec3());
+    for (int si = 0; si < ns; ++si) {
+      const int n = P.slaves[si];
+      Vec3 s;
+      for (int j = P.st_off[n]; j < P.st_off[n + 1]; ++j) {
+        const int* t = &P.tri[3 * P.st[j]];
+        s += normalized(cross(X(t[1]) - X(t[0]), X(t[2]) - X(t[0])));
+      }
+      if (norm(s) > 1e-12) P.snorm[n] = normalized(s);
+    }
+  }
   // free shell edges moved back into the shell by the half thickness (current configuration)
   const int nfn = (int)P.fnode.size();
   for (int i = 0; i < nfn; ++i) {
@@ -809,6 +823,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
     const Vec3 x = Xs(n0);
     Hit bsol;
     int bsol_tier = 3;
+    double bsol_appr = 0;
     double s_rigid = 1e300;  // signed distance to the nearest one-sided rigid facet (behind: < 0)
     const double hs = si < ns ? P.slave_h[si] : 0.0;
     for (int c = P.cand_off[si]; si < ns && c < P.cand_off[si + 1]; ++c) {
@@ -842,6 +857,10 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         double s = dot(d, nrm);
         double lat = in ? 0.0 : norm(d - nrm * s);  // distance beyond the facet boundary, in its plane
         const double hsum = hs + P.tri_h[id] + P.clear;  // softened contact: from the clearance on
+        // a node on the surface of a solid contacts only the solid faces turned towards it (its own outward
+        // normal opposed to theirs, beyond 100 degrees): a node on the edge of a punch pressed into it is also on
+        // the plane of the punch's side faces
+        if (P.tri_solid[id] == 1 && !P.snorm.empty() && norm2(P.snorm[n0]) > 0 && dot(nrm, P.snorm[n0]) > -0.17) continue;
         if (P.tri_solid[id]) {  // solid face: one-sided, outward normal
           // no thickness: within the facet up to round-off (a node on the diagonal between the two triangles of a
           // quadrilateral face is otherwise outside both)
@@ -933,6 +952,7 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
         // just below a top face is also within the projection of the side faces, deeper; a node of another body
         // pushed into the bottom face right under a vertical edge is also slightly behind the side face)
         int tier = 2;
+        double appr = 0;
         const int lm = P.last_master[si];
         if (P.pen_t[si] >= 0 && lm >= 0 && P.tri_solid[lm] &&
             std::equal(&P.fac[4 * lm], &P.fac[4 * lm] + 4, &P.fac[4 * id])) {
@@ -943,9 +963,21 @@ void GeneralContact::compute(double dt, std::vector<double>& f, Energies& en, in
                      c0 = Xs(tn[2]) - load3(&A.du[6 * tn[2]]), x0 = x - load3(&A.du[6 * n0]);
           double wp0[3];
           plane_coords(x0, a0, b0, c0, wp0);
-          if (dot(x0 - a0, cross(b0 - a0, c0 - a0)) >= 0 && std::min({wp0[0], wp0[1], wp0[2]}) >= -1e-9) tier = 1;
+          const Vec3 n0 = normalized(cross(b0 - a0, c0 - a0));
+          const double s0 = dot(x0 - a0, n0);
+          if (s0 >= 0 && std::min({wp0[0], wp0[1], wp0[2]}) >= -1e-9) {
+            tier = 1;
+            appr = s0 + h.pen;  // motion into the face over the increment (signed distance s0, then -pen)
+          }
         }
-        if (bsol.master == INT_MIN || tier < bsol_tier || (tier == bsol_tier && h.pen < bsol.pen)) { bsol = h; bsol_tier = tier; }
+        // among faces crossed during the increment, the one the node moved into the most (a node on the edge of a
+        // punch at the start, pushed into its bottom face, is also on the plane of its side face); otherwise the
+        // shallowest
+        bool better = bsol.master == INT_MIN || tier < bsol_tier;
+        if (!better && tier == bsol_tier)
+          better = tier == 1 && std::fabs(appr - bsol_appr) > 1e-9 * (std::fabs(appr) + std::fabs(bsol_appr)) ? appr > bsol_appr
+                                                                                                         : h.pen < bsol.pen;
+        if (better) { bsol = h; bsol_tier = tier; bsol_appr = appr; }
       }
       else if (id >= 0) { if (h.pen > bt.pen) bt = h; }
       else if (h.pen > bs.pen) bs = h;
@@ -1346,6 +1378,8 @@ void GeneralContact::implicit_points(std::vector<Point>& pts, double near) {
         }
         if (norm(ns) > 0.5) nrm = normalized(ns);
       }
+      // solid surfaces: only the faces turned towards the node (see compute())
+      if (P.tri_solid[id] == 1 && !P.snorm.empty() && norm2(P.snorm[n0]) > 0 && dot(nrm, P.snorm[n0]) > -0.17) continue;
       const Vec3 d = x - q;
       const double s = dot(d, nrm);
       const double lat = in ? 0.0 : norm(d - nrm * s);

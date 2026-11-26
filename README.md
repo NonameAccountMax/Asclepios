@@ -163,8 +163,10 @@ difference stiffness, symmetry, eigenvalues, exact critical increment against th
   triangle of the facet under the contact point; the force goes to the four nodes of a quadrilateral facet with
   the bilinear weights of the point (coordinates taken on the facet of the nodes, not the one drawn in by the
   rounding of free edges). Exterior faces of solids are one-sided facets without thickness (outward normal); a node
-  inside a solid contacts the face of its contact at the previous increment while it is still hit, else a face it
-  crossed during the increment, else the nearest one; a node under a concave fold of the surface (a face bent into
+  inside a solid contacts the face of its contact at the previous increment while it is still hit, else the face it
+  moved into the most among those it crossed during the increment, else the nearest one; a node on the surface of a
+  solid contacts only the solid faces turned towards it (normal opposed to its own, beyond 100 degrees: a node on
+  the edge of a punch pressed into it is also on the plane of the punch's side faces); a node under a concave fold of the surface (a face bent into
   a valley, both triangles behind it) contacts the fold line or vertex. Beam nodes contact shell facets and beam segments; shell nodes do not contact beam
   segments, the free shell edges do (edge to segment: closest points of the two segments, edge stiffness from its
   two nodes weighted by the contact point, a vertex held by one of its edges). Normal viscous damping of 3 % of critical
@@ -408,8 +410,9 @@ Features exercised by the validation suite and not supported yet:
 
 - Contact: impacts in implicit dynamics (the reference treats them in its own way, with an energy loss of about 40 %
   at the impact), beam contact and surface-to-surface enforcement in implicit procedures (non-matching contact faces:
-  12 % on the reaction of a pressed punch); quasi-static pressing in explicit dynamics (reaction 18 % below the
-  reference, not explained); explicit contact pairs with penalty enforcement, friction or softened behaviour;
+  12 % on the reaction of a pressed punch); persistent contact between coincident nodes in explicit dynamics (the two
+  contact passes add their penalties: 18 % stiffer than the reference, and the stiffness depends on whether the
+  contact starts before the global estimate of the increment has converged); explicit contact pairs with penalty enforcement, friction or softened behaviour;
   surface-specific contact property assignments; one-sided SPOS/SNEG surfaces in general contact; analytical
   surfaces other than CYLINDER (REVOLUTION, SEGMENTS).
 - Constraints: connector stops other than the length of AXIAL connectors, stops in static procedures; rigid links

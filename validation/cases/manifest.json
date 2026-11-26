@@ -14825,7 +14825,7 @@
    "E": 0.06
   },
   "analysis": "quasi-static explicit",
-  "known": "quasi-static pressing in explicit dynamics: the reaction stays 18 % below the reference over the whole loading while the punch is compressed more; not explained yet (the implicit case agrees within 2 %)",
+  "known": "quasi-static pressing in explicit dynamics, coincident contact nodes: both contact passes add their penalty, 18 % stiffer than the reference in total (reaction +10 %, contact energy); the stiffness of a pass also depends on whether the contact starts before the global estimate of the increment has converged (+43 % for a pressing 10 times slower)",
   "reference": "abaqus",
   "known_quantities": [],
   "known_quantities_note": null,

@@ -67,9 +67,11 @@ for _n in ('contact_block_on_plate_std', 'contact_shell_on_plate_std', 'contact_
            'contact_penalty_soft_light_std', 'contact_beam_on_plate_std', 'contact_pair_surface_std',
            'contact_self_shell_std'):
     KNOWN[_n] = _IMPACT_STD
-KNOWN['contact_punch_static_xpl'] = ('quasi-static pressing in explicit dynamics: the reaction stays 18 % below the '
-                                     'reference over the whole loading while the punch is compressed more; not '
-                                     'explained yet (the implicit case agrees within 2 %)')
+KNOWN['contact_punch_static_xpl'] = ('quasi-static pressing in explicit dynamics, coincident contact nodes: both '
+                                     'contact passes add their penalty, 18 % stiffer than the reference in total '
+                                     '(reaction +10 %, contact energy); the stiffness of a pass also depends on '
+                                     'whether the contact starts before the global estimate of the increment has '
+                                     'converged (+43 % for a pressing 10 times slower)')
 KNOWN_QUANTITIES = {}  # case name -> (quantities, note): documented difference on some quantities only
 
 
