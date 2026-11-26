@@ -78,6 +78,8 @@ struct Analysis {
   }
   std::vector<double> temp, temp_prev, fv1;       // nn
   std::vector<char> node_rot;                     // node carries rotational stiffness/inertia
+  std::vector<char> node_pres;                    // node with a pressure unknown in its first rotation slot (C3D4H)
+  bool any_pres = false;
   // anisotropic rotary inertia (beams with the default exact inertia): per node symmetric tensor (xx, yy, zz, xy,
   // xz, yz) added to mr, in the current configuration; node_aniso flags the nodes that carry one
   std::vector<double> jrot;

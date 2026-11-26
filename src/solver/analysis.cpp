@@ -52,6 +52,12 @@ void Analysis::setup() {
     efor[g].assign((size_t)G.size() * G.nen * 6, 0.0);
     if (G.rot && G.type != ElType::CONN3D2)
       for (int n : G.conn) node_rot[n] = 1;
+    for (int e = 0; e < G.size(); ++e)
+      if (G.hybrid(e)) {
+        if (node_pres.empty()) node_pres.assign(nn, 0);
+        any_pres = true;
+        for (int I = 0; I < G.nen; ++I) node_pres[G.conn[e * G.nen + I]] = 1;
+      }
     if (G.rot) {
       std::vector<double> xe(3 * G.nen);
       double J6[6];
@@ -295,6 +301,12 @@ void Analysis::begin_step(const Step& st, int si, bool ramp_default) {
       }
     }
   }
+  if (any_pres)  // C3D4H nodes have no rotations: rotation conditions (ENCASTRE...) do not apply to their pressure
+    loads.bcs.erase(std::remove_if(loads.bcs.begin(), loads.bcs.end(),
+                                   [&](const Prescribed& p) { return p.dof >= 3 && node_pres[p.node]; }), loads.bcs.end());
+  if (any_pres && (st.proc == Step::EXPLICIT || st.proc == Step::FREQUENCY || st.proc == Step::BUCKLE ||
+                   st.proc == Step::MODAL_DYNAMIC || st.proc == Step::STEADY_STATE))
+    throw std::runtime_error("C3D4H elements: static, implicit dynamic and arc-length steps only (step " + st.name + ")");
   update_fixed(st);
   activate_links(st.proc != Step::EXPLICIT);
 }
@@ -304,6 +316,7 @@ void Analysis::update_fixed(const Step&) {
   local_bcs.clear();
   report_rf.assign(6 * nn, 0);
   auto set = [&](int node, int dof, double value) {
+    if (dof >= 3 && any_pres && node_pres[node]) return;  // pressure slot of a C3D4H node: no rotation to fix
     if (!m.transforms.count(node)) { fixed[6 * node + dof] = 1; return; }
     local_bcs.push_back({node, dof, value});
     for (int k = 0; k < 3; ++k) report_rf[6 * node + (dof < 3 ? 0 : 3) + k] = 1;

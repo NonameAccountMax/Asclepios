@@ -172,7 +172,7 @@ void OutputWriter::frame(int step, const std::string& step_name, double st, doub
       V[3 * i + k] = (float)A_.v[6 * i + k];
       RF[3 * i + k] = (float)A_.rf[6 * i + k];
       RM[3 * i + k] = (float)A_.rf[6 * i + 3 + k];
-      UR[3 * i + k] = (float)A_.u[6 * i + 3 + k];
+      UR[3 * i + k] = A_.any_pres && A_.node_pres[i] ? 0.0f : (float)A_.u[6 * i + 3 + k];  // C3D4H: pressure slot
     }
     T[i] = (float)A_.temp[i];
     nl[i] = m.node_label[i];

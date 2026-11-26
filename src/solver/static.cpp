@@ -69,7 +69,8 @@ DofMap make_dofmap(const Analysis& A) {
   dm.eq.assign(6 * nn, -1);
   for (int n = 0; n < nn; ++n)
     for (int k = 0; k < 6; ++k) {
-      if (!is_term[6 * n + k] && (!has_el[n] || (k >= 3 && !A.node_rot[n]))) continue;
+      const bool pres = k == 3 && A.any_pres && A.node_pres[n];  // C3D4H pressure unknown
+      if (!is_term[6 * n + k] && (!has_el[n] || (k >= 3 && !A.node_rot[n] && !pres))) continue;
       if (A.fixed[6 * n + k]) continue;
       dm.eq[6 * n + k] = dm.neq++;
     }
@@ -326,7 +327,10 @@ void run_static_step(Analysis& A, const Step& st, int si) {
       Eigen::VectorXd c = lu.solve(rhs);
       cmax = 0;
       for (int i = 0; i < 6 * nn; ++i)
-        if (dm.eq[i] >= 0) { A.du[i] += c[dm.eq[i]]; cmax = std::max(cmax, std::fabs(c[dm.eq[i]])); }
+        if (dm.eq[i] >= 0) {
+          A.du[i] += c[dm.eq[i]];
+          if (!(A.any_pres && i % 6 == 3 && A.node_pres[i / 6])) cmax = std::max(cmax, std::fabs(c[dm.eq[i]]));
+        }
       A.spread_links(A.du);
       dumax = 0;
       for (int i = 0; i < 6 * nn; ++i) if (i % 6 < 3) dumax = std::max(dumax, std::fabs(A.du[i]));

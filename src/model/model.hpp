@@ -181,6 +181,7 @@ struct Element {
   int instance = -1;
   std::vector<int> nodes;  // global node indices
   int section = -1;
+  bool hybrid = false;     // C3D4H: continuous linear pressure unknowns at the nodes (computed as C3D4 otherwise)
   bool heat = false;       // temperature degrees of freedom (DC3D8: heat transfer only; C3D8T: coupled, mechanics of C3D8)
 };
 

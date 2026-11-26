@@ -322,6 +322,8 @@ class SolidGroup : public ElementGroup {
   std::vector<double> pbv_last;  // bulk viscosity pressure of the last increment (trapezoidal viscous energy)
   std::vector<double> lch;       // ductile damage: characteristic length of the element (cube root of its volume)
   std::vector<char> deleted;     // ductile damage: element removed (damage variable reached 1)
+  std::vector<char> hyb;         // C3D4H: continuous linear pressure (nodal unknowns in the first rotation slot)
+  std::vector<double> qn;        // C3D4H: committed nodal pressures of each element (4 per element)
   int nvt = 0;                   // viscoelasticity: largest number of Prony terms of the group's materials
   std::vector<double> vh;        // viscoelasticity: per point and Prony term, the relaxed strain (corotational, 6)
 
@@ -345,6 +347,12 @@ class SolidGroup : public ElementGroup {
     vh.assign((size_t)size() * npt * nvt * 6, 0.0);
     deleted.assign(size(), 0);
     lch.assign(size(), 0.0);
+    hyb.assign(size(), 0);
+    for (int e = 0; e < size(); ++e) {
+      hyb[e] = m.elems[ids[e]].hybrid;
+      if (hyb[e] && type != ElType::C3D4) throw std::runtime_error("hybrid formulation: C3D4H only");
+    }
+    qn.assign(4 * (size_t)size(), 0.0);
     for (int e = 0; e < size(); ++e) {
       const int mi = m.sections[m.elems[ids[e]].section].material;
       if (mi < 0 || !m.materials[mi].damage()) continue;
@@ -413,9 +421,10 @@ class SolidGroup : public ElementGroup {
     }
   }
 
-  void save(BinOut& o) const override { ElementGroup::save(o); o.vec(st); o.vec(hgq); o.vec(hgv); o.vec(hgf); o.vec(hgl); o.vec(hgs); o.vec(effm); o.vec(pbv_last); o.vec(vh); o.vec(deleted); }
-  void load(BinIn& in) override { ElementGroup::load(in); in.vec(st); in.vec(hgq); in.vec(hgv); in.vec(hgf); in.vec(hgl); in.vec(hgs); in.vec(effm); in.vec(pbv_last); in.vec(vh); in.vec(deleted); }
+  void save(BinOut& o) const override { ElementGroup::save(o); o.vec(st); o.vec(hgq); o.vec(hgv); o.vec(hgf); o.vec(hgl); o.vec(hgs); o.vec(effm); o.vec(pbv_last); o.vec(vh); o.vec(deleted); o.vec(qn); }
+  void load(BinIn& in) override { ElementGroup::load(in); in.vec(st); in.vec(hgq); in.vec(hgv); in.vec(hgf); in.vec(hgl); in.vec(hgs); in.vec(effm); in.vec(pbv_last); in.vec(vh); in.vec(deleted); in.vec(qn); }
   double alpha_damping(int e) const override { return mat[e]->damp_alpha; }
+  bool hybrid(int e) const override { return hyb[e] != 0; }
 
   bool tet10() const { return type == ElType::C3D10 || type == ElType::C3D10M; }
   void mass(int e, const double* X, double* mt, double* mr) const override {
@@ -730,6 +739,25 @@ class SolidGroup : public ElementGroup {
       out.e_plastic += wp * V1;
       trd = deps.trace();
       Sym6 s = p.sig;
+      // C3D4H: continuous linear pressure. Nodal unknowns q (mean stress, tension positive) in the slot of the first
+      // rotation; the element takes their mean as its mean stress; constraint at each node, integral of
+      // N_I (s_m - q) / K0 over the element = 0, s_m the mean stress of the material (reaction stored in the force
+      // of that slot)
+      double rq[4] = {0, 0, 0, 0};
+      const bool hy = !hyb.empty() && hyb[e];
+      if (hy) {
+        double qv[4], qbar = 0;
+        for (int I = 0; I < 4; ++I) { qv[I] = qn[4 * e + I] + in.du[6 * I + 3]; qbar += 0.25 * qv[I]; }
+        const double sm = p.sig.trace() / 3, K0 = m.bulk_modulus();
+        for (int i = 0; i < 3; ++i) s[i] += qbar - sm;
+        for (int I = 0; I < 4; ++I) {
+          double mq = 0;
+          for (int J = 0; J < 4; ++J) mq += (I == J ? 2.0 : 1.0) * qv[J];
+          rq[I] = (0.25 * V1 * sm - V1 / 20 * mq) / K0;
+        }
+        if (commit) for (int I = 0; I < 4; ++I) qn[4 * e + I] = qv[I];
+      }
+      const Sym6 s_el = s;
       // bulk viscosity
       if (in.dynamic && in.dt > 0 && (in.bv1 > 0 || in.bv2 > 0)) {
         double rate = trd / in.dt;
@@ -746,6 +774,7 @@ class SolidGroup : public ElementGroup {
                       s[4] * b1[I].x + s[5] * b1[I].y + s[2] * b1[I].z) * V1;
         add3(out.f + 6 * I, f);
       }
+      if (hy) for (int I = 0; I < 4; ++I) out.f[6 * I + 3] = rq[I];
       // hourglass (C3D8R)
       if (type == ElType::C3D8R) {
         double* q = &hgq[e * 12];
@@ -841,7 +870,7 @@ class SolidGroup : public ElementGroup {
         if (commit) { std::memcpy(q, qn, sizeof(qn)); std::memcpy(qv, qvn, sizeof(qvn)); std::memcpy(qf, qfn, sizeof(qfn)); }
       }
       if (commit) st[e] = p;
-      sig_avg = p.sig; eps_avg = p.eps; ep_max = p.ep; mis_max = mises(p.sig);
+      sig_avg = hy ? s_el : p.sig; eps_avg = p.eps; ep_max = p.ep; mis_max = mises(sig_avg);
     } else if (type == ElType::C3D8I) {  // incompatible modes (Wilson-Taylor), full integration
       // gradients at the 2x2x2 points (middle and end configurations); incompatible displacement modes
       // alpha_k (1 - xi_k^2) per component, gradients with the centre Jacobian scaled by det0/det (patch test)

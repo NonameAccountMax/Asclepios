@@ -252,8 +252,7 @@ def patch_features():
                                ['%d, 3, %s' % (n, fmt(-1.0 / len(tip))) for n in tip], True)
         register(d, 'static', etype, 'near incompressibility', 'Rubber cantilever with a bulk modulus 20000 times the '
                  'shear modulus, tip load (volumetric locking).', tip[:3], fix, False, 'nonlinear', category='feature',
-                 group='patch', supported=etype != 'C3D4H', reason=None if etype != 'C3D4H' else
-                 NS + 'hybrid elements (%s)' % etype, twin=etype == 'C3D8R')
+                 group='patch', supported=True, twin=etype == 'C3D8R')
 
     for n in (4, 16):
         d = Deck('s4r_pressure_n%d' % n, 'S4R clamped square plate under pressure, %d x %d mesh (convergence)' % (n, n))

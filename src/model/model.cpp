@@ -112,7 +112,7 @@ ElType eltype_from(const std::string& n0, int& nn) {
   if (n == "DC3D8") { nn = 8; return ElType::DC3D8; }
   if (n == "C3D8I") { nn = 8; return ElType::C3D8I; }
   if (n == "C3D6") { nn = 6; return ElType::C3D6; }
-  if (n == "C3D4") { nn = 4; return ElType::C3D4; }
+  if (n == "C3D4" || n == "C3D4H") { nn = 4; return ElType::C3D4; }
   if (n == "C3D10") { nn = 10; return ElType::C3D10; }
   if (n == "C3D10M") { nn = 10; return ElType::C3D10M; }
   if (n == "S4R" || n == "S4RS" || n == "S4R5") { nn = 4; return ElType::S4R; }
@@ -418,6 +418,7 @@ class Builder {
       Element e;
       e.type = t;
       e.heat = heat;
+      e.hybrid = upper(tname) == "C3D4H";
       e.label = to_int(toks[0], &c);
       e.instance = sc.inst;
       for (size_t i = 1; i < toks.size() && (int)e.nodes.size() < nn; ++i) {

@@ -73,6 +73,8 @@ class ElementGroup {
   virtual void compute(int e, const ElemIn& in, ElemOut& out, bool commit) = 0;
   // material Rayleigh damping coefficient (mass proportional)
   virtual double alpha_damping(int e) const { return 0; }
+  // element with nodal pressure unknowns in the slot of the first rotation (C3D4H, implicit procedures)
+  virtual bool hybrid(int e) const { return false; }
   // contact thickness (shells/beams) for general contact
   virtual double contact_thickness(int e) const { return 0; }
   // strain energy currently stored (for energy balance; optional)
